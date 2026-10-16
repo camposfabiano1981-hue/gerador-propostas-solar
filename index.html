@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Plataforma para elaboração de propostas comerciais de energia solar fotovoltaica (On-Grid e Híbrido) com geração em Word (.docx).">
+  <title>Propostas Solar</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='14' fill='%23F59E0B'/%3E%3Cg stroke='%231E3A8A' stroke-width='5' stroke-linecap='round'%3E%3Cpath d='M32 4v8M32 52v8M4 32h8M52 32h8M12 12l6 6M46 46l6 6M12 52l6-6M46 18l6-6'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="barra-mobile">
+    <button id="btn-menu" class="btn-icone" type="button" aria-label="Abrir menu">☰</button>
+    <span>Propostas Solar</span>
+  </header>
+  <div id="veu"></div>
+
+  <aside class="lateral">
+    <a class="marca" href="#/painel">
+      <img id="marca-logo" alt="Logotipo da empresa">
+      <span class="marca-texto"><strong>Propostas Solar</strong><small id="marca-empresa"></small></span>
+    </a>
+    <nav class="nav" aria-label="Menu principal">
+      <div class="nav-grupo">Propostas</div>
+      <a href="#/painel">🏠 Painel</a>
+      <a href="#/proposta/nova">➕ Nova proposta</a>
+      <a href="#/propostas">📄 Propostas</a>
+      <div class="nav-grupo">Cadastros</div>
+      <a href="#/clientes">👤 Clientes</a>
+      <a href="#/equipamentos">🔧 Equipamentos</a>
+      <a href="#/concessionarias">⚡ Concessionárias</a>
+      <a href="#/localidades">☀️ Localidades (HSP)</a>
+      <a href="#/pagamentos">💳 Pagamentos</a>
+      <div class="nav-grupo">Configurações</div>
+      <a href="#/empresa">🏢 Empresa</a>
+      <a href="#/premissas">📐 Premissas</a>
+      <a href="#/textos">📝 Textos padrão</a>
+      <a href="#/dados">💾 Backup e dados</a>
+    </nav>
+  </aside>
+
+  <main id="conteudo" tabindex="-1"></main>
+
+  <noscript><p style="padding:24px">Esta plataforma precisa de JavaScript habilitado.</p></noscript>
+
+  <script src="js/util.js"></script>
+  <script src="js/defaults.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/zip.js"></script>
+  <script src="js/docx-parts.js"></script>
+  <script src="js/logo-default.js"></script>
+  <script src="js/docx.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/pages/propostas.js"></script>
+  <script src="js/pages/proposta.js"></script>
+  <script src="js/pages/cadastros.js"></script>
+  <script src="js/pages/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

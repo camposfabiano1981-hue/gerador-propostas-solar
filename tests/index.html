@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testes — Gerador de Propostas Solar</title>
+  <style>
+    body { font: 14px/1.5 system-ui, "Segoe UI", Arial, sans-serif; margin: 24px; color: #111827; background: #fff; }
+    h1 { font-size: 20px; color: #1E3A8A; }
+    table { border-collapse: collapse; width: 100%; max-width: 1100px; }
+    td, th { border: 1px solid #E5E7EB; padding: 4px 8px; text-align: left; vertical-align: top; }
+    .ok { color: #166534; font-weight: 600; } .falha { color: #DC2626; font-weight: 700; }
+    #resumo { font-size: 16px; margin: 12px 0; }
+    button { padding: 6px 12px; margin-right: 8px; }
+    code { font-size: 12px; color: #4B5563; }
+  </style>
+</head>
+<body>
+  <h1>Testes do motor de cálculo e do gerador .docx</h1>
+  <p>Abra esta página no navegador (duplo clique ou pelo servidor local). Os testes rodam automaticamente.</p>
+  <div id="resumo">Executando…</div>
+  <p>
+    <button id="baixarRef">Baixar .docx do cenário de referência</button>
+    <button id="baixarHib">Baixar .docx do cenário híbrido</button>
+  </p>
+  <table><thead><tr><th>Teste</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody id="lista"></tbody></table>
+
+  <script src="../js/util.js"></script>
+  <script src="../js/defaults.js"></script>
+  <script src="../js/store.js"></script>
+  <script src="../js/calc.js"></script>
+  <script src="../js/chart.js"></script>
+  <script src="../js/zip.js"></script>
+  <script src="../js/docx-parts.js"></script>
+  <script src="../js/logo-default.js"></script>
+  <script src="../js/docx.js"></script>
+  <script src="tests.js"></script>
+  <script>
+    (async function () {
+      const T = window.__testes;
+      const docs = await T.testarDocx();
+      const tb = document.getElementById('lista');
+      let falhas = 0;
+      T.resultados.forEach(function (r) {
+        if (!r.ok) falhas++;
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + App.U.esc(r.nome) + '</td><td class="' + (r.ok ? 'ok">OK' : 'falha">FALHOU') + '</td><td><code>' + App.U.esc(r.detalhe) + '</code></td>';
+        tb.appendChild(tr);
+      });
+      const resumo = document.getElementById('resumo');
+      resumo.innerHTML = falhas ? '<span class="falha">' + falhas + ' falha(s)</span> de ' + T.resultados.length + ' testes.'
+        : '<span class="ok">Todos os ' + T.resultados.length + ' testes passaram.</span>';
+      document.body.dataset.falhas = String(falhas);
+      document.getElementById('baixarRef').onclick = function () { if (docs.ref) App.U.download(docs.ref.blob, docs.ref.nome); };
+      document.getElementById('baixarHib').onclick = function () { if (docs.hib) App.U.download(docs.hib.blob, docs.hib.nome); };
+      window.__docs = docs;
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# configurações locais do editor/assistente
+.claude/
+.vscode/
+
+# propostas e backups gerados localmente (contêm dados de clientes)
+*.docx
+*.pdf
+backup-propostas-solar-*.json
+
+# sistema operacional
+Thumbs.db
+desktop.ini
+.DS_Store
