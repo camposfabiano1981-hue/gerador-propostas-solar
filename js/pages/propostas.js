@@ -16,17 +16,18 @@
     return p.resumo || {};
   }
 
-  async function baixarDocx(p, botao) {
+  async function baixar(p, formato, botao) {
+    const rotulo = botao ? botao.textContent : '';
     if (botao) { botao.disabled = true; botao.textContent = '…'; }
     try {
-      const g = await App.Docx.gerar(p, C.contexto());
+      const g = formato === 'pdf' ? await App.Pdf.gerar(p, C.contexto()) : await App.Docx.gerar(p, C.contexto());
       U.download(g.blob, g.nome);
       UI.toast('Proposta gerada: ' + g.nome, 'ok');
     } catch (e) {
       console.error(e);
       UI.toast('Falha ao gerar: ' + e.message, 'erro');
     } finally {
-      if (botao) { botao.disabled = false; botao.textContent = '⬇'; }
+      if (botao) { botao.disabled = false; botao.textContent = rotulo; }
     }
   }
 
@@ -85,7 +86,8 @@
     const tb = h('tbody');
     lista.forEach(function (p) {
       const rs = resumoProposta(p);
-      const btnDocx = h('button.btn-icone', { type: 'button', title: 'Gerar .docx', 'aria-label': 'Gerar .docx', onclick: function () { baixarDocx(p, btnDocx); } }, '⬇');
+      const btnPdf = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar proposta em PDF', onclick: function () { baixar(p, 'pdf', btnPdf); } }, 'PDF');
+      const btnDocx = h('button.btn-formato', { type: 'button', title: 'Baixar proposta em Word (.docx)', onclick: function () { baixar(p, 'docx', btnDocx); } }, 'DOCX');
       const sel = h('select.status-sel', { 'aria-label': 'Situação', onchange: function () { p.status = sel.value; S.save('propostas', p); UI.toast('Situação atualizada.'); recarregar(); } },
         D.STATUS.map(function (s) { const o = h('option', { value: s.id }, s.label); if (s.id === p.status) o.selected = true; return o; }));
       tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button,select')) UI.ir('#/proposta/' + p.id); } },
@@ -96,6 +98,7 @@
         h('td.num', rs.total ? U.brl(rs.total) : '—'),
         h('td', statusBadge(p.status), sel),
         h('td.acoes-col',
+          btnPdf,
           btnDocx,
           h('button.btn-icone', { type: 'button', title: 'Duplicar', 'aria-label': 'Duplicar', onclick: function () { duplicar(p); } }, '⧉'),
           h('button.btn-icone.perigo', {
@@ -138,7 +141,7 @@
       h('option', { value: '' }, 'Todas as situações'), D.STATUS.map(function (s) { return h('option', { value: s.id }, s.label); }));
     const selTipo = h('select', { 'aria-label': 'Filtrar por tipo', onchange: function () { filtro.tipo = selTipo.value; desenhar(); } },
       h('option', { value: '' }, 'On-Grid e Híbrido'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'));
-    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. ⬇ gera o .docx, ⧉ duplica.', [
+    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. PDF / DOCX baixam a proposta, ⧉ duplica.', [
       busca, selStatus, selTipo, h('a.btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta')
     ]));
     cont.appendChild(box);

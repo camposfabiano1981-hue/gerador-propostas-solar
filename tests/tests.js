@@ -163,8 +163,38 @@
     } catch (e) {
       ok('docx gerado', false, e && e.stack || String(e));
     }
+    try {
+      const pdf = await App.Pdf.gerar(p, ctx);
+      const head = new TextDecoder().decode(await pdf.blob.slice(0, 5).arrayBuffer());
+      ok('pdf gerado (referência)', head === '%PDF-' && pdf.blob.size > 20000, pdf.blob.size + ' bytes');
+      ok('pdf com fonte Arimo (métrica Arial)', pdf.fonteOk, pdf.fonteOk ? 'Arimo' : 'Helvetica (sem internet?)');
+      igual('nome do pdf', pdf.nome, 'Proposta_Solar_ClienteExemplo_20260929.pdf');
+      out.pdfRef = pdf;
+      const pdfH = await App.Pdf.gerar(pH, ctxH);
+      ok('pdf gerado (híbrido)', pdfH.blob.size > 20000, pdfH.blob.size + ' bytes');
+      out.pdfHib = pdfH;
+    } catch (e) {
+      ok('pdf gerado', false, e && e.stack || String(e));
+    }
     return out;
   }
+
+  // ---------------------------------------------------------------- modelo do documento: cores de fundo válidas
+  [['referência', p, ctx, r], ['híbrido', pH, ctxH, rH]].forEach(function (c) {
+    const m = App.Documento.montar(c[1], c[3], c[2], c[2].clientes[0], { w: 1400, h: 752 });
+    const invalidos = [];
+    (function andar(nos) {
+      (nos || []).forEach(function (n) {
+        if (n.tipo === 'tc' && n.o.fill != null && !/^[0-9A-F]{6}$/.test(String(n.o.fill))) invalidos.push(String(n.o.fill).slice(0, 30));
+        andar(n.filhos); andar(n.linhas); andar(n.celulas);
+      });
+    })(m.corpo.concat(m.cabecalho, m.rodape));
+    ok('cores de fundo das células válidas (' + c[0] + ')', !invalidos.length, invalidos.slice(0, 3).join(' | '));
+  });
+
+  // ---------------------------------------------------------------- numeração automática (somente leitura do armazenamento)
+  const num = App.Store.proximoNumero('2026-09-29');
+  ok('número automático no formato PREFIXO-AAAAMMDD-NNN', /^[A-Z0-9]+-20260929-\d{3}$/.test(num.numero), num.numero);
 
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

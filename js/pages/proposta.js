@@ -47,8 +47,10 @@
     }
     let r = null;
     let sujo = !id;
-    UI.guarda = function () { return !sujo || confirm('A proposta tem alterações não salvas. Deseja sair mesmo assim?'); };
-    window.onbeforeunload = function (e) { if (sujo && document.body.contains(cont.firstChild)) { e.preventDefault(); e.returnValue = ''; } };
+    let inicial = null; // estado de uma proposta nova ainda não tocada
+    const alterada = function () { return sujo && (p.id || inicial === null || JSON.stringify(p) !== inicial); };
+    UI.guarda = function () { return !alterada() || confirm('A proposta tem alterações não salvas. Deseja sair mesmo assim?'); };
+    window.onbeforeunload = function (e) { if (alterada() && document.body.contains(cont.firstChild)) { e.preventDefault(); e.returnValue = ''; } };
 
     const secoes = {};
     const infos = {};
@@ -56,9 +58,10 @@
     /* ---------------- cabeçalho */
     const subtitulo = h('p.sub');
     const btnSalvar = h('button.btn', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar');
-    const btnDocx = h('button.btn.primario', { type: 'button', onclick: gerarDocx }, '⬇ Gerar proposta (.docx)');
+    const btnPdf = h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ Proposta em PDF');
+    const btnDocx = h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ Word (.docx)');
     const titulo = h('h1', id ? 'Proposta ' + p.numero : 'Nova proposta');
-    cont.appendChild(h('div.pagina-topo', h('div', titulo, subtitulo), h('div.acoes', btnSalvar, btnDocx)));
+    cont.appendChild(h('div.pagina-topo', h('div', titulo, subtitulo), h('div.acoes', btnSalvar, btnDocx, btnPdf)));
 
     const nav = h('nav.passos');
     const colForm = h('div.form-col');
@@ -129,7 +132,7 @@
         }));
       c.appendChild(h('div.campo', h('label', 'Tipo de sistema'), tipos));
       c.appendChild(UI.grade([
-        { k: 'numero', label: 'Nº da proposta' },
+        { k: 'numero', label: 'Nº da proposta', readonly: true, help: p.id ? 'Gerado automaticamente.' : 'Automático — confirmado ao salvar.' },
         { k: 'data', label: 'Data de emissão', type: 'date' },
         { k: 'validadeDias', label: 'Validade', type: 'int', suffix: 'dias' },
         { k: 'status', label: 'Situação', type: 'select', options: D.STATUS.map(function (s) { return { v: s.id, t: s.label }; }) }
@@ -546,7 +549,8 @@
       }
       resumo.appendChild(h('div.resumo-acoes',
         h('button.btn', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'),
-        h('button.btn.primario', { type: 'button', onclick: gerarDocx }, '⬇ Gerar .docx')));
+        h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ Word'),
+        h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ PDF')));
     }
 
     /* ---------------- salvar / gerar */
@@ -555,7 +559,8 @@
       if (!p.clienteId) { UI.toast('Selecione o cliente antes de salvar.', 'erro'); secoes.cliente.el.scrollIntoView({ behavior: 'smooth' }); return false; }
       const cli = ctx.clientes.find(function (x) { return x.id === p.clienteId; });
       const novo = !p.id;
-      if (novo && S.list('propostas').some(function (x) { return x.numero === p.numero; })) {
+      if (novo) {
+        // número definitivo atribuído no primeiro salvamento: sempre o próximo livre da data de emissão
         const n = S.proximoNumero(p.data);
         p.numero = n.numero;
         p._seq = n;
@@ -577,7 +582,7 @@
       return true;
     }
 
-    async function gerarDocx() {
+    async function gerar(formato) {
       atualizar();
       const erros = r.alertas.filter(function (a) { return a.nivel === 'erro'; });
       if (!p.clienteId) { UI.toast('Selecione o cliente.', 'erro'); return; }
@@ -586,27 +591,26 @@
         if (!continuar) return;
       }
       if (sujo && !salvar(false)) return;
-      btnDocx.disabled = true;
-      btnDocx.textContent = 'Gerando…';
+      const botao = formato === 'pdf' ? btnPdf : btnDocx;
+      const rotulo = botao.textContent;
+      botao.disabled = true;
+      botao.textContent = 'Gerando…';
       try {
-        const g = await App.Docx.gerar(p, ctx);
+        const g = formato === 'pdf' ? await App.Pdf.gerar(p, ctx) : await App.Docx.gerar(p, ctx);
         U.download(g.blob, g.nome);
         UI.toast('Proposta gerada: ' + g.nome, 'ok');
       } catch (e) {
         console.error(e);
         UI.toast('Falha ao gerar o documento: ' + e.message, 'erro');
       } finally {
-        btnDocx.disabled = false;
-        btnDocx.textContent = '⬇ Gerar proposta (.docx)';
+        botao.disabled = false;
+        botao.textContent = rotulo;
       }
     }
 
     desenharTudo();
     atualizar();
-    // proposta nova ainda não foi alterada pelo usuário: não exigir confirmação para sair se nada for preenchido
-    if (!id) {
-      const inicial = JSON.stringify(p);
-      UI.guarda = function () { return !sujo || JSON.stringify(p) === inicial || confirm('A proposta tem alterações não salvas. Deseja sair mesmo assim?'); };
-    }
+    // proposta nova ainda não alterada pelo usuário: sair sem pedir confirmação
+    if (!id) inicial = JSON.stringify(p);
   }
 })(window.App);

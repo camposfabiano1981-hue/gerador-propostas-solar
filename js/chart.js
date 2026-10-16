@@ -122,19 +122,14 @@ window.App = window.App || {};
     g.restore();
   }
 
-  /** Gera o PNG do gráfico (Uint8Array) com 1800×750 px. */
-  function png(d) {
+  /** Gera o gráfico como PNG (data URL) com 1800×750 px — usado no .docx e no PDF. */
+  function dataURL(d) {
     const cv = document.createElement('canvas');
     cv.width = 1800;
     cv.height = 750;
     desenhar(cv, d);
-    return new Promise(function (res, rej) {
-      cv.toBlob(function (b) {
-        if (!b) { rej(new Error('Falha ao gerar a imagem do gráfico.')); return; }
-        b.arrayBuffer().then(function (ab) { res(new Uint8Array(ab)); }, rej);
-      }, 'image/png');
-    });
+    return cv.toDataURL('image/png');
   }
 
-  App.Chart = { desenhar: desenhar, png: png };
+  App.Chart = { desenhar: desenhar, dataURL: dataURL };
 })(window.App);

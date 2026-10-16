@@ -1,6 +1,6 @@
 # Gerador de Propostas Solar
 
-Plataforma web para elaborar **propostas comerciais de energia solar fotovoltaica** — sistemas **On-Grid** e **Híbridos (com baterias)** — com dimensionamento técnico automático, análise financeira de 25 anos (Lei 14.300/2022 — Fio B) e geração da proposta em **Word (.docx)** no mesmo layout do modelo Gênesis Engenharia (capa, cabeçalho/rodapé, tabelas azuis zebradas, gráfico Consumo × Geração e bloco de assinatura).
+Plataforma web para elaborar **propostas comerciais de energia solar fotovoltaica** — sistemas **On-Grid** e **Híbridos (com baterias)** — com dimensionamento técnico automático, análise financeira de 25 anos (Lei 14.300/2022 — Fio B) e emissão da proposta em **PDF** e **Word (.docx)** no mesmo layout do modelo Gênesis Engenharia (capa, cabeçalho/rodapé, tabelas azuis zebradas, gráfico Consumo × Geração e bloco de assinatura).
 
 Funciona 100% no navegador: **não precisa de servidor, banco de dados nem instalação**. Pode ser publicada gratuitamente no **GitHub Pages**.
 
@@ -17,7 +17,9 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - Lista de materiais gerada automaticamente (módulos, inversor, baterias, kits de estrutura combinados, perfis, cabos, conectores), editável, com soma automática do kit.
 - Composição do preço: **valor total** (mão de obra calculada) ou **itens separados** (total calculado); valor do kit pela soma dos itens ou manual (cotação do distribuidor).
 - Opções de pagamento: à vista, cartão com acréscimo fixo e financiamentos (BV, Solfácil…) por PMT.
-- Numeração automática `PREFIXO-AAAAMMDD-NNN`, situação (rascunho, enviada, em negociação, aprovada, recusada), duplicação e geração do .docx.
+- **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
+- **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
+- Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
 **Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, inversores híbridos, baterias, estruturas e materiais com regras de quantidade), concessionárias e tarifas (B1/B2/B3 e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal) e condições de pagamento.
 
@@ -45,7 +47,7 @@ e acesse `http://localhost:8765/`.
 1. **Configurações › Empresa**: confira razão social, CNPJ, registro, responsável técnico e envie o logotipo.
 2. **Cadastros › Equipamentos**: cadastre os preços dos módulos, inversores, baterias e materiais (o kit é somado automaticamente).
 3. **Cadastros › Localidades / Concessionárias**: confira HSP, COSIP e tarifas da sua região.
-4. **Nova proposta**: escolha On-Grid ou Híbrido, selecione/cadastre o cliente, informe o consumo e o valor, revise o resumo e clique em **Gerar proposta (.docx)**.
+4. **Nova proposta**: escolha On-Grid ou Híbrido, selecione/cadastre o cliente, informe o consumo e o valor, revise o resumo e clique em **Proposta em PDF** (ou **Word (.docx)**). Na lista de propostas, os botões **PDF** e **DOCX** baixam qualquer proposta salva.
 
 > **Onde ficam os dados?** No armazenamento local do navegador (localStorage). Cada navegador/computador tem a sua base. Use **Configurações › Backup e dados** para exportar um `.json` regularmente e importá-lo em outro computador.
 
@@ -101,7 +103,9 @@ js/store.js           Persistência local, numeração e backup
 js/calc.js            Dimensionamento On-Grid/Híbrido, materiais, financeiro e pagamentos
 js/chart.js           Gráfico Consumo × Geração (canvas → PNG)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)
+js/documento.js       Conteúdo da proposta (modelo comum ao Word e ao PDF)
 js/docx.js            Documento Word no layout do modelo
+js/pdf.js             Documento PDF no layout do modelo (jsPDF + fonte Arimo, carregados sob demanda)
 js/docx-parts.js      Estilos/tema/fontes extraídos do modelo original
 js/logo-default.js    Logotipo padrão (gerado a partir de assets/logo-genesis.jpg)
 js/ui.js              Roteador, diálogos, campos e cadastro genérico
@@ -112,4 +116,4 @@ tools/serve.ps1       Servidor local opcional (Windows/PowerShell)
 
 ## Testes
 
-Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDI, Fio B, contas mensais, parcelas e a lista de materiais, além de gerar os .docx On-Grid e Híbrido para download.
+Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDI, Fio B, contas mensais, parcelas e a lista de materiais, além de gerar os .docx e PDFs On-Grid e Híbrido para download.
