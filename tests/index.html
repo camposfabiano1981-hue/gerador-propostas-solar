@@ -24,12 +24,15 @@
     <button id="baixarHib">Baixar .docx do cenário híbrido</button>
     <button id="baixarPdfRef">Baixar PDF do cenário de referência</button>
     <button id="baixarPdfHib">Baixar PDF do cenário híbrido</button>
+    <button id="baixarContrato">Baixar contrato (.docx)</button>
+    <button id="baixarPdfContrato">Baixar contrato (PDF)</button>
   </p>
   <table><thead><tr><th>Teste</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody id="lista"></tbody></table>
 
   <script src="../js/util.js"></script>
   <script src="../js/defaults.js"></script>
   <script src="../js/store.js"></script>
+  <script src="../js/energia.js"></script>
   <script src="../js/calc.js"></script>
   <script src="../js/chart.js"></script>
   <script src="../js/zip.js"></script>
@@ -38,6 +41,8 @@
   <script src="../js/documento.js"></script>
   <script src="../js/docx.js"></script>
   <script src="../js/pdf.js"></script>
+  <script src="../js/contrato.js"></script>
+  <script src="../js/avulsa.js"></script>
   <script src="tests.js"></script>
   <script>
     (async function () {
@@ -59,6 +64,8 @@
       document.getElementById('baixarHib').onclick = function () { if (docs.hib) App.U.download(docs.hib.blob, docs.hib.nome); };
       document.getElementById('baixarPdfRef').onclick = function () { if (docs.pdfRef) App.U.download(docs.pdfRef.blob, docs.pdfRef.nome); };
       document.getElementById('baixarPdfHib').onclick = function () { if (docs.pdfHib) App.U.download(docs.pdfHib.blob, docs.pdfHib.nome); };
+      document.getElementById('baixarContrato').onclick = function () { if (docs.contrato) App.U.download(docs.contrato.blob, docs.contrato.nome); };
+      document.getElementById('baixarPdfContrato').onclick = function () { if (docs.pdfContrato) App.U.download(docs.pdfContrato.blob, docs.pdfContrato.nome); };
       window.__docs = docs;
     })();
   </script>

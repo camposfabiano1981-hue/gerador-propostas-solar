@@ -56,6 +56,8 @@
     const semPreco = S.list('equipamentos').filter(function (e) { return e.ativo !== false && ['modulo', 'inversor', 'hibrido', 'bateria'].indexOf(e.tipo) >= 0 && !(U.num(e.preco) > 0); }).length;
 
     cont.appendChild(UI.cabecalho('Painel', emp.razao, [
+      h('a.btn', { href: '#/avulsa/nova' }, '+ Proposta de serviços'),
+      h('a.btn', { href: '#/proposta/nova?tipo=bess' }, '+ BESS'),
       h('a.btn', { href: '#/proposta/nova?tipo=hibrido' }, '+ Proposta híbrida'),
       h('a.btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta On-Grid')
     ]));
@@ -93,13 +95,15 @@
       tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button,select')) UI.ir('#/proposta/' + p.id); } },
         h('td', h('strong', p.numero), h('div.mini', U.dataBR(p.data))),
         h('td', p.clienteNome || '—', h('div.mini', rs.cidade || '')),
-        h('td', p.tipoSistema === 'hibrido' ? UI.badge('Híbrido', 'roxo') : UI.badge('On-Grid', 'azul')),
+        h('td', p.tipoSistema === 'hibrido' ? UI.badge('Híbrido', 'roxo') : (p.tipoSistema === 'bess' ? UI.badge('BESS', 'ambar') : UI.badge('On-Grid', 'azul')),
+          rs.cenario ? h('div.mini', rs.cenario) : null),
         h('td.num', rs.kwp ? U.kwp(rs.kwp) + ' kWp' : '—', rs.kwh ? h('div.mini', U.fmtSmart(rs.kwh, 2) + ' kWh') : null),
         h('td.num', rs.total ? U.brl(rs.total) : '—'),
         h('td', statusBadge(p.status), sel),
         h('td.acoes-col',
           btnPdf,
           btnDocx,
+          h('button.btn-icone', { type: 'button', title: 'Gerar contrato', 'aria-label': 'Gerar contrato', onclick: function () { UI.ir('#/contrato/novo?proposta=' + p.id); } }, '✍'),
           h('button.btn-icone', { type: 'button', title: 'Duplicar', 'aria-label': 'Duplicar', onclick: function () { duplicar(p); } }, '⧉'),
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
@@ -140,8 +144,8 @@
     const selStatus = h('select', { 'aria-label': 'Filtrar por situação', onchange: function () { filtro.status = selStatus.value; desenhar(); } },
       h('option', { value: '' }, 'Todas as situações'), D.STATUS.map(function (s) { return h('option', { value: s.id }, s.label); }));
     const selTipo = h('select', { 'aria-label': 'Filtrar por tipo', onchange: function () { filtro.tipo = selTipo.value; desenhar(); } },
-      h('option', { value: '' }, 'On-Grid e Híbrido'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'));
-    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. PDF / DOCX baixam a proposta, ⧉ duplica.', [
+      h('option', { value: '' }, 'Todos os tipos'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'), h('option', { value: 'bess' }, 'BESS'));
+    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. PDF / DOCX baixam a proposta, ✍ gera o contrato, ⧉ duplica.', [
       busca, selStatus, selTipo, h('a.btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta')
     ]));
     cont.appendChild(box);

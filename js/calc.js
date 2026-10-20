@@ -147,18 +147,38 @@ window.App = window.App || {};
     return s.join(' — ');
   };
 
+  C.specBess = function (b) {
+    if (!b) return '';
+    const s = [];
+    if (pos(b.energia)) s.push(U.fmtSmart(b.energia, 2) + ' kWh');
+    if (pos(b.potencia)) s.push(U.fmtSmart(b.potencia, 2) + ' kW');
+    return s.join(' / ');
+  };
+
+  C.descBess = function (b) {
+    if (!b) return '';
+    if (b.descricaoProposta) return b.descricaoProposta;
+    const s = ['Sistema de Armazenamento (BESS) ' + [b.fabricante, b.modelo].filter(Boolean).join(' ')];
+    const spec = C.specBess(b);
+    if (spec) s.push(spec);
+    const extra = [b.quimica, b.fases, pos(b.eficiencia) ? 'Ef. ' + U.fmtSmart(b.eficiencia, 1) + '%' : '', pos(b.ciclos) ? U.fmt(b.ciclos, 0) + ' ciclos' : ''].filter(Boolean);
+    if (extra.length) s.push(extra.join(' / '));
+    return s.join(' — ');
+  };
+
   C.descEquip = function (e) {
     if (!e) return '';
     if (e.tipo === 'modulo') return C.descModulo(e);
     if (e.tipo === 'inversor' || e.tipo === 'hibrido') return C.descInversor(e);
     if (e.tipo === 'bateria') return C.descBateria(e);
+    if (e.tipo === 'bess') return C.descBess(e);
     return e.descricaoProposta || e.descricao || [e.fabricante, e.modelo].filter(Boolean).join(' ');
   };
 
   C.garantiaEquip = function (e) {
     if (!e) return '';
     if (e.tipo === 'modulo') return C.garantiaModulo(e);
-    if (e.tipo === 'inversor' || e.tipo === 'hibrido' || e.tipo === 'bateria') return pos(e.garantia) ? e.garantia + ' anos' : 'Conf. fabricante';
+    if (['inversor', 'hibrido', 'bateria', 'bess'].indexOf(e.tipo) >= 0) return pos(e.garantia) ? e.garantia + ' anos' : 'Conf. fabricante';
     return e.garantia || 'Conf. fabricante';
   };
 
@@ -167,6 +187,7 @@ window.App = window.App || {};
     if (e.tipo === 'modulo') return [e.fabricante, e.modelo, e.potencia ? e.potencia + ' Wp' : ''].filter(Boolean).join(' ');
     if (e.tipo === 'inversor' || e.tipo === 'hibrido') return [e.fabricante, e.modelo, e.potencia ? U.fmtSmart(e.potencia, 2) + ' kW' : ''].filter(Boolean).join(' ');
     if (e.tipo === 'bateria') return [e.fabricante, e.modelo, e.energia ? U.fmtSmart(e.energia, 2) + ' kWh' : ''].filter(Boolean).join(' ');
+    if (e.tipo === 'bess') return [e.fabricante, e.modelo, C.specBess(e)].filter(Boolean).join(' ');
     return e.descricao || [e.fabricante, e.modelo].filter(Boolean).join(' ');
   };
 
@@ -224,8 +245,14 @@ window.App = window.App || {};
     return res;
   };
 
-  /** Gera a lista de materiais a partir do dimensionamento. */
-  C.gerarItens = function (p, r, ctx) {
+  /**
+   * Gera a lista de materiais a partir do dimensionamento.
+   * opcoes: {fv: incluir itens do sistema FV, armazenamento: nº de unidades de bateria/BESS}
+   */
+  C.gerarItens = function (p, r, ctx, opcoes) {
+    const o = opcoes || {};
+    const comFV = o.fv !== false;
+    const nArm = o.armazenamento != null ? o.armazenamento : (r.hibrido ? r.hibrido.nBaterias : 0);
     const itens = [];
     const add = function (eq, categoria, qtd, unidade) {
       if (!(qtd > 0)) return;
@@ -234,14 +261,15 @@ window.App = window.App || {};
         qtd: qtd, unidade: unidade || eq.unidade || 'un', precoUnit: U.numOr(eq.preco, 0), garantia: C.garantiaEquip(eq)
       });
     };
-    if (r.modulo) add(r.modulo, 'modulo', r.nModulos, 'un');
-    if (r.inversor) add(r.inversor, 'inversor', r.nInversores, 'un');
-    if (r.hibrido && r.hibrido.bateria) add(r.hibrido.bateria, 'bateria', r.hibrido.nBaterias, 'un');
+    if (comFV && r.modulo) add(r.modulo, 'modulo', r.nModulos, 'un');
+    if (comFV && r.inversor) add(r.inversor, 'inversor', r.nInversores, 'un');
+    if (r.hibrido && r.hibrido.bateria) add(r.hibrido.bateria, r.hibrido.bateria.tipo === 'bess' ? 'bess' : 'bateria', nArm, 'un');
+    if (!comFV) return itens;
 
     const q = {
       nMod: r.nModulos, nInv: r.nInversores,
       mppts: (pos(r.inversor && r.inversor.mppts) || 1) * r.nInversores,
-      nBat: r.hibrido ? r.hibrido.nBaterias : 0
+      nBat: nArm
     };
     const ativos = (ctx.equipamentos || []).filter(function (e) { return e.ativo !== false && e.autoIncluir; });
 
@@ -283,105 +311,64 @@ window.App = window.App || {};
 
   /* ---------------------------------------------------------------- financeiro */
 
+  /** Fluxo de caixa de um sistema FV no grupo B convencional (mantido para compatibilidade). */
   C.financeiro = function (o) {
-    const prem = o.prem;
-    const H = Math.max(1, parseInt(prem.horizonte, 10) || 25);
-    const i = prem.tma;
-    const anos = [];
-    let acum = -o.investimento;
-    let somaLiq = 0, somaGer = 0;
-    const Cm = o.consumoMedio;
-    const consSem = Math.max(Cm, o.disp);
-    for (let n = 1; n <= H; n++) {
-      const ano = o.anoBase + n - 1;
-      const fT = Math.pow(1 + prem.inflacaoTarifa, n - 1);
-      const tarifa = o.tarifa * fT;
-      const cosip = o.cosip * Math.pow(1 + prem.reajusteCosip, n - 1);
-      const tusd = o.tusd * (prem.reajustarTusd ? fT : 1);
-      const ger = o.geracaoAnual1 * Math.pow(1 - prem.degradacao, n - 1);
-      const gm = ger / 12;
-      const injetada = ger * (1 - o.simultaneidade);
-      const armazenada = Math.min((o.armazenamentoDiario || 0) * 365, injetada);
-      const injEf = injetada - armazenada;
-      const pct = C.pctFioB(ano, prem);
-      const fioB = injEf * tusd * pct;
-      const faturada = Math.max(Cm - gm, o.disp);
-      const contaSem = consSem * tarifa + cosip;
-      const contaMin = faturada * tarifa;
-      const contaCom = contaMin + cosip + fioB / 12;
-      const bruta = (consSem - faturada) * tarifa * 12;
-      let extra = 0;
-      if (o.trocaBateria && o.trocaBateria.ano === n) extra = o.trocaBateria.custo;
-      const liq = bruta - fioB - extra;
-      acum += liq;
-      somaLiq += liq;
-      somaGer += ger;
-      anos.push({
-        n: n, ano: ano, geracao: ger, tarifa: tarifa, cosip: cosip, pctFioB: pct, injetada: injEf, armazenada: armazenada,
-        fioB: fioB, fioBMes: fioB / 12, faturada: faturada, contaSem: contaSem, contaMin: contaMin, contaCom: contaCom,
-        economiaMes: contaSem - contaCom, bruta: bruta, extra: extra, liq: liq, acumulado: acum,
-        descontado: liq / Math.pow(1 + i, n)
-      });
-    }
+    return App.Energia.fluxo({
+      prem: o.prem, anoBase: o.anoBase, investimento: o.investimento,
+      tarifas: { grupo: 'B', modalidade: 'conv', conv: o.tarifa, ponta: o.tarifa, inter: o.tarifa, fp: o.tarifa, referencia: o.tarifa },
+      consumo: { p: 0, i: 0, fp: o.consumoMedio }, demanda: null, disp: o.disp, cosip: o.cosip, tusd: o.tusd,
+      s: o.simultaneidade, geracaoAnual1: o.geracaoAnual1, estrategia: null
+    });
+  };
 
-    function payback(fluxos) {
-      let acc = 0;
-      for (let k = 0; k < fluxos.length; k++) {
-        const e = fluxos[k];
-        if (e > 0 && acc + e >= o.investimento) return k + (o.investimento - acc) / e;
-        acc += e;
-      }
-      return null;
-    }
+  /** Premissas completas (com valores padrão para chaves novas). */
+  C.premissas = function (p, ctx) {
+    const prem = U.clone(p.premissas || ctx.premissas || D.premissas);
+    prem.hibrido = Object.assign({}, D.premissas.hibrido, prem.hibrido || {});
+    prem.armazenamento = Object.assign({}, D.premissas.armazenamento, prem.armazenamento || {});
+    return prem;
+  };
 
-    const liqs = anos.map(function (a) { return a.liq; });
-    const descs = anos.map(function (a) { return a.descontado; });
-    const vpl = -o.investimento + descs.reduce(function (s, x) { return s + x; }, 0);
-
-    function npv(r) {
-      let s = -o.investimento;
-      for (let k = 0; k < liqs.length; k++) s += liqs[k] / Math.pow(1 + r, k + 1);
-      return s;
-    }
-    let tir = null;
-    if (o.investimento > 0) {
-      let lo = -0.99, hi = 10;
-      if (npv(hi) > 0) tir = null;
-      else if (npv(lo) < 0) tir = null;
-      else {
-        for (let k = 0; k < 200; k++) {
-          const mid = (lo + hi) / 2;
-          if (npv(mid) > 0) lo = mid; else hi = mid;
-        }
-        tir = (lo + hi) / 2;
-      }
-    }
-
-    return {
-      anos: anos,
-      horizonte: H,
-      economiaMes1: anos[0].economiaMes,
-      economiaAno1: anos[0].bruta - anos[0].fioB,
-      paybackSimples: o.investimento > 0 ? payback(liqs) : 0,
-      paybackDescontado: o.investimento > 0 ? payback(descs) : 0,
-      vpl: vpl,
-      tir: tir,
-      tirAcima: o.investimento > 0 && tir == null && npv(10) > 0,
-      co2t: (somaGer / H) * prem.fatorCO2 * H / 1000,
-      economiaTotal: somaLiq,
-      projecao: anos.filter(function (a) { return a.n <= 6 || a.n % 5 === 0; })
+  /** Configuração dos cenários da proposta, completando valores ausentes. */
+  C.cenariosConfig = function (p) {
+    const E = App.Energia;
+    const tipo = p.tipoSistema || 'ongrid';
+    const grupoA = E.modalidade(p.modalidade).grupo === 'A';
+    const cfg = U.clone(p.cenarios || {});
+    const pad = {
+      solar: { ativo: true },
+      backup: { ativo: true, incluirFV: true, n: '', horasFaltaAno: '', custoHoraFalta: '' },
+      ponta: { ativo: true, incluirFV: true, n: '' },
+      picos: { ativo: grupoA, incluirFV: true, n: '', reducaoKW: '', duracaoH: '', posto: '', readequar: true }
     };
+    Object.keys(pad).forEach(function (k) { cfg[k] = Object.assign({}, pad[k], cfg[k] || {}); });
+    if (tipo === 'ongrid') {
+      cfg.backup.ativo = cfg.ponta.ativo = cfg.picos.ativo = false;
+      cfg.solar.ativo = true;
+    }
+    if (tipo === 'bess' && p.bessComFV === false) {
+      cfg.solar.ativo = false;
+      cfg.backup.incluirFV = cfg.ponta.incluirFV = cfg.picos.incluirFV = false;
+    }
+    return cfg;
   };
 
   /* ---------------------------------------------------------------- cálculo completo */
 
   C.calcular = function (p, ctx) {
-    const prem = U.clone(p.premissas || ctx.premissas || D.premissas);
-    prem.hibrido = Object.assign({}, D.premissas.hibrido, prem.hibrido || {});
+    const E = App.Energia;
+    const prem = C.premissas(p, ctx);
+    const ar = prem.armazenamento;
     const eqs = ctx.equipamentos || [];
     const alertas = [];
     const alerta = function (nivel, msg) { alertas.push({ nivel: nivel, msg: msg }); };
-    const r = { premissas: prem, alertas: alertas, hibridoAtivo: p.tipoSistema === 'hibrido' };
+    const tipo = p.tipoSistema || 'ongrid';
+    const r = {
+      premissas: prem, alertas: alertas, tipoSistema: tipo,
+      hibridoAtivo: tipo === 'hibrido', bessAtivo: tipo === 'bess',
+      armazenamentoAtivo: tipo === 'hibrido' || tipo === 'bess'
+    };
+    r.permiteFV = tipo !== 'bess' || p.bessComFV !== false;
 
     // Local, concessionária e tarifas
     const loc = porId(ctx.localidades, p.localidadeId);
@@ -390,7 +377,11 @@ window.App = window.App || {};
     r.localidade = loc;
     r.concessionaria = conc;
     r.classe = classe.id;
-    r.tarifa = pos(p.tarifa) || (conc && conc.tarifas && pos(conc.tarifas[classe.tarifa])) || 0;
+    r.modalidade = E.modalidade(p.modalidade || 'conv');
+    r.grupo = r.modalidade.grupo;
+    r.subgrupo = r.grupo === 'A' ? (p.subgrupo || 'A4') : classe.tarifa;
+    r.tarifas = E.tarifas(p, conc, classe.tarifa);
+    r.tarifa = r.tarifas.referencia;
     r.tarifaInformada = !!pos(p.tarifa);
     r.tusdFioB = pos(p.tusdFioB) || (conc && pos(conc.tusdFioB)) || 0;
     const cosipP = U.num(p.cosip);
@@ -400,25 +391,39 @@ window.App = window.App || {};
     r.cidade = p.cidade || (loc ? loc.cidade : '');
     r.uf = p.uf || (loc ? loc.uf : '');
     if (!loc) alerta('erro', 'Selecione a localidade (cidade) para obter a irradiação (HSP).');
-    if (!(r.tarifa > 0)) alerta('erro', 'Informe a tarifa de energia (R$/kWh) ou cadastre-a na concessionária.');
+    if (r.tarifas.faltando.length) {
+      alerta('erro', 'Informe ' + r.tarifas.faltando.join(', ') + ' — na proposta (fatura do cliente) ou em Cadastros › Concessionárias.');
+    }
 
     // Consumo
-    const cm = Array.isArray(p.consumoMensal) ? p.consumoMensal.map(function (v) { return U.num(v); }) : [];
-    if (p.consumoModo === 'mensal' && cm.filter(isFinite).length === 12) {
-      r.consumoMeses = cm;
-      r.consumoMedio = cm.reduce(function (s, x) { return s + x; }, 0) / 12;
+    if (r.modalidade.id === 'conv') {
+      const cm = Array.isArray(p.consumoMensal) ? p.consumoMensal.map(function (v) { return U.num(v); }) : [];
+      if (p.consumoModo === 'mensal' && cm.filter(isFinite).length === 12) {
+        r.consumoMeses = cm;
+        r.consumoMedio = cm.reduce(function (s, x) { return s + x; }, 0) / 12;
+      } else {
+        r.consumoMedio = U.numOr(p.consumoMedio, 0);
+        r.consumoMeses = Array(12).fill(r.consumoMedio);
+      }
     } else {
-      r.consumoMedio = U.numOr(p.consumoMedio, 0);
+      r.consumoMedio = E.consumo(p, 0).total;
       r.consumoMeses = Array(12).fill(r.consumoMedio);
     }
-    if (!(r.consumoMedio > 0)) alerta('erro', 'Informe o consumo médio mensal (kWh).');
+    r.consumoPostos = E.consumo(p, r.consumoMedio);
+    if (!(r.consumoMedio > 0)) {
+      alerta('erro', r.modalidade.id === 'conv' ? 'Informe o consumo médio mensal (kWh).' : 'Informe o consumo por posto horário (ponta e fora de ponta).');
+    }
+    r.demanda = E.demanda(p);
+    if (r.grupo === 'A') {
+      const semDem = r.modalidade.id === 'verde' ? !(r.demanda.contr > 0) : !(r.demanda.contrP > 0 || r.demanda.contrFP > 0);
+      if (semDem) alerta('erro', 'Informe a demanda contratada (kW) do cliente do grupo A.');
+    }
     r.ligacao = p.ligacao || 'bi';
-    r.disponibilidade = U.numOr(prem.disponibilidade && prem.disponibilidade[r.ligacao], 0);
+    r.disponibilidade = r.grupo === 'B' ? U.numOr(prem.disponibilidade && prem.disponibilidade[r.ligacao], 0) : 0;
     r.simultaneidade = U.numOr(p.simultaneidade, prem.simultaneidade);
 
-    // Híbrido: cargas críticas e baterias (independe do número de módulos)
-    let armazenamentoDiario = 0, perdaMensalBateria = 0;
-    if (r.hibridoAtivo) {
+    // Armazenamento: cargas críticas e equipamento (bateria do híbrido ou gabinete BESS)
+    if (r.armazenamentoAtivo) {
       const h = { cargas: (p.cargas || []).map(function (c) {
         const qtd = U.numOr(c.qtd, 0), pot = U.numOr(c.potencia, 0), horas = U.numOr(c.horas, 0);
         return { descricao: c.descricao || '', qtd: qtd, potencia: pot, horas: horas, potTotal: qtd * pot, energia: qtd * pot * horas };
@@ -426,50 +431,26 @@ window.App = window.App || {};
       h.potCargas = h.cargas.reduce(function (s, c) { return s + c.potTotal; }, 0);
       h.energiaBackup = h.cargas.reduce(function (s, c) { return s + c.energia; }, 0);
       h.autonomiaHoras = U.numOr(p.autonomiaHoras, prem.hibrido.autonomiaHoras);
-      h.bateria = porId(eqs, p.bateriaId) || eqs.find(function (e) { return e.tipo === 'bateria' && e.ativo !== false; }) || null;
+      const tipoEq = r.bessAtivo ? 'bess' : 'bateria';
+      const idEq = r.bessAtivo ? p.bessId : p.bateriaId;
+      h.tipoEquip = tipoEq;
+      h.bateria = porId(eqs, idEq) || eqs.find(function (e) { return e.tipo === tipoEq && e.ativo !== false; }) || null;
       h.dod = pos(p.dod) ? U.num(p.dod) / 100 : (h.bateria && pos(h.bateria.dod) ? h.bateria.dod / 100 : prem.hibrido.dod);
-      h.eficiencia = prem.hibrido.eficiencia;
+      h.eficiencia = h.bateria && pos(h.bateria.eficiencia) ? h.bateria.eficiencia / 100 : prem.hibrido.eficiencia;
       h.capNecessaria = h.energiaBackup / 1000 / (h.dod * h.eficiencia);
-      h.usoBateria = p.usoBateria || 'backup';
       r.hibrido = h;
-      if (!h.bateria) alerta('erro', 'Cadastre/selecione uma bateria para o sistema híbrido.');
-      if (!h.cargas.length) alerta('aviso', 'Informe as cargas críticas que devem funcionar durante a falta de energia.');
+      if (!h.bateria) alerta('erro', r.bessAtivo ? 'Cadastre/selecione um equipamento BESS (Cadastros › Equipamentos › BESS).' : 'Cadastre/selecione uma bateria para o sistema híbrido.');
     }
 
     // Módulos e potência
-    const modulo = porId(eqs, p.moduloId);
+    const modulo = r.permiteFV ? porId(eqs, p.moduloId) : null;
     r.modulo = modulo;
-    if (!modulo) alerta('erro', 'Selecione o módulo fotovoltaico.');
+    if (r.permiteFV && !modulo) alerta('erro', 'Selecione o módulo fotovoltaico.');
     const wp = modulo ? U.numOr(modulo.potencia, 0) : 0;
-
-    // Pré-cálculo das baterias para estimar perdas da ciclagem diária
-    const montarBanco = function (inv) {
-      const h = r.hibrido;
-      if (!h || !h.bateria) return;
-      const vb = pos(h.bateria.tensao);
-      const vi = inv && pos(inv.tensaoBateria);
-      h.serie = vb && vi ? Math.max(1, Math.round(vi / vb)) : 1;
-      const eUnit = pos(h.bateria.energia) || 0;
-      h.nSugerido = eUnit ? Math.max(h.serie, Math.ceil(h.capNecessaria / eUnit / h.serie - 1e-9) * h.serie) : 0;
-      h.nBaterias = pos(p.nBaterias) ? Math.round(U.num(p.nBaterias)) : h.nSugerido;
-      h.paralelo = Math.max(1, Math.floor(h.nBaterias / h.serie));
-      h.capInstalada = h.nBaterias * eUnit;
-      h.capUtil = h.capInstalada * h.dod;
-      h.autonomiaEstimada = h.energiaBackup > 0 ? (h.capUtil * h.eficiencia) / (h.energiaBackup / 1000) * h.autonomiaHoras : null;
-      h.tensaoBanco = (vb || 0) * h.serie;
-      h.configuracao = h.serie > 1
-        ? h.serie + ' em série × ' + h.paralelo + ' em paralelo (' + U.fmtSmart(h.tensaoBanco, 1) + ' V)'
-        : (h.nBaterias > 1 ? h.nBaterias + ' em paralelo' : '1 unidade') + (vb ? ' (' + U.fmtSmart(vb, 1) + ' V)' : '');
-      armazenamentoDiario = h.usoBateria === 'ciclagem' ? h.capUtil * h.eficiencia : 0;
-      perdaMensalBateria = h.usoBateria === 'ciclagem' ? h.capUtil * (1 - h.eficiencia) * 30 : 0;
-    };
-    const invPreSel = porId(eqs, p.inversorId);
-    montarBanco(invPreSel);
-
-    r.consumoDimensionamento = r.consumoMedio + perdaMensalBateria;
-    r.kwpNecessario = r.hsp > 0 ? r.consumoDimensionamento / (r.hsp * 30 * prem.pr) : 0;
+    r.consumoDimensionamento = r.consumoMedio;
+    r.kwpNecessario = r.permiteFV && r.hsp > 0 ? r.consumoDimensionamento / (r.hsp * 30 * prem.pr) : 0;
     r.nModulosSugerido = wp > 0 ? Math.ceil((r.kwpNecessario * 1000) / wp - 1e-9) : 0;
-    r.nModulos = pos(p.nModulos) ? Math.round(U.num(p.nModulos)) : r.nModulosSugerido;
+    r.nModulos = !r.permiteFV ? 0 : (pos(p.nModulos) ? Math.round(U.num(p.nModulos)) : r.nModulosSugerido);
     r.kwp = (r.nModulos * wp) / 1000;
     r.geracaoMensal = r.kwp * r.hsp * 30 * prem.pr;
     r.geracaoAnual = r.kwp * r.hsp * 365 * prem.pr;
@@ -481,11 +462,12 @@ window.App = window.App || {};
     // Inversor
     const tipoInv = r.hibridoAtivo ? 'hibrido' : 'inversor';
     const candidatos = eqs.filter(function (e) { return e.tipo === tipoInv && e.ativo !== false; });
-    const sug = C.sugerirInversor(r.kwp, r.ligacao, candidatos, prem, r.hibrido ? r.hibrido.potCargas : 0);
+    const invPreSel = r.permiteFV ? porId(eqs, p.inversorId) : null;
+    const sug = r.permiteFV ? C.sugerirInversor(r.kwp, r.ligacao, candidatos, prem, r.hibrido && r.hibridoAtivo ? r.hibrido.potCargas : 0) : null;
     r.inversorSugerido = sug;
     const inv = invPreSel || (sug && sug.inv) || null;
     r.inversor = inv;
-    if (!inv && (r.kwp > 0 || !candidatos.length)) alerta('erro', r.hibridoAtivo ? 'Cadastre/selecione um inversor híbrido compatível.' : 'Cadastre/selecione um inversor compatível com a ligação.');
+    if (r.permiteFV && !inv && (r.kwp > 0 || !candidatos.length)) alerta('erro', r.hibridoAtivo ? 'Cadastre/selecione um inversor híbrido compatível.' : 'Cadastre/selecione um inversor compatível com a ligação.');
     const potInv = inv ? U.numOr(inv.potencia, 0) : 0;
     let nInv;
     if (!inv) nInv = 0;
@@ -502,20 +484,6 @@ window.App = window.App || {};
     }
     if (inv && r.ligacao !== 'tri' && /tri/i.test(inv.fases || '')) alerta('erro', 'Inversor trifásico incompatível com ligação ' + C.LIG_ADJ[r.ligacao] + '.');
 
-    if (r.hibrido) {
-      montarBanco(inv);
-      const h = r.hibrido;
-      h.potBackup = inv ? (pos(inv.potenciaBackup) || potInv) * nInv : 0;
-      h.backupOk = h.potBackup * 1000 >= h.potCargas * prem.hibrido.fatorSegurancaInversor;
-      if (inv && h.potCargas > 0 && !h.backupOk) {
-        alerta('aviso', 'Potência de backup do inversor (' + U.fmtSmart(h.potBackup, 2) + ' kW) abaixo de ' +
-          U.fmtSmart(prem.hibrido.fatorSegurancaInversor, 2) + ' × potência das cargas críticas (' + U.fmtSmart(h.potCargas / 1000, 2) + ' kW).');
-      }
-      if (h.autonomiaEstimada != null && h.autonomiaEstimada + 1e-9 < h.autonomiaHoras) {
-        alerta('aviso', 'Banco de baterias atende ' + U.fmtSmart(h.autonomiaEstimada, 1) + ' h das ' + U.fmtSmart(h.autonomiaHoras, 1) + ' h de autonomia desejadas.');
-      }
-    }
-
     // Arranjo (strings) — validação opcional quando houver dados elétricos
     r.strings = null;
     if (modulo && inv && pos(modulo.voc) && pos(inv.vmaxCC) && r.nModulos > 0) {
@@ -531,7 +499,7 @@ window.App = window.App || {};
     }
 
     const limite = U.num(prem.limiteKwp && prem.limiteKwp[r.ligacao]);
-    if (isFinite(limite) && limite > 0 && r.kwp > limite) {
+    if (r.grupo === 'B' && isFinite(limite) && limite > 0 && r.kwp > limite) {
       alerta('aviso', 'Potência de ' + U.kwp(r.kwp) + ' kWp acima do limite de referência para ligação ' + C.LIG_ADJ[r.ligacao] +
         ' (' + U.fmtSmart(limite, 1) + ' kWp). Pode ser necessária adequação do padrão de entrada (não inclusa).');
     }
@@ -540,22 +508,202 @@ window.App = window.App || {};
       if (r.cobertura > 1.3) alerta('info', 'Geração excede o consumo em ' + U.fmt((r.cobertura - 1) * 100, 1) + '% — créditos excedentes não são monetizados na análise.');
     }
 
-    // Itens e preço
-    r.itens = Array.isArray(p.itens) && p.itens.length ? p.itens : C.gerarItens(p, r, ctx);
-    r.itensAutomaticos = !(Array.isArray(p.itens) && p.itens.length);
-    r.kitSoma = r.itens.reduce(function (s, it) { return s + U.numOr(it.qtd, 0) * U.numOr(it.precoUnit, 0); }, 0);
-    r.kit = p.kitManual ? U.numOr(p.kitValor, 0) : r.kitSoma;
-    r.infra = U.numOr(p.infraValor, 0);
-    if (p.precoModo === 'separado') {
+    // Preço do sistema fotovoltaico (sem armazenamento)
+    const catArm = ['bateria', 'bess'];
+    const itensP = Array.isArray(p.itens) ? p.itens : [];
+    const itensFVP = itensP.filter(function (i) { return catArm.indexOf(i.categoria) < 0; });
+    const itensFVGerados = r.permiteFV ? C.gerarItens(p, r, ctx, { armazenamento: 0, fv: true }) : [];
+    const somaItens = function (l) { return l.reduce(function (s, it) { return s + U.numOr(it.qtd, 0) * U.numOr(it.precoUnit, 0); }, 0); };
+    r.kitFVSoma = somaItens(itensFVP.length ? itensFVP : itensFVGerados);
+    r.kit = p.kitManual ? U.numOr(p.kitValor, 0) : r.kitFVSoma;
+    r.infra = r.permiteFV ? U.numOr(p.infraValor, 0) : 0;
+    if (!r.permiteFV) {
+      r.maoObra = 0;
+      r.investimentoFV = 0;
+    } else if (p.precoModo === 'separado') {
       r.maoObra = U.numOr(p.maoObraValor, 0);
-      r.total = r.kit + r.infra + r.maoObra;
+      r.investimentoFV = r.kit + r.infra + r.maoObra;
     } else {
-      r.total = U.numOr(p.valorTotal, 0);
-      r.maoObra = r.total - r.kit - r.infra;
-      if (r.total > 0 && r.maoObra < 0) alerta('erro', 'Valor total menor que kit + infraestrutura: mão de obra ficaria negativa.');
+      r.investimentoFV = U.numOr(p.valorTotal, 0);
+      r.maoObra = r.investimentoFV - r.kit - r.infra;
+      if (r.investimentoFV > 0 && r.maoObra < 0) alerta('erro', 'Valor do sistema FV menor que kit + infraestrutura: mão de obra ficaria negativa.');
     }
-    if (!(r.total > 0)) alerta('erro', 'Informe o valor da proposta.');
-    if (!p.kitManual && r.kitSoma === 0 && r.itens.length) alerta('aviso', 'Itens do kit sem preço — cadastre os preços nos equipamentos ou informe o valor do kit manualmente.');
+
+    // Unidade de armazenamento: energia, potência e custo
+    const h = r.hibrido;
+    let unid = null;
+    if (h && h.bateria) {
+      const eq = h.bateria;
+      const itemEq = itensP.find(function (i) { return i.equipamentoId === eq.id; });
+      unid = {
+        equip: eq,
+        energia: pos(eq.energia) || 0,
+        potencia: pos(eq.potencia) || (r.bessAtivo ? 0 : (pos(eq.energia) || 0) * 0.5),
+        preco: itemEq ? U.numOr(itemEq.precoUnit, 0) : U.numOr(eq.preco, 0),
+        vida: Math.min(pos(eq.vidaAnos) || ar.vidaCalendario, ar.vidaCalendario),
+        ciclos: pos(eq.ciclos) || ar.ciclosPadrao
+      };
+      h.serie = 1;
+      if (r.hibridoAtivo && inv && pos(eq.tensao) && pos(inv.tensaoBateria)) h.serie = Math.max(1, Math.round(inv.tensaoBateria / eq.tensao));
+      unid.limitePotencia = r.hibridoAtivo && inv ? (pos(inv.potenciaBackup) || potInv) * Math.max(1, nInv) : Infinity;
+      if (!unid.energia) { alerta('erro', 'Equipamento de armazenamento sem energia (kWh) cadastrada.'); unid = null; }
+    }
+    r.unidadeArm = unid;
+    const potenciaArm = function (n) { return unid ? Math.min(n * (unid.potencia || unid.energia * 0.5), unid.limitePotencia) : 0; };
+    const arredSerie = function (n) { const s = (h && h.serie) || 1; return Math.max(s, Math.ceil(n / s - 1e-9) * s); };
+
+    // Cenários
+    const cfg = C.cenariosConfig(p);
+    r.cenariosConfig = cfg;
+    const anoBase = U.anoDe(p.data);
+    r.anoBase = anoBase;
+    const sol = r.kwp > 0 ? r.geracaoAnual : 0;
+    const injMes = sol / 12 * (1 - r.simultaneidade);
+    const cp = r.consumoPostos;
+    const tarifasOk = !r.tarifas.faltando.length;
+    const objetivo = p.objetivo || 'economia';
+
+    const dimensionar = function (id, c) {
+      if (!unid) return 0;
+      if (pos(c.n)) return Math.round(U.num(c.n));
+      const eU = unid.energia, pU = unid.potencia || eU * 0.5;
+      const util = function (kwh) { return kwh / (h.dod * h.eficiencia); };
+      let n = 0;
+      if (id === 'backup') {
+        const nE = h.energiaBackup > 0 ? Math.ceil(util(h.energiaBackup / 1000) / eU - 1e-9) : 1;
+        const nP = r.bessAtivo && h.potCargas > 0 ? Math.ceil((h.potCargas / 1000) * prem.hibrido.fatorSegurancaInversor / pU - 1e-9) : 0;
+        n = Math.max(1, nE, nP);
+      } else if (id === 'ponta') {
+        let eDia = 0, pNec = 0;
+        if (r.modalidade.id === 'conv') {
+          if (c.incluirFV && sol > 0) eDia = Math.min(injMes, Math.max(0, cp.fp - sol / 12 * r.simultaneidade)) / (365 / 12);
+        } else {
+          eDia = cp.p * 12 / ar.diasUteis;
+          pNec = eDia / ar.duracaoPonta;
+        }
+        if (eDia > 0) n = Math.max(1, Math.ceil(util(eDia) / eU - 1e-9), pNec > 0 ? Math.ceil(pNec / pU - 1e-9) : 0);
+      } else if (id === 'picos') {
+        const kw = C.reducaoAlvo(r, c, prem);
+        const dur = pos(c.duracaoH) || ar.duracaoPonta;
+        if (kw > 0) n = Math.max(1, Math.ceil(util(kw * dur) / eU - 1e-9), Math.ceil(kw / pU - 1e-9));
+      }
+      return n > 0 ? arredSerie(n) : 0;
+    };
+
+    const cenarios = E.CENARIOS.map(function (def) {
+      const c = cfg[def.id];
+      const cen = { id: def.id, nome: def.nome, descricao: def.descricao, ativo: !!c.ativo, aplicavel: true, motivoNA: '' };
+      cen.incluirFV = def.id === 'solar' ? true : (r.permiteFV && c.incluirFV !== false);
+      if (def.id === 'solar' && !(r.permiteFV && r.kwp > 0)) { cen.aplicavel = false; cen.motivoNA = 'Sem sistema fotovoltaico nesta proposta.'; }
+      if (def.armazenamento && !unid) { cen.aplicavel = false; cen.motivoNA = 'Selecione o equipamento de armazenamento.'; }
+      if (def.id === 'picos' && r.grupo !== 'A') { cen.aplicavel = false; cen.motivoNA = 'Clientes do grupo B não pagam demanda (kW).'; }
+      cen.n = def.armazenamento && cen.aplicavel ? dimensionar(def.id, c) : 0;
+      if (def.id === 'ponta' && cen.aplicavel && !cen.n) {
+        cen.aplicavel = false;
+        cen.motivoNA = r.modalidade.id === 'conv' ? 'Na tarifa convencional o deslocamento só se aplica ao excedente solar.' : 'Informe o consumo na ponta.';
+      }
+      if (def.id === 'picos' && cen.aplicavel && !cen.n) { cen.aplicavel = false; cen.motivoNA = 'Informe a demanda medida/contratada para definir a redução.'; }
+      if (!cen.aplicavel || !cen.ativo || !tarifasOk) {
+        cen.investimento = 0;
+        return cen;
+      }
+      cen.capInstalada = cen.n * (unid ? unid.energia : 0);
+      cen.capUtil = cen.capInstalada * (h ? h.dod : 0);
+      cen.potencia = potenciaArm(cen.n);
+      cen.invFV = cen.incluirFV ? r.investimentoFV : 0;
+      cen.kitArm = cen.n * (unid ? unid.preco : 0);
+      cen.instalArm = cen.n > 0 ? (pos(p.instalArmValor) || cen.kitArm * ar.instalPct) : 0;
+      cen.invArm = cen.kitArm + cen.instalArm;
+      cen.investimento = cen.invFV + cen.invArm;
+      cen.kwp = cen.incluirFV ? r.kwp : 0;
+      const ciclosAno = def.id === 'ponta' ? (r.modalidade.id === 'conv' ? 365 : ar.diasUteis) : (def.id === 'picos' ? ar.diasUteis : 12);
+      const vida = unid ? Math.max(1, Math.min(unid.vida, unid.ciclos / ciclosAno)) : 0;
+      cen.vidaArmAnos = vida;
+      const trocaManual = r.hibridoAtivo && prem.hibrido.trocaBateriaAno > 0;
+      const custoHora = U.numOr(c.custoHoraFalta, 0), horasFalta = U.numOr(c.horasFaltaAno, 0);
+      cen.fin = E.fluxo({
+        prem: prem, anoBase: anoBase, investimento: cen.investimento, tarifas: r.tarifas, consumo: cp, demanda: r.demanda,
+        disp: r.disponibilidade, cosip: r.cosip, tusd: r.tusdFioB, s: r.simultaneidade,
+        geracaoAnual1: cen.incluirFV ? r.geracaoAnual : 0,
+        estrategia: def.armazenamento ? def.id : null,
+        arm: cen.n > 0 ? {
+          capUtil: cen.capUtil, potencia: cen.potencia, eta: h.eficiencia, degradacao: ar.degradacao,
+          vida: trocaManual ? prem.hibrido.trocaBateriaAno - 1 : vida,
+          custoTroca: cen.kitArm * (trocaManual ? prem.hibrido.trocaBateriaPct : ar.trocaPct),
+          reducaoKW: C.reducaoAlvo(r, c, prem), duracao: pos(c.duracaoH) || ar.duracaoPonta,
+          posto: c.posto || '', readequar: c.readequar !== false
+        } : null,
+        beneficioBackup: def.id === 'backup' ? custoHora * horasFalta : 0
+      });
+      cen.metricas = {
+        autonomiaH: h && h.energiaBackup > 0 && cen.n > 0 ? (cen.capUtil * h.eficiencia) / (h.energiaBackup / 1000) * h.autonomiaHoras : null,
+        reducaoKW: cen.fin.reducaoKW1,
+        kwhDeslocados: cen.fin.kwhDeslocadosAno1
+      };
+      const a1 = cen.fin.anos[0];
+      cen.beneficios = { total: cen.fin.beneficioAno1, backup: a1.beneficioBackup, demanda: Math.max(0, (a1.demandaSem - a1.demandaCom) * 12) };
+      return cen;
+    });
+    r.cenarios = cenarios;
+    const avaliados = cenarios.filter(function (c) { return c.ativo && c.aplicavel && c.fin; });
+    r.cenariosAvaliados = avaliados;
+    r.recomendacao = avaliados.length > 1 ? E.recomendar(avaliados, objetivo, { modalidade: r.modalidade.id, ponta: r.tarifas.ponta, fp: r.tarifas.fp }) : null;
+    let escolhidoId = p.cenarioEscolhido && p.cenarioEscolhido !== 'auto' ? p.cenarioEscolhido : null;
+    if (!escolhidoId && !p.cenarioEscolhido && r.hibridoAtivo && p.usoBateria) escolhidoId = p.usoBateria === 'ciclagem' ? 'ponta' : 'backup';
+    let escolhido = avaliados.find(function (c) { return c.id === escolhidoId; }) ||
+      (r.recomendacao && avaliados.find(function (c) { return c.id === r.recomendacao.id; })) || avaliados[0] || null;
+    r.cen = escolhido;
+    r.comparar = r.armazenamentoAtivo && avaliados.length > 1;
+
+    // Banco de baterias do cenário escolhido (texto técnico)
+    if (h) {
+      h.nSugerido = escolhido && escolhido.n ? escolhido.n : dimensionar('backup', cfg.backup);
+      h.nBaterias = escolhido ? escolhido.n : 0;
+      const vb = h.bateria ? pos(h.bateria.tensao) : null;
+      h.paralelo = Math.max(1, Math.floor(h.nBaterias / (h.serie || 1)));
+      h.capInstalada = h.nBaterias * (unid ? unid.energia : 0);
+      h.capUtil = h.capInstalada * h.dod;
+      h.potenciaArm = potenciaArm(h.nBaterias);
+      h.autonomiaEstimada = h.energiaBackup > 0 && h.nBaterias > 0 ? (h.capUtil * h.eficiencia) / (h.energiaBackup / 1000) * h.autonomiaHoras : null;
+      h.tensaoBanco = (vb || 0) * (h.serie || 1);
+      h.configuracao = r.bessAtivo
+        ? (h.nBaterias > 1 ? h.nBaterias + ' gabinetes em paralelo' : '1 gabinete')
+        : ((h.serie || 1) > 1
+          ? h.serie + ' em série × ' + h.paralelo + ' em paralelo (' + U.fmtSmart(h.tensaoBanco, 1) + ' V)'
+          : (h.nBaterias > 1 ? h.nBaterias + ' em paralelo' : '1 unidade') + (vb ? ' (' + U.fmtSmart(vb, 1) + ' V)' : ''));
+      h.usoBateria = escolhido && escolhido.id === 'ponta' ? 'ciclagem' : 'backup';
+      h.estrategia = escolhido ? escolhido.id : null;
+      h.potBackup = r.hibridoAtivo ? (inv ? (pos(inv.potenciaBackup) || potInv) * nInv : 0) : h.potenciaArm;
+      h.backupOk = h.potBackup * 1000 >= h.potCargas * prem.hibrido.fatorSegurancaInversor;
+      const temArm = escolhido && escolhido.n > 0;
+      if (temArm && h.potCargas > 0 && !h.backupOk) {
+        alerta('aviso', 'Potência de backup (' + U.fmtSmart(h.potBackup, 2) + ' kW) abaixo de ' +
+          U.fmtSmart(prem.hibrido.fatorSegurancaInversor, 2) + ' × potência das cargas críticas (' + U.fmtSmart(h.potCargas / 1000, 2) + ' kW).');
+      }
+      if (temArm && escolhido.id === 'backup' && h.autonomiaEstimada != null && h.autonomiaEstimada + 1e-9 < h.autonomiaHoras) {
+        alerta('aviso', 'Armazenamento atende ' + U.fmtSmart(h.autonomiaEstimada, 1) + ' h das ' + U.fmtSmart(h.autonomiaHoras, 1) + ' h de autonomia desejadas.');
+      }
+      if (escolhido && escolhido.id === 'backup' && !h.cargas.length) alerta('aviso', 'Informe as cargas críticas que devem funcionar durante a falta de energia.');
+    }
+
+    // Itens do cenário escolhido
+    const incluiFV = !escolhido || escolhido.incluirFV;
+    r.incluiFV = r.permiteFV && incluiFV;
+    const nArm = escolhido ? escolhido.n : 0;
+    r.itens = itensP.length ? itensP : C.gerarItens(p, r, ctx, { armazenamento: nArm, fv: r.incluiFV });
+    r.itensAutomaticos = !itensP.length;
+    r.kitSoma = somaItens(r.itens);
+
+    // Valores do cenário escolhido
+    r.kitArm = escolhido ? escolhido.kitArm || 0 : 0;
+    r.instalArm = escolhido ? escolhido.instalArm || 0 : 0;
+    if (!r.incluiFV) { r.kit = 0; r.infra = 0; r.maoObra = 0; }
+    r.total = escolhido ? escolhido.investimento : (r.incluiFV ? r.investimentoFV : 0);
+    if (!(r.total > 0)) alerta('erro', r.permiteFV ? 'Informe o valor da proposta.' : 'Informe o preço do equipamento de armazenamento.');
+    if (!p.kitManual && r.kitFVSoma === 0 && r.permiteFV && r.incluiFV && (itensP.length ? itensFVP : itensFVGerados).length) {
+      alerta('aviso', 'Itens do kit sem preço — cadastre os preços nos equipamentos ou informe o valor do kit manualmente.');
+    }
+    if (nArm > 0 && unid && !(unid.preco > 0)) alerta('aviso', 'Equipamento de armazenamento sem preço — cadastre o preço para compor o investimento dos cenários.');
 
     // Divergência entre a lista de materiais e o dimensionamento
     if (!r.itensAutomaticos) {
@@ -563,29 +711,24 @@ window.App = window.App || {};
         return r.itens.filter(function (i) { return i.categoria === cat; }).reduce(function (s, i) { return s + U.numOr(i.qtd, 0); }, 0);
       };
       const div = [];
-      if (soma('modulo') !== r.nModulos) div.push('módulos');
-      if (soma('inversor') !== r.nInversores) div.push('inversores');
-      if (r.hibrido && soma('bateria') !== r.hibrido.nBaterias) div.push('baterias');
+      if (r.incluiFV && soma('modulo') !== r.nModulos) div.push('módulos');
+      if (r.incluiFV && soma('inversor') !== r.nInversores) div.push('inversores');
+      if (h && (soma('bateria') + soma('bess')) !== nArm) div.push(r.bessAtivo ? 'BESS' : 'baterias');
       r.itensDivergentes = div;
       if (div.length) alerta('aviso', 'A lista de materiais não confere com o dimensionamento (' + div.join(', ') + '). Use "Regerar lista" na etapa de materiais.');
     }
 
-    // Financeiro
-    const anoBase = U.anoDe(p.data);
-    r.anoBase = anoBase;
-    let troca = null;
-    if (r.hibrido && prem.hibrido.trocaBateriaAno > 0) {
-      const custoBat = r.itens.filter(function (i) { return i.categoria === 'bateria'; })
-        .reduce(function (s, i) { return s + U.numOr(i.qtd, 0) * U.numOr(i.precoUnit, 0); }, 0);
-      troca = { ano: Math.round(prem.hibrido.trocaBateriaAno), custo: custoBat * prem.hibrido.trocaBateriaPct };
-      r.trocaBateria = troca;
-    }
-    r.fin = C.financeiro({
-      prem: prem, anoBase: anoBase, investimento: r.total, geracaoAnual1: r.geracaoAnual, consumoMedio: r.consumoMedio,
-      disp: r.disponibilidade, tarifa: r.tarifa, tusd: r.tusdFioB, cosip: r.cosip, simultaneidade: r.simultaneidade,
-      armazenamentoDiario: armazenamentoDiario, trocaBateria: troca
+    // Financeiro do cenário escolhido
+    r.fin = escolhido ? escolhido.fin : C.financeiro({
+      prem: prem, anoBase: anoBase, investimento: 0, geracaoAnual1: 0, consumoMedio: r.consumoMedio,
+      disp: r.disponibilidade, tarifa: r.tarifa || 0, tusd: r.tusdFioB, cosip: r.cosip, simultaneidade: r.simultaneidade
     });
-    if (r.total > 0 && r.kwp > 0) {
+    r.trocaBateria = null;
+    if (escolhido && escolhido.fin) {
+      const tr = escolhido.fin.anos.find(function (a) { return a.extra > 0; });
+      if (tr) r.trocaBateria = { ano: tr.n, custo: tr.extra };
+    }
+    if (r.total > 0 && escolhido && escolhido.fin) {
       if (r.fin.tir != null && r.fin.tir < prem.tma) alerta('aviso', 'TIR (' + U.fmt(r.fin.tir * 100, 2) + '% a.a.) abaixo da TMA (' + U.fmt(prem.tma * 100, 2) + '% a.a.).');
       if (r.fin.paybackSimples == null) alerta('aviso', 'O investimento não se paga dentro do horizonte de análise.');
     }
@@ -595,16 +738,28 @@ window.App = window.App || {};
     }));
 
     // Textos de identificação
-    const invTxt = inv ? (nInv > 1 ? nInv + '× ' : '') + inv.fabricante + ' ' + U.fmtSmart(potInv, 2) + 'kW' : '';
-    const modTxt = modulo ? modulo.fabricante + ' ' + wp + 'W' : '';
-    r.tecnologia = p.tecnologiaTexto || [modulo ? modTxt + (modulo.tecnologia ? ' ' + modulo.tecnologia : '') : '', invTxt]
-      .filter(Boolean).join(' + ') + (r.hibrido && r.hibrido.bateria ? ' + ' + U.fmtSmart(r.hibrido.capInstalada, 2) + ' kWh' : '');
-    r.resumoCabecalho = U.kwp(r.kwp) + ' kWp — ' + [modTxt, invTxt].filter(Boolean).join(' + ') +
-      (r.hibrido && r.hibrido.bateria ? ' + ' + U.fmtSmart(r.hibrido.capInstalada, 2) + ' kWh' : '');
+    const invTxt = r.incluiFV && inv ? (nInv > 1 ? nInv + '× ' : '') + inv.fabricante + ' ' + U.fmtSmart(potInv, 2) + 'kW' : '';
+    const modTxt = r.incluiFV && modulo ? modulo.fabricante + ' ' + wp + 'W' : '';
+    const armTxt = h && nArm > 0 ? U.fmtSmart(nArm * (unid ? unid.energia : 0), 2) + ' kWh' : '';
+    r.tecnologia = p.tecnologiaTexto || [modTxt ? modTxt + (modulo.tecnologia ? ' ' + modulo.tecnologia : '') : '', invTxt]
+      .filter(Boolean).join(' + ') + (armTxt ? (modTxt || invTxt ? ' + ' : '') + (r.bessAtivo && h.bateria ? 'BESS ' + h.bateria.fabricante + ' ' : '') + armTxt : '');
+    r.resumoCabecalho = (r.incluiFV && r.kwp > 0 ? U.kwp(r.kwp) + ' kWp — ' + [modTxt, invTxt].filter(Boolean).join(' + ') : '') +
+      (armTxt ? (r.incluiFV && r.kwp > 0 ? ' + ' : 'Armazenamento ') + armTxt : '');
     r.estruturaTexto = p.estruturaTexto || C.textoEstrutura(r.itens, ctx);
     r.monitoramento = p.monitoramento || (inv && inv.monitoramento) || 'Aplicativo do fabricante do inversor (Wi-Fi)';
     r.erros = alertas.filter(function (a) { return a.nivel === 'erro'; }).length;
     return r;
+  };
+
+  /** Redução de demanda alvo (kW) para o cenário de picos. */
+  C.reducaoAlvo = function (r, c, prem) {
+    if (!r.demanda) return 0;
+    const informado = pos(c.reducaoKW);
+    if (informado) return informado;
+    const pct = prem.armazenamento.reducaoDemandaPct;
+    if (r.modalidade.id === 'verde') return r.demanda.med * pct;
+    const posto = c.posto || 'ponta';
+    return (posto === 'ponta' ? r.demanda.medP : r.demanda.medFP) * pct;
   };
 
   /** Nova proposta em branco com padrões. */
@@ -623,6 +778,8 @@ window.App = window.App || {};
       localidadeId: loc ? loc.id : null,
       concessionariaId: loc ? loc.concessionariaId : null,
       classe: 'Residencial B1',
+      modalidade: 'conv',
+      subgrupo: 'A4',
       ligacao: 'bi',
       ligacaoConfirmar: false,
       tensao: '220 V',
@@ -631,7 +788,22 @@ window.App = window.App || {};
       consumoModo: 'media',
       consumoMedio: null,
       consumoMensal: Array(12).fill(''),
+      consumoPonta: '',
+      consumoIntermediario: '',
+      consumoForaPonta: '',
+      demandaContratada: '',
+      demandaMedida: '',
+      demandaContratadaPonta: '',
+      demandaMedidaPonta: '',
+      demandaContratadaFP: '',
+      demandaMedidaFP: '',
       tarifa: '',
+      tarifaPonta: '',
+      tarifaIntermediario: '',
+      tarifaForaPonta: '',
+      tarifaDemanda: '',
+      tarifaDemandaPonta: '',
+      tarifaDemandaFP: '',
       tusdFioB: '',
       cosip: '',
       hsp: '',
@@ -643,9 +815,13 @@ window.App = window.App || {};
       cargas: [],
       autonomiaHoras: ctx.premissas.hibrido.autonomiaHoras,
       bateriaId: null,
-      nBaterias: '',
+      bessId: null,
+      bessComFV: true,
       dod: '',
-      usoBateria: 'backup',
+      instalArmValor: '',
+      objetivo: 'economia',
+      cenarioEscolhido: 'auto',
+      cenarios: null,
       itens: [],
       kitManual: false,
       kitValor: '',

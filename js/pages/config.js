@@ -80,7 +80,24 @@
       { k: 'prefixo', label: 'Prefixo do nº da proposta', help: 'Formato: PREFIXO-AAAAMMDD-NNN' },
       { k: 'validadeDias', label: 'Validade padrão', type: 'int', suffix: 'dias' },
       { k: 'papel', label: 'Tamanho do papel', type: 'select', options: [{ v: 'letter', t: 'Carta (igual ao modelo)' }, { v: 'a4', t: 'A4' }] },
-      { el: logoBox }
+      { el: logoBox },
+      { secao: 'Contratos (dados ficam apenas neste navegador)' },
+      { k: 'razaoSocial', label: 'Razão social (contratos)', cls: 'span2' },
+      { k: 'nomeFantasia', label: 'Nome fantasia' },
+      { k: 'crea', label: 'Registro CREA' },
+      { k: 'endereco', label: 'Endereço (rua, nº)' },
+      { k: 'bairro', label: 'Bairro' },
+      { k: 'cep', label: 'CEP' },
+      { k: 'horarioAtendimento', label: 'Horário de atendimento' },
+      { k: 'sloganContrato', label: 'Frase do cabeçalho do contrato', cls: 'span2' },
+      { k: 'prefixoContrato', label: 'Prefixo do nº do contrato', help: 'Formato: PREFIXO-AAAAMMDD-NNN' },
+      { secao: 'Dados bancários (aparecem no contrato)' },
+      { k: 'banco.banco', label: 'Banco' },
+      { k: 'banco.agencia', label: 'Agência' },
+      { k: 'banco.conta', label: 'Conta corrente' },
+      { k: 'banco.titular', label: 'Titular' },
+      { k: 'banco.documento', label: 'CPF/CNPJ do titular' },
+      { k: 'banco.pix', label: 'Chave PIX' }
     ], emp, marcar)));
     cont.appendChild(rodapeSalvar(function () {
       if (!String(emp.razao || '').trim()) { UI.toast('Informe a razão social.', 'erro'); return; }
@@ -191,7 +208,17 @@
       { k: 'inclusos', label: '✅ Inclusos', type: 'linhas', rows: 9 },
       { k: 'naoInclusos', label: '❌ Não inclusos', type: 'linhas', rows: 9 },
       { k: 'inclusosHibrido', label: '✅ Inclusos adicionais — sistemas híbridos', type: 'linhas', rows: 3 },
-      { k: 'naoInclusosHibrido', label: '❌ Não inclusos adicionais — sistemas híbridos', type: 'linhas', rows: 3 }
+      { k: 'naoInclusosHibrido', label: '❌ Não inclusos adicionais — sistemas híbridos', type: 'linhas', rows: 3 },
+      { k: 'inclusosBess', label: '✅ Inclusos adicionais — BESS', type: 'linhas', rows: 3 },
+      { k: 'naoInclusosBess', label: '❌ Não inclusos adicionais — BESS', type: 'linhas', rows: 3 },
+      { k: 'cenariosIntro', label: 'Introdução do comparativo de cenários', type: 'textarea', rows: 3, cls: 'span2' }
+    ], tx, marcar)));
+
+    cont.appendChild(h('div.card', h('h3', 'Propostas avulsas (serviços complementares)'), UI.grade([
+      { k: 'avulsaApresentacao', label: 'Apresentação', type: 'textarea', rows: 3, cls: 'span2' },
+      { k: 'avulsaGarantia', label: 'Garantia padrão dos serviços', type: 'textarea', rows: 2, cls: 'span2' },
+      { k: 'avulsaInclusos', label: '✅ Inclusos', type: 'linhas', rows: 4 },
+      { k: 'avulsaNaoInclusos', label: '❌ Não inclusos', type: 'linhas', rows: 4 }
     ], tx, marcar)));
 
     cont.appendChild(h('div.card', h('h3', 'Cronograma de execução'), UI.editorLinhas(tx.cronograma, [
@@ -219,6 +246,31 @@
           S.salvarConfig('textos', U.clone(D.textos));
           sujo = false;
           UI.despachar(true);
+        }
+      }
+    }, 'Restaurar padrão')));
+  });
+
+  /* ------------------------------------------------------------ modelo de contrato */
+
+  UI.rota('/modelo-contrato', function (cont) {
+    const modelo = U.clone(S.config().contrato);
+    let sujo = false;
+    const marcar = function () { sujo = true; };
+    UI.guarda = function () { return !sujo || confirm('Há alterações não salvas. Deseja sair mesmo assim?'); };
+    cont.appendChild(UI.cabecalho('Modelo de contrato', 'Cláusulas e termo de garantia usados nos NOVOS contratos (cada contrato guarda uma cópia que pode ser ajustada).'));
+    cont.appendChild(h('div.card', App.editorModeloContrato(modelo, marcar)));
+    cont.appendChild(rodapeSalvar(function () {
+      S.salvarConfig('contrato', modelo);
+      sujo = false;
+      UI.toast('Modelo de contrato salvo.', 'ok');
+    }, h('button.btn', {
+      type: 'button', onclick: async function () {
+        if (await UI.confirmar('Restaurar o modelo de contrato padrão?')) {
+          S.salvarConfig('contrato', undefined);
+          sujo = false;
+          UI.despachar(true);
+          UI.toast('Modelo padrão restaurado.', 'ok');
         }
       }
     }, 'Restaurar padrão')));

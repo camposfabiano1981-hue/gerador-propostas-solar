@@ -15,6 +15,7 @@
     });
     p.premissas = Object.assign(U.clone(ctx.premissas), p.premissas || {});
     p.premissas.hibrido = Object.assign(U.clone(ctx.premissas.hibrido), (p.premissas && p.premissas.hibrido) || {});
+    p.premissas.armazenamento = Object.assign(U.clone(ctx.premissas.armazenamento || D.premissas.armazenamento), (p.premissas && p.premissas.armazenamento) || {});
     if (!Array.isArray(p.consumoMensal) || p.consumoMensal.length !== 12) p.consumoMensal = Array(12).fill('');
     if (!Array.isArray(p.cargas)) p.cargas = [];
     if (!Array.isArray(p.itens)) p.itens = [];
@@ -42,9 +43,12 @@
       p = C.novaProposta(ctx);
       p.itensSync = true;
       if (qs && qs.get('cliente')) p.clienteId = qs.get('cliente');
-      if (qs && qs.get('tipo') === 'hibrido') p.tipoSistema = 'hibrido';
+      if (qs && (qs.get('tipo') === 'hibrido' || qs.get('tipo') === 'bess')) p.tipoSistema = qs.get('tipo');
       if (p.tipoSistema === 'hibrido') p.cargas = U.clone(D.cargasExemplo);
     }
+    const ehArm = function () { return p.tipoSistema === 'hibrido' || p.tipoSistema === 'bess'; };
+    const grupoA = function () { return App.Energia.modalidade(p.modalidade).grupo === 'A'; };
+    const garantirCenarios = function () { p.cenarios = C.cenariosConfig(p); return p.cenarios; };
     let r = null;
     let sujo = !id;
     let inicial = null; // estado de uma proposta nova ainda não tocada
@@ -93,8 +97,10 @@
     function mudou(k) {
       sujo = true;
       const reDesenho = {
-        tipoSistema: ['sistema', 'hibrido', 'materiais', 'ident'], localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
-        consumoModo: ['consumo'], clienteId: ['cliente'], precoModo: ['materiais'], kitManual: ['materiais'], data: ['ident']
+        tipoSistema: ['sistema', 'hibrido', 'cenarios', 'materiais', 'ident'], localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
+        modalidade: ['local', 'consumo', 'cenarios'], bessComFV: ['sistema', 'cenarios', 'materiais'],
+        consumoModo: ['consumo'], clienteId: ['cliente'], precoModo: ['materiais'], kitManual: ['materiais'], data: ['ident'],
+        'cenarios.ativo': ['cenarios']
       };
       if (k === 'localidadeId') {
         const loc = ctx.localidades.find(function (l) { return l.id === p.localidadeId; });
@@ -104,7 +110,15 @@
         p.inversorId = null;
         p.nInversores = '';
         if (p.tipoSistema === 'hibrido' && !p.cargas.length) p.cargas = U.clone(D.cargasExemplo);
+        if (p.cenarios) garantirCenarios();
       }
+      if (k === 'modalidade') {
+        if (grupoA()) {
+          p.ligacao = 'tri';
+          if (p.cenarios && p.cenarios.picos) p.cenarios.picos.ativo = true;
+        }
+      }
+      if (/^cenarios\.\w+\.ativo$/.test(k)) k = 'cenarios.ativo';
       if (k === 'data' && !p.id) {
         const n = S.proximoNumero(p.data);
         p.numero = n.numero;
@@ -123,9 +137,10 @@
 
     /* ---------------- seção: identificação */
     secao('ident', 'Identificação', function (c) {
-      const tipos = h('div.opcoes-cartao',
+      const tipos = h('div.opcoes-cartao.tres',
         [['ongrid', 'On-Grid', 'Conectado à rede, sem baterias. Compensação de energia (Lei 14.300).'],
-          ['hibrido', 'Híbrido', 'Conectado à rede com banco de baterias para backup e/ou autoconsumo.']].map(function (o) {
+          ['hibrido', 'Híbrido', 'FV + inversor híbrido e baterias: backup e uso estratégico da energia.'],
+          ['bess', 'BESS', 'Armazenamento em gabinetes (com ou sem FV): ponta, picos de demanda e backup.']].map(function (o) {
           return h('button.opcao' + (p.tipoSistema === o[0] ? '.ativa' : ''), {
             type: 'button', onclick: function () { if (p.tipoSistema !== o[0]) { p.tipoSistema = o[0]; mudou('tipoSistema'); } }
           }, h('strong', o[1]), h('small', o[2]));
@@ -182,28 +197,69 @@
       const loc = ctx.localidades.find(function (l) { return l.id === p.localidadeId; });
       const conc = ctx.concessionarias.find(function (x) { return x.id === p.concessionariaId; });
       const classe = D.CLASSES.find(function (x) { return x.id === p.classe; }) || D.CLASSES[0];
-      const tarifaPad = conc && conc.tarifas ? conc.tarifas[classe.tarifa] : null;
+      const mod = App.Energia.modalidade(p.modalidade);
+      const ph = function (v) { return v != null && v !== '' ? String(v).replace('.', ',') : ''; };
+      const cc = conc || {};
+      const br = cc.branca || {}, vd = cc.verde || {}, az = cc.azul || {};
+      const tarifaCampo = function (k, label, unid, padrao) {
+        return { k: k, label: label, type: 'number', prefix: 'R$', suffix: unid || '/kWh', placeholder: ph(padrao) };
+      };
+      const tarifas = [];
+      if (mod.id === 'conv') {
+        tarifas.push(tarifaCampo('tarifa', 'Tarifa com impostos', '/kWh', cc.tarifas ? cc.tarifas[classe.tarifa] : ''));
+      } else if (mod.id === 'branca') {
+        tarifas.push(tarifaCampo('tarifaPonta', 'Tarifa ponta', '/kWh', br.ponta), tarifaCampo('tarifaIntermediario', 'Tarifa intermediária', '/kWh', br.intermediario),
+          tarifaCampo('tarifaForaPonta', 'Tarifa fora de ponta', '/kWh', br.foraPonta));
+      } else {
+        const src = mod.id === 'verde' ? vd : az;
+        tarifas.push(tarifaCampo('tarifaPonta', 'Energia na ponta', '/kWh', src.ponta), tarifaCampo('tarifaForaPonta', 'Energia fora de ponta', '/kWh', src.foraPonta));
+        if (mod.id === 'verde') tarifas.push(tarifaCampo('tarifaDemanda', 'Demanda', '/kW', vd.demanda));
+        else tarifas.push(tarifaCampo('tarifaDemandaPonta', 'Demanda na ponta', '/kW', az.demandaPonta), tarifaCampo('tarifaDemandaFP', 'Demanda fora de ponta', '/kW', az.demandaForaPonta));
+      }
       c.appendChild(UI.grade([
         { k: 'localidadeId', label: 'Cidade de instalação (irradiação)', type: 'select', required: true,
           options: [{ v: '', t: '— selecione —' }].concat(ctx.localidades.map(function (l) { return { v: l.id, t: l.cidade + '/' + l.uf + ' — HSP ' + U.fmtSmart(l.hsp, 2) }; })),
           help: ctx.localidades.length ? null : 'Cadastre localidades em Cadastros › Localidades.' },
         { k: 'concessionariaId', label: 'Concessionária', type: 'select', options: [{ v: '', t: '—' }].concat(ctx.concessionarias.map(function (x) { return { v: x.id, t: x.nome }; })) },
-        { k: 'classe', label: 'Classe de consumo', type: 'select', options: D.CLASSES.map(function (x) { return x.id; }) },
-        { k: 'ligacao', label: 'Tipo de ligação', type: 'select', options: D.LIGACOES.map(function (x) { return { v: x.id, t: x.label }; }) },
-        { k: 'tensao', label: 'Tensão de atendimento', type: 'select', options: D.TENSOES },
-        { k: 'ligacaoConfirmar', label: 'Tipo de ligação a confirmar (premissa)', type: 'checkbox' },
+        { k: 'modalidade', label: 'Grupo e modalidade tarifária', type: 'select', options: App.Energia.MODALIDADES.map(function (m) { return { v: m.id, t: 'Grupo ' + m.grupo + ' — ' + m.label }; }) },
+        mod.grupo === 'A'
+          ? { k: 'subgrupo', label: 'Subgrupo', type: 'select', options: D.SUBGRUPOS_A }
+          : { k: 'classe', label: 'Classe de consumo', type: 'select', options: D.CLASSES.map(function (x) { return x.id; }) },
+        mod.grupo === 'B' ? { k: 'ligacao', label: 'Tipo de ligação', type: 'select', options: D.LIGACOES.map(function (x) { return { v: x.id, t: x.label }; }) } : null,
+        { k: 'tensao', label: 'Tensão de atendimento', type: 'select', options: mod.grupo === 'A' ? ['13,8 kV', '23 kV', '34,5 kV', '69 kV', '220/380 V'] : D.TENSOES },
+        mod.grupo === 'B' ? { k: 'ligacaoConfirmar', label: 'Tipo de ligação a confirmar (premissa)', type: 'checkbox' } : null,
         { k: 'telhado', label: 'Tipo de telhado', type: 'select', options: D.TELHADOS },
         { k: 'telhadoDetalhe', label: 'Detalhe da fixação', placeholder: 'Ex.: parafuso estrutural' },
-        { secao: 'Valores da fatura (deixe em branco para usar os cadastros)' },
-        { k: 'tarifa', label: 'Tarifa com impostos', type: 'number', prefix: 'R$', suffix: '/kWh', placeholder: tarifaPad ? String(tarifaPad).replace('.', ',') : '' },
-        { k: 'tusdFioB', label: 'TUSD Fio B', type: 'number', prefix: 'R$', suffix: '/kWh', placeholder: conc && conc.tusdFioB ? String(conc.tusdFioB).replace('.', ',') : '' },
-        { k: 'cosip', label: 'COSIP', type: 'money', suffix: '/mês', placeholder: loc && loc.cosip != null ? String(loc.cosip).replace('.', ',') : '' },
-        { k: 'hsp', label: 'HSP', type: 'number', suffix: 'kWh/m²/dia', placeholder: loc ? String(loc.hsp).replace('.', ',') : '' }
-      ], p, mudou, 4));
+        { secao: 'Valores da fatura (deixe em branco para usar os cadastros)' }
+      ].concat(tarifas, [
+        { k: 'tusdFioB', label: 'TUSD Fio B', type: 'number', prefix: 'R$', suffix: '/kWh', placeholder: ph(cc.tusdFioB) },
+        { k: 'cosip', label: 'COSIP', type: 'money', suffix: '/mês', placeholder: loc && loc.cosip != null ? ph(loc.cosip) : '' },
+        { k: 'hsp', label: 'HSP', type: 'number', suffix: 'kWh/m²/dia', placeholder: loc ? ph(loc.hsp) : '' }
+      ]), p, mudou, 4));
+      if (mod.id !== 'conv' && cc.horarioPonta) c.appendChild(h('p.ajuda-sec', 'Horário de ponta da ' + (cc.nome || 'concessionária') + ': ' + cc.horarioPonta + ' (dias úteis).'));
     });
 
     /* ---------------- seção: consumo */
     secao('consumo', 'Consumo de energia', function (c) {
+      const mod = App.Energia.modalidade(p.modalidade);
+      if (mod.id !== 'conv') {
+        const kwh = function (k, label) { return { k: k, label: label, type: 'number', suffix: 'kWh/mês', required: true }; };
+        const kw = function (k, label, help) { return { k: k, label: label, type: 'number', suffix: 'kW', help: help }; };
+        const defs = [kwh('consumoPonta', 'Consumo na ponta (média)')];
+        if (mod.id === 'branca') defs.push(kwh('consumoIntermediario', 'Consumo intermediário (média)'));
+        defs.push(kwh('consumoForaPonta', 'Consumo fora de ponta (média)'));
+        defs.push({ k: 'simultaneidade', label: 'Simultaneidade (autoconsumo direto)', type: 'pct', help: 'Parcela da geração consumida no momento; o restante é injetado na rede.' });
+        if (mod.id === 'verde') {
+          defs.push({ secao: 'Demanda (kW)' }, kw('demandaContratada', 'Demanda contratada'), kw('demandaMedida', 'Maior demanda medida', 'Em branco = igual à contratada.'));
+        } else if (mod.id === 'azul') {
+          defs.push({ secao: 'Demanda (kW)' }, kw('demandaContratadaPonta', 'Contratada na ponta'), kw('demandaMedidaPonta', 'Medida na ponta', 'Em branco = contratada.'),
+            kw('demandaContratadaFP', 'Contratada fora de ponta'), kw('demandaMedidaFP', 'Medida fora de ponta', 'Em branco = contratada.'));
+        }
+        c.appendChild(UI.grade(defs, p, mudou, 4));
+        infos.consumo = h('div.info');
+        c.appendChild(infos.consumo);
+        return;
+      }
       c.appendChild(UI.grade([
         { k: 'consumoModo', label: 'Forma de informar', type: 'select', options: [{ v: 'media', t: 'Média mensal' }, { v: 'mensal', t: 'Histórico de 12 meses (fatura)' }] },
         p.consumoModo === 'mensal' ? null : { k: 'consumoMedio', label: 'Consumo médio mensal', type: 'number', suffix: 'kWh/mês', required: true },
@@ -220,6 +276,14 @@
 
     /* ---------------- seção: sistema FV */
     secao('sistema', 'Dimensionamento do sistema fotovoltaico', function (c) {
+      if (p.tipoSistema === 'bess') {
+        c.appendChild(UI.campo({ k: 'bessComFV', label: 'Incluir sistema fotovoltaico junto com o BESS', type: 'checkbox' }, p, mudou));
+        if (p.bessComFV === false) {
+          c.appendChild(h('p.ajuda-sec', 'Proposta somente de armazenamento: o BESS recarrega pela rede fora da ponta. Marque a opção acima para dimensionar também um gerador FV.'));
+          infos.placeModulos = h('div'); infos.placeInv = h('div'); infos.sistema = h('div.info');
+          return;
+        }
+      }
       const tipoInv = p.tipoSistema === 'hibrido' ? 'hibrido' : 'inversor';
       infos.placeModulos = UI.campo({ k: 'nModulos', label: 'Quantidade de módulos', type: 'int', help: 'Em branco = quantidade sugerida.' }, p, mudou);
       infos.placeInv = UI.campo({ k: 'nInversores', label: 'Quantidade de inversores', type: 'int', help: 'Em branco = automático.' }, p, mudou);
@@ -235,8 +299,20 @@
       c.appendChild(infos.sistema);
     });
 
-    /* ---------------- seção: híbrido */
-    secao('hibrido', 'Armazenamento — baterias e cargas críticas', function (c) {
+    /* ---------------- seção: armazenamento */
+    secao('hibrido', 'Armazenamento — equipamento e cargas críticas', function (c) {
+      const bess = p.tipoSistema === 'bess';
+      c.appendChild(UI.grade([
+        bess
+          ? { k: 'bessId', label: 'Equipamento BESS (gabinete)', type: 'select', cls: 'span2',
+            options: [{ v: '', t: 'Primeiro BESS ativo do catálogo' }].concat(opcoesEquip(ctx, 'bess', p.bessId)) }
+          : { k: 'bateriaId', label: 'Bateria', type: 'select', cls: 'span2',
+            options: [{ v: '', t: 'Primeira bateria ativa do catálogo' }].concat(opcoesEquip(ctx, 'bateria', p.bateriaId)) },
+        { k: 'dod', label: 'DoD (profundidade de descarga)', type: 'number', suffix: '%', help: 'Em branco = DoD do equipamento.' },
+        { k: 'instalArmValor', label: 'Instalação e integração do armazenamento', type: 'money',
+          help: 'Em branco = ' + U.fmtSmart((p.premissas.armazenamento || D.premissas.armazenamento).instalPct * 100, 1) + '% do valor do equipamento.' }
+      ], p, mudou, 4));
+      c.appendChild(h('h4.secao-form', 'Cargas críticas (usadas no cenário de backup)'));
       c.appendChild(h('p.ajuda-sec', 'Liste os equipamentos que devem funcionar durante a falta de energia e por quantas horas cada um será usado nesse período.'));
       const ed = UI.editorLinhas(p.cargas, [
         { k: 'descricao', label: 'Carga crítica', placeholder: 'Ex.: Geladeira' },
@@ -248,20 +324,52 @@
       c.appendChild(h('button.btn.pequeno.link', {
         type: 'button', onclick: function () { p.cargas.splice(0, p.cargas.length); D.cargasExemplo.forEach(function (x) { p.cargas.push(U.clone(x)); }); ed.redesenhar(); mudou('cargas'); }
       }, 'Carregar cargas de exemplo'));
-      infos.placeBat = UI.campo({ k: 'nBaterias', label: 'Quantidade de baterias', type: 'int', help: 'Em branco = sugerido.' }, p, mudou);
-      c.appendChild(UI.grade([
-        { k: 'autonomiaHoras', label: 'Autonomia desejada', type: 'number', suffix: 'h' },
-        { k: 'bateriaId', label: 'Bateria', type: 'select', cls: 'span2',
-          options: [{ v: '', t: 'Primeira bateria ativa do catálogo' }].concat(opcoesEquip(ctx, 'bateria', p.bateriaId)) },
-        { el: infos.placeBat },
-        { k: 'dod', label: 'DoD (profundidade de descarga)', type: 'number', suffix: '%', help: 'Em branco = DoD da bateria.' },
-        { k: 'usoBateria', label: 'Modo de operação', type: 'select', cls: 'span2', options: [
-          { v: 'backup', t: 'Backup — baterias reservadas para falta de energia' },
-          { v: 'ciclagem', t: 'Backup + ciclagem diária (armazena excedente para a noite)' }] }
-      ], p, mudou, 4));
+      c.appendChild(UI.grade([{ k: 'autonomiaHoras', label: 'Autonomia desejada', type: 'number', suffix: 'h' }], p, mudou, 4));
       infos.hibrido = h('div.info');
       c.appendChild(infos.hibrido);
-    }, function () { return p.tipoSistema === 'hibrido'; });
+    }, ehArm);
+
+    /* ---------------- seção: cenários */
+    secao('cenarios', 'Cenários e recomendação', function (c) {
+      const cfg = garantirCenarios();
+      const mod = App.Energia.modalidade(p.modalidade);
+      c.appendChild(h('p.ajuda-sec', 'Compare até 4 formas de usar o sistema na mesma proposta. A plataforma calcula investimento, economia, payback, VPL e TIR de cada uma e indica a alternativa que faz mais sentido para o cliente.'));
+      c.appendChild(UI.grade([
+        { k: 'objetivo', label: 'Objetivo principal do cliente', type: 'select', cls: 'span2', options: D.OBJETIVOS.map(function (o) { return { v: o.id, t: o.label }; }) },
+        { k: 'cenarioEscolhido', label: 'Cenário detalhado na proposta', type: 'select', cls: 'span2',
+          options: [{ v: 'auto', t: 'Automático — o recomendado' }].concat(App.Energia.CENARIOS.map(function (x) { return { v: x.id, t: x.nome }; })) }
+      ], p, mudou, 4));
+      const grade = h('div.cenarios-grade');
+      App.Energia.CENARIOS.forEach(function (def) {
+        const cc = cfg[def.id];
+        const base = 'cenarios.' + def.id + '.';
+        const campos = [{ k: base + 'ativo', label: 'Avaliar este cenário', type: 'checkbox' }];
+        if (def.armazenamento) {
+          if (p.tipoSistema !== 'bess' || p.bessComFV !== false) campos.push({ k: base + 'incluirFV', label: 'Incluir o sistema FV', type: 'checkbox' });
+          campos.push({ k: base + 'n', label: p.tipoSistema === 'bess' ? 'Gabinetes BESS' : 'Baterias', type: 'int', help: 'Em branco = dimensionamento automático.' });
+        }
+        if (def.id === 'backup') {
+          campos.push({ k: base + 'horasFaltaAno', label: 'Horas sem energia por ano', type: 'number', suffix: 'h/ano', help: 'Opcional — para valorar o backup.' },
+            { k: base + 'custoHoraFalta', label: 'Prejuízo por hora sem energia', type: 'money', suffix: '/h' });
+        }
+        if (def.id === 'picos') {
+          campos.push({ k: base + 'reducaoKW', label: 'Redução de demanda', type: 'number', suffix: 'kW',
+            help: 'Em branco = ' + U.fmtSmart((p.premissas.armazenamento || D.premissas.armazenamento).reducaoDemandaPct * 100, 1) + '% da demanda medida.' },
+          { k: base + 'duracaoH', label: 'Duração do pico', type: 'number', suffix: 'h', placeholder: String((p.premissas.armazenamento || D.premissas.armazenamento).duracaoPonta) });
+          if (mod.id === 'azul') campos.push({ k: base + 'posto', label: 'Posto do pico', type: 'select', options: [{ v: '', t: 'Ponta' }, { v: 'foraPonta', t: 'Fora de ponta' }] });
+          if (mod.id === 'verde') campos.push({ k: base + 'posto', label: 'Horário do pico', type: 'select', options: [{ v: '', t: 'Fora de ponta (comercial)' }, { v: 'ponta', t: 'Na ponta' }] });
+          campos.push({ k: base + 'readequar', label: 'Readequar a demanda contratada', type: 'checkbox' });
+        }
+        const card = h('div.cenario-card' + (cc.ativo ? '' : '.inativo'), { 'data-cenario': def.id },
+          h('div.cenario-topo', h('strong', def.nome), h('span.cenario-selo')),
+          h('p.ajuda-sec', def.descricao),
+          UI.grade(campos, p, mudou, 1));
+        grade.appendChild(card);
+      });
+      c.appendChild(grade);
+      infos.cenarios = h('div.comparativo');
+      c.appendChild(infos.cenarios);
+    }, ehArm);
 
     /* ---------------- seção: materiais e preço */
     let corpoItens = null;
@@ -275,6 +383,13 @@
       desenharItens();
 
       c.appendChild(h('h4.secao-form', 'Composição do preço'));
+      if (p.tipoSistema === 'bess' && p.bessComFV === false) {
+        c.appendChild(h('p.ajuda-sec', 'Sem sistema FV: o investimento de cada cenário é o equipamento de armazenamento + a instalação (seção Armazenamento).'));
+        infos.preco = h('div.info');
+        c.appendChild(infos.preco);
+        return;
+      }
+      if (ehArm()) c.appendChild(h('p.ajuda-sec', 'Informe aqui o preço do sistema fotovoltaico. O armazenamento (equipamento + instalação) é somado automaticamente em cada cenário.'));
       const modos = h('div.opcoes-cartao.compacto', [
         ['composto', 'Valor total', 'Informe o preço final; a mão de obra é calculada (total − kit − infraestrutura).'],
         ['separado', 'Itens separados', 'Informe a mão de obra; o total é a soma de kit + infraestrutura + mão de obra.']
@@ -290,7 +405,7 @@
         { k: 'infraValor', label: 'Infraestrutura elétrica CA', type: 'money', help: 'DPS, disjuntores, quadro, aterramento.' },
         p.precoModo === 'separado'
           ? { k: 'maoObraValor', label: 'Mão de obra + projeto + homologação', type: 'money', required: true }
-          : { k: 'valorTotal', label: 'Valor total da proposta', type: 'money', required: true },
+          : { k: 'valorTotal', label: ehArm() ? 'Valor do sistema FV (sem armazenamento)' : 'Valor total da proposta', type: 'money', required: true },
         { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (lista de equipamentos)', cls: 'span2' }
       ], p, mudou, 3));
       infos.preco = h('div.info');
@@ -389,6 +504,10 @@
         { k: 'premissas.degradacao', label: 'Degradação dos módulos', type: 'pct', suffix: '% a.a.' },
         { k: 'premissas.pr', label: 'Performance Ratio', type: 'number' },
         { k: 'premissas.horizonte', label: 'Horizonte', type: 'int', suffix: 'anos' },
+        ehArm() ? { k: 'premissas.armazenamento.degradacao', label: 'Degradação do armazenamento', type: 'pct', suffix: '% a.a.' } : null,
+        ehArm() ? { k: 'premissas.armazenamento.diasUteis', label: 'Dias úteis (ponta) por ano', type: 'int', suffix: 'dias' } : null,
+        ehArm() ? { k: 'premissas.armazenamento.duracaoPonta', label: 'Duração do horário de ponta', type: 'number', suffix: 'h' } : null,
+        ehArm() ? { k: 'premissas.armazenamento.vidaCalendario', label: 'Vida útil do armazenamento', type: 'int', suffix: 'anos' } : null,
         { el: h('div.campo', h('label', ' '), h('button.btn.pequeno', {
           type: 'button', onclick: function () {
             p.premissas = U.clone(S.config().premissas);
@@ -434,17 +553,31 @@
       }
       r = C.calcular(p, ctx);
       const cli = ctx.clientes.find(function (x) { return x.id === p.clienteId; });
-      subtitulo.textContent = [cli ? cli.nome : 'Cliente não selecionado', p.tipoSistema === 'hibrido' ? 'Sistema Híbrido' : 'Sistema On-Grid', p.numero].join(' · ');
+      const nomeTipo = { ongrid: 'Sistema On-Grid', hibrido: 'Sistema Híbrido', bess: 'BESS' }[p.tipoSistema] || 'Sistema On-Grid';
+      subtitulo.textContent = [cli ? cli.nome : 'Cliente não selecionado', nomeTipo, 'Grupo ' + r.grupo + ' ' + r.modalidade.curto, p.numero].join(' · ');
       titulo.textContent = p.id ? 'Proposta ' + p.numero : 'Nova proposta';
+      const t = r.tarifas;
 
       if (infos.consumo) {
-        infos.consumo.replaceChildren(
+        const linhas = [
           linhaInfo('Consumo médio', U.fmt(r.consumoMedio, 0) + ' kWh/mês'),
-          linhaInfo('Consumo anual', U.fmt(r.consumoMedio * 12, 0) + ' kWh'),
-          linhaInfo('Disponibilidade (' + C.LIG_ADJ[r.ligacao] + ')', U.fmt(r.disponibilidade, 0) + ' kWh/mês'),
-          linhaInfo('Tarifa considerada', r.tarifa ? 'R$ ' + U.fmt(r.tarifa, 4) + '/kWh' : '—'));
+          linhaInfo('Consumo anual', U.fmt(r.consumoMedio * 12, 0) + ' kWh')
+        ];
+        if (r.grupo === 'B') linhas.push(linhaInfo('Disponibilidade (' + C.LIG_ADJ[r.ligacao] + ')', U.fmt(r.disponibilidade, 0) + ' kWh/mês'));
+        if (r.modalidade.id === 'conv') linhas.push(linhaInfo('Tarifa considerada', r.tarifa ? 'R$ ' + U.fmt(r.tarifa, 4) + '/kWh' : '—'));
+        else {
+          linhas.push(linhaInfo('Ponta / fora de ponta', (t.ponta ? 'R$ ' + U.fmt(t.ponta, 4) : '—') + ' / ' + (t.fp ? 'R$ ' + U.fmt(t.fp, 4) : '—') + ' por kWh'));
+          if (t.ponta && t.fp) linhas.push(linhaInfo('Diferença ponta × fora de ponta', U.fmtSmart(t.ponta / t.fp, 2) + '×', 'destaque'));
+        }
+        if (r.grupo === 'A') {
+          const sem = App.Energia.conta(t, r.consumoPostos, r.demanda, { cosip: r.cosip }, r.premissas);
+          linhas.push(linhaInfo('Demanda na fatura (mês)', U.brl(sem.demanda + sem.ultrapassagem), sem.ultrapassagem > 0 ? 'alerta' : null));
+          if (sem.ultrapassagem > 0) linhas.push(linhaInfo('Multa de ultrapassagem', U.brl(sem.ultrapassagem), 'alerta'));
+          linhas.push(linhaInfo('Fatura estimada sem sistema', U.brl(sem.total) + '/mês'));
+        }
+        infos.consumo.replaceChildren.apply(infos.consumo, linhas);
       }
-      if (infos.sistema) {
+      if (infos.sistema && infos.placeModulos.querySelector) {
         const placeM = infos.placeModulos.querySelector('input');
         if (placeM) placeM.placeholder = r.nModulosSugerido ? 'Sugerido: ' + r.nModulosSugerido : '';
         const placeI = infos.placeInv.querySelector('input');
@@ -466,26 +599,32 @@
       }
       if (infos.hibrido && r.hibrido) {
         const hb = r.hibrido;
-        const placeB = infos.placeBat.querySelector('input');
-        if (placeB) placeB.placeholder = hb.nSugerido ? 'Sugerido: ' + hb.nSugerido : '';
+        const u = r.unidadeArm;
+        const nomeU = r.bessAtivo ? 'gabinete' : 'bateria';
         infos.hibrido.replaceChildren(
-          linhaInfo('Potência das cargas', U.fmtSmart(hb.potCargas / 1000, 2) + ' kW'),
+          linhaInfo('Equipamento', hb.bateria ? C.nomeEquip(hb.bateria) : '—'),
+          linhaInfo('Por ' + nomeU, u ? U.fmtSmart(u.energia, 2) + ' kWh' + (u.potencia ? ' / ' + U.fmtSmart(u.potencia, 2) + ' kW' : '') + (u.preco ? ' — ' + U.brl(u.preco) : '') : '—'),
+          linhaInfo('Potência das cargas críticas', U.fmtSmart(hb.potCargas / 1000, 2) + ' kW'),
           linhaInfo('Energia no backup', U.fmtSmart(hb.energiaBackup / 1000, 2) + ' kWh'),
-          linhaInfo('Capacidade necessária', U.fmtSmart(hb.capNecessaria, 2) + ' kWh'),
-          linhaInfo('Banco instalado', hb.bateria ? hb.nBaterias + ' × ' + U.fmtSmart(hb.bateria.energia, 2) + ' = ' + U.fmtSmart(hb.capInstalada, 2) + ' kWh' : '—', 'destaque'),
-          linhaInfo('Configuração', hb.configuracao || '—'),
-          linhaInfo('Capacidade útil', U.fmtSmart(hb.capUtil, 2) + ' kWh'),
+          linhaInfo('Capacidade necessária (backup)', U.fmtSmart(hb.capNecessaria, 2) + ' kWh'),
+          linhaInfo('Cenário detalhado', r.cen ? r.cen.nome + (r.cen.n ? ' — ' + r.cen.n + ' × ' + U.fmtSmart(u ? u.energia : 0, 2) + ' = ' + U.fmtSmart(hb.capInstalada, 2) + ' kWh' : '') : '—', 'destaque'),
+          linhaInfo('Configuração', r.cen && r.cen.n ? hb.configuracao : '—'),
           linhaInfo('Autonomia estimada', hb.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(hb.autonomiaEstimada, 1) + ' h' : '—', hb.autonomiaEstimada != null && hb.autonomiaEstimada < hb.autonomiaHoras ? 'alerta' : null),
-          linhaInfo('Backup do inversor', U.fmtSmart(hb.potBackup || 0, 2) + ' kW' + (hb.backupOk ? ' ✅' : ' ⚠️'), hb.backupOk ? null : 'alerta'));
+          linhaInfo('Potência de backup', U.fmtSmart(hb.potBackup || 0, 2) + ' kW' + (hb.potCargas ? (hb.backupOk ? ' ✅' : ' ⚠️') : ''), hb.potCargas && !hb.backupOk ? 'alerta' : null));
       }
+      if (infos.cenarios) desenharComparativo();
       if (infos.preco) {
         const wp = r.kwp * 1000;
-        infos.preco.replaceChildren(
-          linhaInfo('Kit fotovoltaico' + (p.kitManual ? ' (manual)' : ' (soma dos itens)'), U.brl(r.kit)),
-          linhaInfo('Infraestrutura CA', U.brl(r.infra)),
-          linhaInfo('Mão de obra + projeto + homologação', U.brl(r.maoObra), r.maoObra < 0 ? 'alerta' : null),
-          linhaInfo('Valor total', U.brl(r.total), 'destaque'),
-          linhaInfo('Preço por Wp', wp > 0 ? 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp' : '—'));
+        const linhas = [];
+        if (r.incluiFV || !ehArm()) {
+          linhas.push(linhaInfo('Kit fotovoltaico' + (p.kitManual ? ' (manual)' : ' (soma dos itens)'), U.brl(r.kit)),
+            linhaInfo('Infraestrutura CA', U.brl(r.infra)),
+            linhaInfo('Mão de obra + projeto + homologação', U.brl(r.maoObra), r.maoObra < 0 ? 'alerta' : null));
+        }
+        if (r.kitArm || r.instalArm) linhas.push(linhaInfo('Armazenamento (equipamento)', U.brl(r.kitArm)), linhaInfo('Instalação do armazenamento', U.brl(r.instalArm)));
+        linhas.push(linhaInfo(ehArm() && r.cen ? 'Investimento — ' + r.cen.nome : 'Valor total', U.brl(r.total), 'destaque'));
+        if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
+        infos.preco.replaceChildren.apply(infos.preco, linhas);
       }
       const totItens = corpoItens && corpoItens.querySelector('[data-total-itens]');
       if (totItens) totItens.textContent = 'Soma dos itens: ' + U.brl(r.kitSoma);
@@ -515,33 +654,92 @@
 
     const mini = h('canvas.mini-grafico', { width: 720, height: 300 });
 
+    function valorTir(f) {
+      return f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? '> 1.000%' : '—');
+    }
+
+    function desenharComparativo() {
+      const box = infos.cenarios;
+      box.innerHTML = '';
+      const todos = r.cenarios || [];
+      document.querySelectorAll('[data-cenario]').forEach(function (card) {
+        const c = todos.find(function (x) { return x.id === card.getAttribute('data-cenario'); });
+        const selo = card.querySelector('.cenario-selo');
+        card.classList.toggle('inativo', !(c && c.ativo));
+        card.classList.toggle('recomendado', !!(r.recomendacao && c && r.recomendacao.id === c.id));
+        if (!selo || !c) return;
+        selo.textContent = !c.aplicavel ? 'Não se aplica' : (r.recomendacao && r.recomendacao.id === c.id ? '✅ Recomendado' : (r.cen && r.cen.id === c.id ? 'Na proposta' : ''));
+        const nInput = card.querySelector('[data-k="cenarios.' + c.id + '.n"]');
+        if (nInput) nInput.placeholder = c.aplicavel && c.n ? 'Auto: ' + c.n : '';
+        const kwInput = card.querySelector('[data-k="cenarios.picos.reducaoKW"]');
+        if (kwInput && c.id === 'picos') kwInput.placeholder = c.aplicavel ? 'Auto: ' + U.fmtSmart(C.reducaoAlvo(r, r.cenariosConfig.picos, r.premissas), 1) : '';
+      });
+      const av = r.cenariosAvaliados || [];
+      if (!av.length) {
+        box.appendChild(h('p.ajuda-sec', 'Nenhum cenário pôde ser avaliado. ' + (r.tarifas.faltando.length ? 'Informe as tarifas.' : 'Verifique consumo, equipamento e preços.')));
+        return;
+      }
+      const linha = function (rot, fn, cls) {
+        return h('tr' + (cls ? '.' + cls : ''), h('th', rot), av.map(function (c) { return h('td' + (r.recomendacao && r.recomendacao.id === c.id ? '.rec' : ''), fn(c)); }));
+      };
+      const u = r.unidadeArm;
+      box.appendChild(h('div.tabela-rolagem', h('table.tabela.comparativo-tab',
+        h('thead', h('tr', h('th', 'Indicador'), av.map(function (c) {
+          return h('th' + (r.recomendacao && r.recomendacao.id === c.id ? '.rec' : ''), c.nome, r.recomendacao && r.recomendacao.id === c.id ? h('div.mini', '✅ recomendado') : null);
+        }))),
+        h('tbody',
+          linha('Sistema FV', function (c) { return c.incluirFV && r.kwp ? U.kwp(r.kwp) + ' kWp' : '—'; }),
+          linha('Armazenamento', function (c) { return c.n ? c.n + ' × ' + U.fmtSmart(u ? u.energia : 0, 2) + ' = ' + U.fmtSmart(c.capInstalada, 2) + ' kWh' : '—'; }),
+          linha('Investimento', function (c) { return U.brl(c.investimento); }, 'forte'),
+          linha('Benefício ano 1', function (c) { return U.brl(c.fin.beneficioAno1); }),
+          linha('Payback simples', function (c) { return U.anosMeses(c.fin.paybackSimples); }),
+          linha('VPL ' + (av[0].fin.horizonte) + ' anos', function (c) { return U.brl(c.fin.vpl); }, 'forte'),
+          linha('TIR', function (c) { return valorTir(c.fin); }),
+          linha('Autonomia (falta de energia)', function (c) { return c.metricas && c.metricas.autonomiaH ? '≈ ' + U.fmtSmart(c.metricas.autonomiaH, 1) + ' h' : '—'; }),
+          linha('Redução de demanda', function (c) { return c.fin.reducaoKW1 ? U.fmtSmart(c.fin.reducaoKW1, 1) + ' kW' : '—'; }),
+          linha('Energia deslocada (ano 1)', function (c) { return c.fin.kwhDeslocadosAno1 ? U.fmt(c.fin.kwhDeslocadosAno1, 0) + ' kWh' : '—'; })))));
+      const naoAplic = todos.filter(function (c) { return c.ativo && !c.aplicavel; });
+      if (naoAplic.length) box.appendChild(h('p.ajuda-sec', naoAplic.map(function (c) { return c.nome + ': ' + c.motivoNA; }).join(' · ')));
+      if (r.recomendacao) {
+        box.appendChild(h('div.recomendacao', h('strong', '✅ Recomendação: ' + r.recomendacao.nome),
+          h('ul', r.recomendacao.motivos.map(function (m) { return h('li', m); }))));
+      }
+    }
+
     function desenharResumo() {
       const f = r.fin;
       resumo.innerHTML = '';
       const kpi = function (rot, val, cls) { return h('div.kpi' + (cls ? '.' + cls : ''), h('span', rot), h('strong', val)); };
+      const selo = { ongrid: ['On-Grid', 'azul'], hibrido: ['Híbrido', 'roxo'], bess: ['BESS', 'roxo'] }[p.tipoSistema] || ['On-Grid', 'azul'];
+      const temFV = r.incluiFV && r.kwp > 0;
       const blocos = [
-        h('div.resumo-topo', UI.badge(p.tipoSistema === 'hibrido' ? 'Híbrido' : 'On-Grid', p.tipoSistema === 'hibrido' ? 'roxo' : 'azul'),
+        h('div.resumo-topo', UI.badge(selo[0], selo[1]), UI.badge('Grupo ' + r.grupo + ' · ' + r.modalidade.curto, 'cinza'),
           UI.badge((D.STATUS.find(function (s) { return s.id === p.status; }) || D.STATUS[0]).label, 'cinza'), sujo ? UI.badge('Não salvo', 'ambar') : null),
-        h('div.kpis',
+        r.cen && r.comparar ? h('div.cenario-escolhido', h('span', 'Cenário na proposta'), h('strong', r.cen.nome),
+          r.recomendacao && r.recomendacao.id === r.cen.id ? UI.badge('Recomendado', 'ok') : (r.recomendacao ? UI.badge('Recomendado: ' + r.recomendacao.nome, 'ambar') : null)) : null,
+        temFV ? h('div.kpis',
           kpi('Potência', U.kwp(r.kwp) + ' kWp', 'grande'),
           kpi('Módulos', r.modulo ? r.nModulos + ' × ' + r.modulo.potencia + ' Wp' : '—'),
           kpi('Inversor', r.inversor ? r.nInversores + ' × ' + U.fmtSmart(r.inversor.potencia, 2) + ' kW' : '—'),
           kpi('FDI', r.kwp ? U.fmt(r.fdi, 3) : '—', r.kwp && !r.fdiOk ? 'alerta' : null),
           kpi('Geração', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'),
-          kpi('Cobertura', U.fmt(r.cobertura * 100, 0) + '%'),
-          r.hibrido ? kpi('Baterias', U.fmtSmart(r.hibrido.capInstalada || 0, 2) + ' kWh') : null,
-          r.hibrido ? kpi('Autonomia', r.hibrido.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(r.hibrido.autonomiaEstimada, 1) + ' h' : '—') : null),
+          kpi('Cobertura', U.fmt(r.cobertura * 100, 0) + '%')) : null,
+        r.hibrido && r.cen && r.cen.n ? h('div.kpis',
+          kpi(r.bessAtivo ? 'BESS' : 'Baterias', U.fmtSmart(r.hibrido.capInstalada || 0, 2) + ' kWh', temFV ? null : 'grande'),
+          kpi('Potência armaz.', U.fmtSmart(r.hibrido.potenciaArm || 0, 2) + ' kW'),
+          kpi('Autonomia', r.hibrido.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(r.hibrido.autonomiaEstimada, 1) + ' h' : '—'),
+          r.fin.reducaoKW1 ? kpi('Redução demanda', U.fmtSmart(r.fin.reducaoKW1, 1) + ' kW') : null) : null,
         h('div.kpis',
           kpi('Investimento', U.brl(r.total), 'grande'),
           kpi('Economia mês 1', U.brl(f.economiaMes1), 'verde'),
           kpi('Payback', r.total > 0 ? U.anosMeses(f.paybackSimples) : '—'),
           kpi('Payback desc.', r.total > 0 ? U.anosMeses(f.paybackDescontado) : '—'),
-          kpi('TIR', f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? '> 1.000%' : '—')),
+          kpi('TIR', valorTir(f)),
           kpi('VPL ' + f.horizonte + ' anos', U.brl(f.vpl))),
-        mini
+        temFV ? mini : null
       ];
       blocos.forEach(function (b) { if (b) resumo.appendChild(b); });
-      App.Chart.desenhar(mini, { consumo: r.consumoMeses, geracao: r.geracaoMeses, titulo: 'Consumo × Geração — ' + U.kwp(r.kwp) + ' kWp' });
+      if (temFV) App.Chart.desenhar(mini, { consumo: r.consumoMeses, geracao: r.geracaoMeses, titulo: 'Consumo × Geração — ' + U.kwp(r.kwp) + ' kWp' });
       if (r.alertas.length) {
         resumo.appendChild(h('ul.alertas', r.alertas.map(function (a) { return h('li.' + a.nivel, a.msg); })));
       } else {
@@ -569,8 +767,9 @@
       delete p._seq;
       p.clienteNome = cli ? cli.nome : '';
       p.resumo = {
-        kwp: r.kwp, total: r.total, kwh: r.hibrido ? r.hibrido.capInstalada : 0,
-        payback: r.fin.paybackSimples, geracao: r.geracaoMensal, cidade: r.cidade
+        kwp: r.incluiFV ? r.kwp : 0, total: r.total, kwh: r.hibrido && r.cen && r.cen.n ? r.hibrido.capInstalada : 0,
+        payback: r.fin.paybackSimples, geracao: r.geracaoMensal, cidade: r.cidade,
+        cenario: r.comparar && r.cen ? r.cen.nome : '', grupo: r.grupo + ' ' + r.modalidade.curto
       };
       try { S.save('propostas', p); } catch (e) { UI.toast(e.message, 'erro'); return false; }
       if (seq) S.reservarNumero(seq.dia, seq.seq);

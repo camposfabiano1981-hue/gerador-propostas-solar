@@ -147,10 +147,143 @@
   ok('híbrido: baterias suficientes', rH.hibrido.capInstalada >= rH.hibrido.capNecessaria, rH.hibrido.nBaterias + ' un');
   ok('híbrido: ciclagem reduz Fio B', rH.fin.anos[0].fioB < C.calcular(Object.assign(U.clone(pH), { usoBateria: 'backup' }), ctxH).fin.anos[0].fioB);
   ok('híbrido: itens incluem bateria', rH.itens.some(function (i) { return i.categoria === 'bateria'; }));
+  ok('híbrido: cenários avaliados (solar, backup, horários)', rH.cenariosAvaliados.map(function (c) { return c.id; }).join(',') === 'solar,backup,ponta',
+    rH.cenariosAvaliados.map(function (c) { return c.id; }).join(','));
+  ok('híbrido: redução de picos não se aplica ao grupo B', rH.cenarios.find(function (c) { return c.id === 'picos'; }).aplicavel === false);
+  const bkp = rH.cenarios.find(function (c) { return c.id === 'backup'; });
+  ok('híbrido: backup dimensionado para as cargas críticas', bkp.capInstalada >= rH.hibrido.capNecessaria, bkp.n + ' un / ' + bkp.capInstalada + ' kWh');
+  perto('híbrido: backup sem efeito na conta = cenário solar', bkp.fin.anos[0].economiaMes, rH.cenarios[0].fin.anos[0].economiaMes, 1e-9);
+
+  // ---------------------------------------------------------------- tarifas grupo A / branca
+  const E = App.Energia;
+  const prA = U.clone(D.premissas);
+  const tVerde = { grupo: 'A', modalidade: 'verde', ponta: 2.5, inter: 0.6, fp: 0.6, dem: 40, referencia: 0.6 };
+  const contaV = E.conta(tVerde, { p: 2000, i: 0, fp: 18000 }, { contr: 150, med: 160 }, { cosip: 61 }, prA);
+  perto('verde: energia ponta + fora de ponta', contaV.energia, 15800, 1e-9);
+  perto('verde: demanda faturada (maior entre contratada e medida)', contaV.demanda, 6400, 1e-9);
+  perto('verde: multa de ultrapassagem (>5%)', contaV.ultrapassagem, 800, 1e-9);
+  perto('verde: total da conta', contaV.total, 23061, 1e-9);
+  const tAzul = { grupo: 'A', modalidade: 'azul', ponta: 2.5, inter: 0.6, fp: 0.6, demP: 90, demFP: 35, referencia: 0.6 };
+  const contaA = E.conta(tAzul, { p: 2000, i: 0, fp: 18000 }, { contrP: 100, medP: 104, contrFP: 150, medFP: 150 }, { cosip: 0 }, prA);
+  perto('azul: demandas de ponta e fora de ponta sem ultrapassagem (≤5%)', contaA.demanda + contaA.ultrapassagem, 104 * 90 + 150 * 35, 1e-9);
+  const tBranca = { grupo: 'B', modalidade: 'branca', ponta: 1.6, inter: 1.05, fp: 0.75, referencia: 0.75 };
+  perto('branca: energia por posto', E.conta(tBranca, { p: 50, i: 30, fp: 420 }, null, { cosip: 0, disp: 50 }, prA).energia, 50 * 1.6 + 30 * 1.05 + 420 * 0.75, 1e-9);
+  const apB = E.aplicar(tBranca, { p: 50, i: 30, fp: 420 }, null, { G: 600, s: 0.5 }, null);
+  ok('branca: créditos excedentes abatem intermediário e ponta', apB.c.fp === 0 && apB.c.i === 0 && apB.c.p < 50, JSON.stringify(apB.c));
+
+  // ---------------------------------------------------------------- BESS no grupo A (verde) — picos e horários estratégicos
+  const ctxA = ctxReferencia();
+  ctxA.premissas = U.clone(D.premissas);
+  ctxA.equipamentos.forEach(function (e) { if (e.tipo === 'bess') e.preco = 150000; });
+  const pA = Object.assign(propostaReferencia(ctxA), {
+    tipoSistema: 'bess', bessComFV: false, bessId: 'bess-exemplo-100', modalidade: 'verde', subgrupo: 'A4',
+    consumoPonta: 2000, consumoForaPonta: 18000, demandaContratada: 150, demandaMedida: 160,
+    tarifaPonta: 2.5, tarifaForaPonta: 0.6, tarifaDemanda: 40, cosip: 61, objetivo: 'economia', cenarioEscolhido: 'auto',
+    kitManual: false, valorTotal: '', premissas: ctxA.premissas
+  });
+  const rA = C.calcular(pA, ctxA);
+  const pk = rA.cenarios.find(function (c) { return c.id === 'picos'; });
+  const pt = rA.cenarios.find(function (c) { return c.id === 'ponta'; });
+  ok('BESS: sem FV o cenário solar não se aplica', !rA.cenarios[0].aplicavel);
+  igual('BESS picos: unidades (energia p/ 32 kW × 3 h)', pk.n, 2);
+  perto('BESS picos: redução de demanda (20% de 160 kW)', pk.fin.reducaoKW1, 32, 1e-9);
+  perto('BESS picos: economia mensal ano 1 (demanda − perdas da recarga)', pk.fin.anos[0].economiaMes, 2080 - 2016 * (1 / 0.9 - 1) * 0.6, 1e-6);
+  igual('BESS horários: unidades', pt.n, 2);
+  perto('BESS horários: economia mensal ano 1 (ponta − recarga fora de ponta)', pt.fin.anos[0].economiaMes, 2000 * 2.5 - (2000 / 0.9) * 0.6, 1e-6);
+  perto('BESS: investimento = equipamento + 15% instalação', pt.investimento, 2 * 150000 * 1.15, 1e-6);
+  ok('BESS: recomendação = maior VPL', rA.recomendacao && rA.recomendacao.id === (pt.fin.vpl >= pk.fin.vpl ? 'ponta' : 'picos'), rA.recomendacao && rA.recomendacao.id);
+  ok('BESS: objetivo "demanda" recomenda redução de picos', C.calcular(Object.assign(U.clone(pA), { objetivo: 'demanda' }), ctxA).recomendacao.id === 'picos');
+  ok('BESS: proposta usa o cenário recomendado', rA.cen.id === rA.recomendacao.id && rA.total === rA.cen.investimento);
+  ok('BESS: itens com o gabinete BESS', rA.itens.length === 1 && rA.itens[0].categoria === 'bess' && rA.itens[0].qtd === rA.cen.n, JSON.stringify(rA.itens.map(function (i) { return i.categoria + ':' + i.qtd; })));
+
+  // ---------------------------------------------------------------- valores por extenso
+  igual('extenso: valor do contrato modelo', U.extenso(86110.55), 'Oitenta e seis mil, cento e dez reais e cinquenta e cinco centavos');
+  igual('extenso: 12.700,00', U.extenso(12700), 'Doze mil e setecentos reais');
+  igual('extenso: 1.000.000,00', U.extenso(1000000), 'Um milhão de reais');
+  igual('extenso: 1,01', U.extenso(1.01), 'Um real e um centavo');
+  igual('número por extenso: 80', U.numeroExtenso(80), 'oitenta');
+  igual('número por extenso: 2005', U.numeroExtenso(2005), 'dois mil e cinco');
+  igual('número por extenso: 1100', U.numeroExtenso(1100), 'mil e cem');
+  igual('número por extenso: 1.234.567', U.numeroExtenso(1234567), 'um milhão, duzentos e trinta e quatro mil, quinhentos e sessenta e sete');
+  igual('data por extenso', U.dataExtenso('2026-05-20'), '20 de maio de 2026');
+
+  // ---------------------------------------------------------------- contrato
+  const K = App.Contrato;
+  const parc = K.parcelasPadrao(86110.55, 67305.61);
+  igual('contrato: parcelas padrão (equipamentos + 50/50 serviços)', parc.map(function (x) { return U.fmt(x.valor, 2); }).join(' | '), '67.305,61 | 9.402,47 | 9.402,47');
+  perto('contrato: soma das parcelas = total', K.total({ parcelas: parc }), 86110.55, 1e-9);
+  const parcImpar = K.parcelasPadrao(1000.01, 0);
+  perto('contrato: parcelas de valor ímpar fecham o total', K.total({ parcelas: parcImpar }), 1000.01, 1e-9);
+  igual('contrato: sem equipamentos → 2 parcelas', parcImpar.length, 2);
+
+  const ctxK = U.clone(ctx);
+  ctxK.empresa.cidade = 'Corumbá';
+  ctxK.empresa.uf = 'MS';
+  const ctK = K.deProposta(Object.assign(U.clone(p), { id: 'p-ref' }), ctxK);
+  ctK.modelo = U.clone(D.contrato); // independe de um modelo personalizado salvo neste navegador
+  ok('contrato: objeto com a potência', /de 5,625 kWp$/.test(ctK.objeto), ctK.objeto);
+  igual('contrato: parcelas da proposta', ctK.parcelas.map(function (x) { return U.fmt(x.valor, 2); }).join(' | '), '8.177,08 | 2.261,46 | 2.261,46');
+  igual('contrato: grupos de equipamentos', ctK.equipamentos.map(function (g) { return g.titulo; }).join(', '), 'Módulos Fotovoltaicos, Inversores, Estrutura de Fixação, Itens Adicionais');
+  perto('contrato: produção mensal = geração da proposta', ctK.producao.meses.reduce(function (a, b) { return a + b; }, 0), r.geracaoAnual, 12);
+  igual('contrato: vínculo com a proposta', ctK.propostaNumero, 'GE-20260929-012');
+
+  function textoModelo(m) {
+    const partes = [];
+    (function andar(nos) {
+      (nos || []).forEach(function (n) {
+        if (n.tipo === 'p') partes.push(n.filhos.filter(function (f) { return f.tipo === 'r'; }).map(function (f) { return f.texto; }).join(''));
+        andar(n.linhas); andar(n.celulas); if (n.tipo !== 'p') andar(n.filhos);
+      });
+    })(m.corpo);
+    return partes;
+  }
+  const mK = K.montar(ctK, ctxK, { w: 1400, h: 752 }, ctxK.clientes[0]);
+  const txK = textoModelo(mK);
+  const clausulas = txK.filter(function (s) { return /^Cláusula \d+ª/.test(s); });
+  igual('contrato: 20 cláusulas numeradas', clausulas.length, 20);
+  ok('contrato: referência à cláusula de pagamento resolvida', txK.some(function (s) { return /estabelecidas na Cláusula 11ª\.$/.test(s); }));
+  ok('contrato: valor por extenso na cláusula de preço', txK.some(function (s) { return s.indexOf('R$ 12.700,00 (Doze mil e setecentos reais)') >= 0; }));
+  ok('contrato: prazo por extenso', txK.some(function (s) { return s.indexOf('60 (sessenta) dias') >= 0; }));
+  ok('contrato: local da produção sem repetição', txK.some(function (s) { return s.indexOf('plano inclinado para Corumbá – MS, com fator') >= 0; }));
+  igual('contrato: seções numeradas', txK.filter(function (s) { return /^\d+\. [A-ZÇÃÕÉÍÓÚÊÂ ,]+$/.test(s); }).map(function (s) { return s.split('.')[0]; }).join(','), '1,2,3,4,5,6,7,8,9,10');
+  ok('contrato: local e data por extenso', txK.some(function (s) { return s.indexOf('Data: ' + U.dataExtenso(ctK.data) + '.') >= 0; }));
+  const semProd = K.montar(Object.assign(U.clone(ctK), { producao: { incluir: false } }), ctxK, { w: 1400, h: 752 }, ctxK.clientes[0]);
+  ok('contrato: sem produção a seção é omitida e a numeração segue', textoModelo(semProd).some(function (s) { return s === '3. OBRIGAÇÕES DAS PARTES'; }));
+  const xmlK = App.Docx.serializar(mK);
+  ok('contrato: XML do documento válido', !new DOMParser().parseFromString(xmlK.documento, 'application/xml').querySelector('parsererror'));
+  ok('contrato: XML do cabeçalho e rodapé válidos', !new DOMParser().parseFromString(xmlK.header, 'application/xml').querySelector('parsererror') &&
+    !new DOMParser().parseFromString(xmlK.footer, 'application/xml').querySelector('parsererror'));
+  ok('contrato: página A4 com margens do modelo', /<w:pgSz w:w="11906" w:h="16838"\/><w:pgMar w:top="1800" w:right="1134" w:bottom="1600" w:left="1134"/.test(xmlK.documento));
+
+  // ---------------------------------------------------------------- proposta avulsa
+  const Av = App.Avulsa;
+  const av = Object.assign(Av.novo(ctx), { numero: 'GE-20260929-013', data: '2026-09-29', clienteId: 'cli', desconto: 100 });
+  av.itens = [Av.itemDeServico(Object.assign({}, D.servicos[1], { preco: 850 })), Object.assign(Av.itemDeServico(D.servicos[0]), { qtd: 65, precoUnit: 25 })];
+  const rAv = Av.calcular(av, ctx);
+  perto('avulsa: subtotal', rAv.subtotal, 2475, 1e-9);
+  perto('avulsa: total com desconto', rAv.total, 2375, 1e-9);
+  igual('avulsa: opções de pagamento', rAv.pagamentos.length, ctx.pagamentos.length);
+  const mAv = Av.montar(av, ctx, ctx.clientes[0], { w: 1400, h: 752 });
+  ok('avulsa: XML válido', !new DOMParser().parseFromString(App.Docx.serializar(mAv).documento, 'application/xml').querySelector('parsererror'));
+  ok('avulsa: linha de total', textoModelo(mAv).indexOf('VALOR TOTAL') >= 0 && textoModelo(mAv).indexOf('R$ 2.375,00') >= 0);
 
   // ---------------------------------------------------------------- docx
   async function testarDocx() {
     const out = { ref: null, hib: null };
+    try {
+      const gc = await K.gerarDocx(ctK, ctxK);
+      const head = new Uint8Array(await gc.blob.slice(0, 2).arrayBuffer());
+      ok('contrato: docx gerado', head[0] === 0x50 && head[1] === 0x4b && gc.blob.size > 20000, gc.blob.size + ' bytes');
+      const pc = await K.gerarPdf(ctK, ctxK);
+      ok('contrato: pdf gerado', new TextDecoder().decode(await pc.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && pc.blob.size > 20000, pc.blob.size + ' bytes');
+      out.contrato = gc; out.pdfContrato = pc;
+      const ga = await Av.gerarDocx(av, ctx);
+      const pa = await Av.gerarPdf(av, ctx);
+      ok('avulsa: docx e pdf gerados', ga.blob.size > 20000 && pa.blob.size > 20000, ga.blob.size + ' / ' + pa.blob.size + ' bytes');
+      igual('avulsa: nome do arquivo', pa.nome, 'Proposta_Servicos_ClienteExemplo_20260929.pdf');
+    } catch (e) {
+      ok('contrato/avulsa gerados', false, e && e.stack || String(e));
+    }
     try {
       const g = await App.Docx.gerar(p, ctx);
       ok('docx gerado (referência)', g.blob.size > 20000, g.blob.size + ' bytes');
@@ -189,6 +322,16 @@
         andar(n.filhos); andar(n.linhas); andar(n.celulas);
       });
     })(m.corpo.concat(m.cabecalho, m.rodape));
+    ok('cores de fundo das células válidas (' + c[0] + ')', !invalidos.length, invalidos.slice(0, 3).join(' | '));
+  });
+  [['contrato', mK], ['avulsa', mAv]].forEach(function (c) {
+    const invalidos = [];
+    (function andar(nos) {
+      (nos || []).forEach(function (n) {
+        if (n.tipo === 'tc' && n.o.fill != null && !/^[0-9A-F]{6}$/.test(String(n.o.fill))) invalidos.push(String(n.o.fill).slice(0, 30));
+        andar(n.filhos); andar(n.linhas); andar(n.celulas);
+      });
+    })(c[1].corpo.concat(c[1].cabecalho, c[1].rodape));
     ok('cores de fundo das células válidas (' + c[0] + ')', !invalidos.length, invalidos.slice(0, 3).join(' | '));
   });
 

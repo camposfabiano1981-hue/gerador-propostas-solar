@@ -58,6 +58,8 @@
     }, 'Buscar CEP');
     return [
       { k: 'nome', label: 'Nome / Razão social', required: true, cls: 'span2' },
+      { k: 'nomeFantasia', label: 'Nome fantasia (empresas)' },
+      { k: 'inscricaoEstadual', label: 'Inscrição estadual' },
       { k: 'documento', label: 'CPF / CNPJ' },
       { k: 'telefone', label: 'Telefone', type: 'tel' },
       { k: 'email', label: 'E-mail', type: 'email' },
@@ -143,6 +145,26 @@
         { k: 'ativo', label: 'Ativo (disponível nas propostas)', type: 'checkbox' }
       ];
     },
+    bess: function () {
+      return [
+        { k: 'fabricante', label: 'Fabricante', required: true },
+        { k: 'modelo', label: 'Modelo', required: true },
+        { k: 'energia', label: 'Energia nominal (por gabinete)', type: 'number', suffix: 'kWh', required: true },
+        { k: 'potencia', label: 'Potência (PCS) por gabinete', type: 'number', suffix: 'kW', required: true },
+        { k: 'quimica', label: 'Química', type: 'select', options: ['LiFePO4', 'Lítio NMC', 'Sódio-íon', 'Chumbo-carbono', 'Outra'] },
+        { k: 'fases', label: 'Conexão', type: 'select', options: ['Trifásico', 'Monofásico'] },
+        { k: 'tensao', label: 'Tensão CA', placeholder: 'Ex.: 380V' },
+        { k: 'dod', label: 'Profundidade de descarga (DoD)', type: 'number', suffix: '%' },
+        { k: 'eficiencia', label: 'Eficiência de ciclo (round-trip)', type: 'number', suffix: '%' },
+        { k: 'ciclos', label: 'Vida útil', type: 'int', suffix: 'ciclos' },
+        { k: 'vidaAnos', label: 'Vida útil (calendário)', type: 'int', suffix: 'anos', help: 'Em branco = premissa padrão.' },
+        { k: 'garantia', label: 'Garantia', type: 'number', suffix: 'anos' },
+        { k: 'preco', label: 'Preço por gabinete', type: 'money' },
+        { k: 'descricaoProposta', label: 'Descrição na lista de equipamentos', cls: 'span2', help: function (e) { return 'Em branco = automática: ' + C.descBess(Object.assign({}, e, { descricaoProposta: '' })); } },
+        { k: 'obs', label: 'Observações internas', cls: 'span2' },
+        { k: 'ativo', label: 'Ativo (disponível nas propostas)', type: 'checkbox' }
+      ];
+    },
     estrutura: function () {
       return [
         { k: 'descricao', label: 'Descrição (lista de equipamentos)', required: true, cls: 'span2' },
@@ -199,6 +221,15 @@
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
     ],
+    bess: [
+      { t: 'BESS', v: function (e) { return h('span', h('strong', e.fabricante + ' '), e.modelo); } },
+      { t: 'Energia', cls: 'num', v: function (e) { return U.fmtSmart(e.energia, 2) + ' kWh'; } },
+      { t: 'Potência', cls: 'num', v: function (e) { return e.potencia ? U.fmtSmart(e.potencia, 2) + ' kW' : '—'; } },
+      { t: 'Eficiência', cls: 'num', v: function (e) { return e.eficiencia ? e.eficiencia + '%' : '—'; } },
+      { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
+      { t: 'R$/kWh', cls: 'num', v: function (e) { return e.energia && e.preco ? U.fmt(e.preco / e.energia, 0) : '—'; } },
+      { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
+    ],
     estrutura: [
       { t: 'Descrição', v: function (e) { return e.descricao; } },
       { t: 'Telhado', v: function (e) { return e.telhado; } },
@@ -253,6 +284,7 @@
         if (def.id === 'inversor' || def.id === 'hibrido') Object.assign(base, { fases: 'Monofásico', tensao: '220V', mppts: 1, garantia: 10 });
         if (def.id === 'hibrido') Object.assign(base, { tensaoBateria: 48 });
         if (def.id === 'bateria') Object.assign(base, { quimica: 'LiFePO4', dod: 90, garantia: 10 });
+        if (def.id === 'bess') Object.assign(base, { quimica: 'LiFePO4', fases: 'Trifásico', dod: 90, eficiencia: 90, ciclos: 6000, garantia: 10 });
         if (def.id === 'estrutura') Object.assign(base, { regra: 'kitModulos', fator: 4, unidade: 'un', telhado: 'Fibrocimento', garantia: 'Vitalícia', autoIncluir: true });
         if (def.id === 'material') Object.assign(base, { regra: 'fixa', fator: 1, unidade: 'un', aplicaEm: 'ambos', autoIncluir: true });
         return base;
@@ -261,11 +293,12 @@
         if (def.id === 'estrutura' || def.id === 'material') return String(e.descricao || '').trim() ? null : 'Informe a descrição.';
         if (!String(e.fabricante || '').trim() || !String(e.modelo || '').trim()) return 'Informe fabricante e modelo.';
         if (def.id === 'bateria') return U.num(e.energia) > 0 ? null : 'Informe a energia nominal (kWh).';
+        if (def.id === 'bess') return U.num(e.energia) > 0 && U.num(e.potencia) > 0 ? null : 'Informe energia (kWh) e potência (kW) do BESS.';
         return U.num(e.potencia) > 0 ? null : 'Informe a potência.';
       },
       podeExcluir: function (e) {
         const n = usoEmPropostas(function (p) {
-          return p.moduloId === e.id || p.inversorId === e.id || p.bateriaId === e.id ||
+          return p.moduloId === e.id || p.inversorId === e.id || p.bateriaId === e.id || p.bessId === e.id ||
             (p.itens || []).some(function (i) { return i.equipamentoId === e.id; });
         });
         return n ? 'Item usado em ' + n + ' proposta(s). Desative-o em vez de excluir.' : null;
@@ -289,6 +322,9 @@
         { t: 'B1 (R$/kWh)', cls: 'num', v: function (c) { return U.fmtSmart(c.tarifas && c.tarifas.B1, 4); } },
         { t: 'B2 (R$/kWh)', cls: 'num', v: function (c) { return U.fmtSmart(c.tarifas && c.tarifas.B2, 4); } },
         { t: 'B3 (R$/kWh)', cls: 'num', v: function (c) { return U.fmtSmart(c.tarifas && c.tarifas.B3, 4); } },
+        { t: 'Branca', v: function (c) { return c.branca && U.num(c.branca.ponta) > 0 ? UI.badge('Cadastrada', 'ok') : UI.badge('—', 'cinza'); } },
+        { t: 'Verde', v: function (c) { return c.verde && U.num(c.verde.ponta) > 0 ? UI.badge('Cadastrada', 'ok') : UI.badge('—', 'cinza'); } },
+        { t: 'Azul', v: function (c) { return c.azul && U.num(c.azul.ponta) > 0 ? UI.badge('Cadastrada', 'ok') : UI.badge('—', 'cinza'); } },
         { t: 'TUSD Fio B', cls: 'num', v: function (c) { return U.fmtSmart(c.tusdFioB, 4); } }
       ],
       validar: function (c) { return String(c.nome || '').trim() ? null : 'Informe o nome.'; },
@@ -297,13 +333,26 @@
           usoEmPropostas(function (p) { return p.concessionariaId === c.id; });
         return n ? 'Concessionária em uso por localidades ou propostas.' : null;
       },
-      campos: function () {
+      largo: true,
+      colunasForm: 3,
+      campos: function (c) {
+        ['branca', 'verde', 'azul'].forEach(function (k) { if (!c[k]) c[k] = {}; });
+        const kwh = function (k, label) { return { k: k, label: label, type: 'number', prefix: 'R$', suffix: '/kWh' }; };
+        const kw = function (k, label) { return { k: k, label: label, type: 'number', prefix: 'R$', suffix: '/kW' }; };
         return [
           { k: 'nome', label: 'Nome', required: true },
           { k: 'uf', label: 'UF', type: 'select', options: UF_OPTS },
-          { k: 'tarifas.B1', label: 'Tarifa B1 — Residencial', type: 'number', prefix: 'R$', suffix: '/kWh' },
-          { k: 'tarifas.B2', label: 'Tarifa B2 — Rural', type: 'number', prefix: 'R$', suffix: '/kWh' },
-          { k: 'tarifas.B3', label: 'Tarifa B3 — Comercial/Industrial', type: 'number', prefix: 'R$', suffix: '/kWh' },
+          { k: 'horarioPonta', label: 'Horário de ponta', placeholder: 'Ex.: 17h30 às 20h30' },
+          { secao: 'Grupo B — Convencional (com impostos)' },
+          kwh('tarifas.B1', 'B1 — Residencial'), kwh('tarifas.B2', 'B2 — Rural'), kwh('tarifas.B3', 'B3 — Comercial/Industrial'),
+          { secao: 'Grupo B — Tarifa Branca' },
+          kwh('branca.ponta', 'Ponta'), kwh('branca.intermediario', 'Intermediário'), kwh('branca.foraPonta', 'Fora de ponta'),
+          { secao: 'Grupo A — Horossazonal Verde' },
+          kwh('verde.ponta', 'Energia na ponta'), kwh('verde.foraPonta', 'Energia fora de ponta'), kw('verde.demanda', 'Demanda'),
+          { secao: 'Grupo A — Horossazonal Azul' },
+          kwh('azul.ponta', 'Energia na ponta'), kwh('azul.foraPonta', 'Energia fora de ponta'), kw('azul.demandaPonta', 'Demanda na ponta'),
+          kw('azul.demandaForaPonta', 'Demanda fora de ponta'),
+          { secao: 'Lei 14.300/2022' },
           { k: 'tusdFioB', label: 'TUSD Fio B', type: 'number', prefix: 'R$', suffix: '/kWh', help: 'Componente da TUSD usado no cronograma do Fio B.' },
           { k: 'obs', label: 'Observações', type: 'textarea', cls: 'span2' }
         ];

@@ -180,6 +180,7 @@ window.App = window.App || {};
       });
       input.value = valorExibicao(def, v);
     }
+    input.setAttribute('data-k', def.k);
     if (def.readonly) input.setAttribute('readonly', '');
     if (def.required) input.setAttribute('required', '');
     const evento = tipo === 'select' || tipo === 'checkbox' ? 'change' : 'input';

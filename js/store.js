@@ -7,8 +7,8 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 1;
-  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas'];
+  const VERSAO = 2;
+  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
 
@@ -48,6 +48,22 @@ window.App = window.App || {};
   Store.init = function () {
     const v = ler('v', null);
     if (v == null) Store.semear();
+    else if (v < VERSAO) Store.migrar(v);
+  };
+
+  /** Atualiza bases criadas por versões anteriores sem perder dados. */
+  Store.migrar = function (v) {
+    if (v < 2) {
+      if (ler('col.servicos', null) == null) gravar('col.servicos', U.clone(D.servicos));
+      if (ler('col.avulsas', null) == null) gravar('col.avulsas', []);
+      if (ler('col.contratos', null) == null) gravar('col.contratos', []);
+      const eqs = Store.list('equipamentos');
+      if (!eqs.some(function (e) { return e.tipo === 'bess'; })) {
+        D.equipamentos.filter(function (e) { return e.tipo === 'bess'; }).forEach(function (e) { eqs.push(U.clone(e)); });
+        gravar('col.equipamentos', eqs);
+      }
+    }
+    gravar('v', VERSAO);
   };
 
   Store.semear = function () {
@@ -58,6 +74,9 @@ window.App = window.App || {};
     gravar('col.localidades', U.clone(D.localidades));
     gravar('col.pagamentos', U.clone(D.pagamentos));
     gravar('col.propostas', []);
+    gravar('col.servicos', U.clone(D.servicos));
+    gravar('col.avulsas', []);
+    gravar('col.contratos', []);
     gravar('v', VERSAO);
   };
 
@@ -66,12 +85,20 @@ window.App = window.App || {};
     c.empresa = completar(c.empresa, D.empresa);
     c.premissas = completar(c.premissas, D.premissas);
     c.textos = completar(c.textos, D.textos);
+    c.contrato = completar(c.contrato, D.contrato);
     c.seq = c.seq || {};
     return c;
   };
 
+  /** Configuração como gravada (sem completar com os padrões), para que padrões nunca editados continuem acompanhando as novas versões. */
+  function configBruta() {
+    const c = ler('config', {}) || {};
+    c.seq = c.seq || {};
+    return c;
+  }
+
   Store.salvarConfig = function (parte, valor) {
-    const c = Store.config();
+    const c = configBruta();
     c[parte] = valor;
     gravar('config', c);
   };
@@ -99,26 +126,37 @@ window.App = window.App || {};
     gravar('col.' + col, Store.list(col).filter(function (x) { return x.id !== id; }));
   };
 
-  /** Gera o próximo número de proposta no formato PREFIXO-AAAAMMDD-NNN. */
-  Store.proximoNumero = function (dataISO) {
+  /**
+   * Próximo número no formato PREFIXO-AAAAMMDD-NNN.
+   * tipo 'proposta' (propostas solares e avulsas compartilham a sequência) ou 'contrato'.
+   */
+  Store.proximoNumero = function (dataISO, tipo) {
     const c = Store.config();
+    const contrato = tipo === 'contrato';
     const dia = String(dataISO || U.todayISO()).replace(/-/g, '').slice(0, 8);
-    const usados = Store.list('propostas')
-      .map(function (p) { return p.numero || ''; })
-      .filter(function (n) { return n.indexOf('-' + dia + '-') >= 0; })
-      .map(function (n) { return parseInt(n.split('-').pop(), 10) || 0; });
-    const seq = Math.max(c.seq[dia] || 0, usados.length ? Math.max.apply(null, usados) : 0) + 1;
-    return { numero: (c.empresa.prefixo || 'PR') + '-' + dia + '-' + String(seq).padStart(3, '0'), dia: dia, seq: seq };
+    const chave = contrato ? 'CT:' + dia : dia;
+    const cols = contrato ? ['contratos'] : ['propostas', 'avulsas'];
+    const usados = [];
+    cols.forEach(function (col) {
+      Store.list(col).forEach(function (p) {
+        const n = p.numero || '';
+        if (n.indexOf('-' + dia + '-') >= 0) usados.push(parseInt(n.split('-').pop(), 10) || 0);
+      });
+    });
+    const seq = Math.max(c.seq[chave] || 0, usados.length ? Math.max.apply(null, usados) : 0) + 1;
+    const prefixo = contrato ? (c.empresa.prefixoContrato || 'CT') : (c.empresa.prefixo || 'PR');
+    return { numero: prefixo + '-' + dia + '-' + String(seq).padStart(3, '0'), dia: dia, seq: seq, chave: chave };
   };
 
-  Store.reservarNumero = function (dia, seq) {
-    const c = Store.config();
-    c.seq[dia] = Math.max(c.seq[dia] || 0, seq);
+  Store.reservarNumero = function (dia, seq, chave) {
+    const c = configBruta();
+    const k = chave || dia;
+    c.seq[k] = Math.max(c.seq[k] || 0, seq);
     gravar('config', c);
   };
 
   Store.exportar = function () {
-    const out = { app: 'gerador-propostas-solar', versao: VERSAO, exportadoEm: new Date().toISOString(), config: Store.config(), colecoes: {} };
+    const out = { app: 'gerador-propostas-solar', versao: VERSAO, exportadoEm: new Date().toISOString(), config: configBruta(), colecoes: {} };
     COLECOES.forEach(function (c) { out.colecoes[c] = Store.list(c); });
     return out;
   };

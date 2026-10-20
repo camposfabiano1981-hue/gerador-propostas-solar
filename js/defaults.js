@@ -29,9 +29,22 @@ window.App = window.App || {};
     { id: 'inversor', label: 'Inversores On-Grid' },
     { id: 'hibrido', label: 'Inversores Híbridos' },
     { id: 'bateria', label: 'Baterias' },
+    { id: 'bess', label: 'BESS (armazenamento)' },
     { id: 'estrutura', label: 'Estruturas' },
     { id: 'material', label: 'Materiais e acessórios' }
   ];
+
+  D.SUBGRUPOS_A = ['A4', 'A3a', 'A3', 'A2', 'A1', 'AS'];
+
+  D.OBJETIVOS = [
+    { id: 'economia', label: 'Máxima economia (melhor retorno financeiro)' },
+    { id: 'backup', label: 'Segurança energética (backup em falta de energia)' },
+    { id: 'demanda', label: 'Reduzir demanda / multas de ultrapassagem' }
+  ];
+
+  D.CATEGORIAS_SERVICO = ['Manutenção', 'Limpeza', 'Inspeção e laudos', 'Projetos', 'Instalações elétricas', 'Mobilidade elétrica', 'Monitoramento', 'Outros'];
+
+  D.UNIDADES_SERVICO = ['vb', 'un', 'h', 'm', 'm²', 'kWp', 'mês', 'visita'];
 
   D.REGRAS_QTD = [
     { id: 'fixa', label: 'Quantidade fixa' },
@@ -67,7 +80,17 @@ window.App = window.App || {};
     prefixo: 'GE',
     validadeDias: 5,
     papel: 'letter',
-    logo: null
+    logo: null,
+    // dados usados nos contratos (preenchidos em Configurações › Empresa; ficam só no navegador)
+    razaoSocial: '',
+    nomeFantasia: '',
+    bairro: '',
+    cep: '',
+    crea: '',
+    horarioAtendimento: 'Segunda a Sexta, das 08h às 17h30',
+    sloganContrato: '"Sua empresa ganha em competitividade, seu imóvel valoriza e o planeta agradece."',
+    prefixoContrato: 'CT',
+    banco: { banco: '', agencia: '', conta: '', titular: '', documento: '', pix: '' }
   };
 
   D.premissas = {
@@ -100,6 +123,18 @@ window.App = window.App || {};
       autonomiaHoras: 6,
       trocaBateriaAno: 0,
       trocaBateriaPct: 0.70
+    },
+    armazenamento: {
+      degradacao: 0.02,
+      vidaCalendario: 15,
+      ciclosPadrao: 6000,
+      trocaPct: 0.60,
+      instalPct: 0.15,
+      diasUteis: 252,
+      duracaoPonta: 3,
+      reducaoDemandaPct: 0.20,
+      toleranciaUltrapassagem: 0.05,
+      fatorUltrapassagem: 2
     }
   };
 
@@ -153,17 +188,166 @@ window.App = window.App || {};
     conformidadeHibrido: [
       { norma: 'IEC 62619', descricao: 'Requisitos de segurança para baterias de lítio em aplicações estacionárias' }
     ],
+    inclusosBess: [
+      'Projeto e integração do sistema de armazenamento (BESS)',
+      'Configuração da estratégia de operação (backup, horários de ponta e/ou controle de demanda)',
+      'Comissionamento e testes do sistema de armazenamento'
+    ],
+    naoInclusosBess: [
+      'Obras civis para base ou abrigo do BESS',
+      'Adequações de subestação, transformador ou proteção da concessionária (quando exigidas)'
+    ],
+    conformidadeBess: [
+      { norma: 'IEC 62933', descricao: 'Sistemas de armazenamento de energia elétrica (EES) — segurança e desempenho' },
+      { norma: 'IEC 62619', descricao: 'Requisitos de segurança para baterias de lítio em aplicações estacionárias' }
+    ],
+    cenariosIntro: 'Para o perfil de consumo e a modalidade tarifária do cliente, foram avaliadas as alternativas abaixo com o mesmo horizonte de análise e as mesmas premissas financeiras. A recomendação considera o retorno financeiro (VPL, TIR e payback) e o objetivo principal informado pelo cliente.',
     garantiaInstalacao: '1 ano',
     notaPagamento: '* Condições sujeitas à análise de crédito e taxas vigentes na data da contratação.',
-    infraDescricao: 'Materiais CA: DPS, disjuntores, quadro de proteção e sistema de aterramento'
+    infraDescricao: 'Materiais CA: DPS, disjuntores, quadro de proteção e sistema de aterramento',
+    avulsaApresentacao: 'A {empresa} apresenta a seguir a proposta para os serviços solicitados, executados por equipe técnica registrada no {registroTipo}, com segurança, qualidade e atendimento pós-venda.',
+    avulsaGarantia: '90 (noventa) dias para os serviços executados, contados da conclusão, sem prejuízo da garantia dos fabricantes para materiais e equipamentos.',
+    avulsaInclusos: [
+      'Mão de obra especializada e deslocamento da equipe na sede do município',
+      'Ferramentas e equipamentos de segurança (EPI/EPC)',
+      'Relatório de execução dos serviços'
+    ],
+    avulsaNaoInclusos: [
+      'Materiais e peças não listados nesta proposta',
+      'Serviços adicionais identificados durante a execução (orçados à parte)'
+    ]
   };
+
+  /*
+   * Modelo de contrato (estrutura e cláusulas). As cláusulas são numeradas automaticamente na ordem em que aparecem.
+   * Marcadores: {objeto}, {kwp}, {prazoDias}, {prazoExtenso}, {valorExtenso}, {local}, {cidade}, {uf}, {foro}, {perdas}, {pr},
+   * {cl:ID} = número da cláusula com aquele id, {sec:ID} = número da seção. **texto** = negrito sublinhado.
+   */
+  D.contrato = {
+    titulo: 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS',
+    subtitulo: 'Sistema de Geração de Energia Solar Fotovoltaica',
+    secoes: [
+      { id: 'objeto', titulo: 'DO OBJETO', clausulas: [
+        { id: 'objeto', texto: 'O presente contrato tem por objeto a prestação de serviços profissionais especializados em {objeto} por parte da **CONTRATADA**, conforme os termos e condições detalhados nas cláusulas seguintes.' }
+      ] },
+      { id: 'producao', titulo: 'PRODUÇÃO MÉDIA PROMETIDA', tipo: 'producao',
+        paragrafo: 'A estimativa de produção mensal abaixo foi calculada com base nos dados do Atlas Brasileiro de Energia Solar – INPE/LABREN (2ª Edição, 2017), considerando a irradiação solar no plano inclinado para {local}, com fator de perdas sistêmicas de {perdas}% (temperatura, cabos, inversor, sombreamento e sujeira). A variação real pode ser de até 10% para mais ou para menos, conforme condições climáticas locais.',
+        fonte: 'Fonte: Atlas Brasileiro de Energia Solar – INPE/LABREN, 2ª Ed. (2017) | CRESESB/SunData. Cálculo: potência instalada {kwp} kWp × HSP mensal × eficiência {pr}%.' },
+      { id: 'obrigacoes', titulo: 'OBRIGAÇÕES DAS PARTES', clausulas: [
+        { texto: 'A CONTRATANTE deverá fornecer à CONTRATADA todas as informações necessárias à realização do serviço, devendo especificar os detalhes necessários à perfeita consecução do mesmo.' },
+        { texto: 'A CONTRATANTE deverá efetuar o pagamento na forma e condições estabelecidas na Cláusula {cl:pagamento}.' },
+        { texto: 'A CONTRATADA deverá prestar os serviços solicitados pela CONTRATANTE conforme detalhamento e prazos descritos na Proposta Comercial e cláusulas seguintes.' },
+        { texto: 'Serão de responsabilidade da CONTRATADA os meios necessários para viabilizar a prestação de serviço, incluindo equipamentos, licenças de software e local de trabalho, salvo as obrigações da CONTRATANTE previstas neste contrato.' },
+        { texto: 'A CONTRATADA obriga-se a manter absoluto sigilo sobre as operações, dados, estratégias, materiais, informações e documentos da CONTRATANTE, mesmo após a conclusão dos serviços ou do término da relação contratual.' },
+        { texto: 'Os contratos, informações, dados e documentos da CONTRATANTE deverão ser utilizados pela CONTRATADA estritamente para o cumprimento dos serviços solicitados.' },
+        { texto: 'A CONTRATADA deverá fornecer os respectivos documentos fiscais referentes aos pagamentos do presente instrumento.' }
+      ] },
+      { id: 'servicos', titulo: 'DOS SERVIÇOS E PRAZO DE EXECUÇÃO', clausulas: [
+        { id: 'inicio', texto: 'Os serviços terão início após o envio de todo o material e especificações necessários por parte da CONTRATANTE.' },
+        { id: 'prazo', rotulo: 'PRAZO DE EXECUÇÃO E ENTREGA', sublinhar: true, texto: 'A montagem do Gerador Fotovoltaico fica no prazo de até {prazoDias} ({prazoExtenso}) dias após a assinatura do contrato, podendo ser finalizada antes do prazo.' }
+      ] },
+      { id: 'equipamentos', titulo: 'DOS EQUIPAMENTOS CONTRATADOS', tipo: 'equipamentos' },
+      { id: 'garantias', titulo: 'DAS GARANTIAS', tipo: 'garantias' },
+      { id: 'preco', titulo: 'DO PREÇO E DAS CONDIÇÕES DE PAGAMENTO', tipo: 'pagamento', clausulas: [
+        { id: 'pagamento', texto: 'Os serviços alvos deste contrato serão remunerados pela quantia total de {valorExtenso}, a serem pagos conforme tabela abaixo:' }
+      ] },
+      { id: 'rescisao', titulo: 'DO DESCUMPRIMENTO E DA RESCISÃO', clausulas: [
+        { texto: 'O descumprimento de qualquer cláusula por qualquer parte implicará na rescisão imediata deste contrato, não isentando a CONTRATADA de suas responsabilidades referentes ao zelo com informações e dados da CONTRATANTE.' },
+        { texto: 'Havendo descumprimento por parte da CONTRATADA, deverão ser devolvidos os valores referentes aos serviços não desenvolvidos que já houverem sido pagos.' },
+        { rotulo: 'Parágrafo Único', semNumero: true, texto: 'Caso a CONTRATANTE ainda não tenha efetuado o pagamento dos valores totais referentes a serviços já desenvolvidos, compromete-se a efetuar o pagamento dos valores referentes aos serviços realizados conforme prazos da Cláusula {cl:inicio}.' },
+        { texto: 'No caso de descumprimento por parte da CONTRATANTE, caberá a devolução dos valores referentes aos serviços não desenvolvidos e já pagos, descontando eventuais impostos já recolhidos.' },
+        { texto: 'Caso seja a CONTRATANTE quem requeira a rescisão imotivada, tendo havido pagamento por serviços ainda não realizados, serão devolvidos pela CONTRATADA os valores referentes aos serviços pagos que ainda não houverem sido realizados, descontados eventuais impostos já recolhidos.' },
+        { texto: 'Caso seja a CONTRATADA quem requeira a rescisão imotivada, deverá devolver à CONTRATANTE a quantia referente aos serviços por ela não prestados e não realizáveis no período de encerramento do contrato.' }
+      ] },
+      { id: 'disposicoes', titulo: 'DO PRAZO, VALIDADE E DISPOSIÇÕES GERAIS', clausulas: [
+        { texto: 'Este instrumento é válido até a finalização do projeto ou encerramento do contrato, não ficando a CONTRATADA isenta de seus compromissos éticos após sua invalidação.' },
+        { texto: 'Fica compactuada entre as partes a total inexistência de vínculo trabalhista entre as partes, excluindo as obrigações previdenciárias e os encargos sociais.' },
+        { texto: 'A tolerância de qualquer das partes com relação ao descumprimento de qualquer termo ou condição aqui ajustado não será considerada como desistência em exigir o cumprimento das disposições nele contidas.' },
+        { id: 'foro', rotulo: 'Foro', texto: 'Para dirimir quaisquer controvérsias oriundas do presente contrato, as partes elegem o foro da Comarca de {foro}.' }
+      ] }
+    ],
+    garantias: {
+      objeto: 'Este Termo de Garantia tem por objeto assegurar a qualidade da instalação do sistema de geração de energia solar fotovoltaica, realizada pela CONTRATADA no endereço indicado pelo CONTRATANTE, nos termos do projeto técnico e do contrato de prestação de serviços celebrado entre as partes.',
+      prazosIntro: 'Os prazos de garantia têm início na data de troca do medidor (habilitação do sistema) pela concessionária de energia elétrica, conforme tabela abaixo:',
+      tabela: [
+        { item: 'Mão de Obra e Instalação', prazo: '12 meses', cobertura: 'Falhas de montagem, fixação, conexões elétricas e suporte de monitoramento Wi-Fi.' },
+        { item: 'Módulos Fotovoltaicos', prazo: '10–15 anos', cobertura: 'Defeitos de fabricação. Garantia de performance: até 30 anos (conforme fabricante).' },
+        { item: 'Inversores', prazo: '5–10 anos', cobertura: 'Conforme fabricante. Suporte ao acionamento prestado pela CONTRATADA.' },
+        { item: 'Estruturas de Fixação', prazo: 'Mín. 10 anos', cobertura: 'Corrosão e falhas estruturais, conforme fabricante.' },
+        { item: 'Cabos, Conectores, Disjuntores, Fusíveis e Protetor contra Surtos', prazo: '12 meses', cobertura: 'Defeitos de fabricação.' }
+      ],
+      suporte: 'A CONTRATADA prestará suporte ao CONTRATANTE para acionamento das garantias dos fabricantes, quando necessário, durante o prazo de garantia da instalação.',
+      coberturaIntro: 'A garantia abrange exclusivamente:',
+      cobertura: [
+        'Defeitos decorrentes de falha na execução da instalação realizada pela CONTRATADA;',
+        'Falhas técnicas que impeçam o funcionamento normal do sistema após a entrega;',
+        'Substituição ou reparo de componentes que apresentem defeito dentro do prazo de garantia, desde que as causas não estejam descritas nas exclusões de garantia;',
+        'Suporte ao monitoramento remoto e conectividade Wi-Fi do sistema, dentro do prazo de 12 meses.'
+      ],
+      exclusoesIntro: 'A garantia não se aplica a danos ou defeitos originados por:',
+      exclusoes: [
+        'Mau uso, negligência ou operação em desacordo com as orientações técnicas fornecidas;',
+        'Intervenções realizadas por terceiros não autorizados pela CONTRATADA;',
+        'Modificações estruturais no imóvel que afetem, direta ou indiretamente, o sistema instalado;',
+        'Surtos elétricos, descargas atmosféricas ou variações de tensão da rede sem dispositivos de proteção adequados;',
+        'Eventos de força maior: tempestades, granizo, enchentes, incêndios ou outros fenômenos naturais;',
+        'Ausência de manutenção preventiva recomendada pela CONTRATADA;',
+        'Sujeira acumulada, sombreamento superveniente ou obstruções externas não preexistentes à instalação;',
+        'Desgaste natural decorrente do uso normal dos componentes ao longo do tempo.'
+      ],
+      procedimentoIntro: 'Para acionar a garantia, o CONTRATANTE deverá notificar a CONTRATADA pelos canais oficiais, informando obrigatoriamente:',
+      procedimento: [
+        'Descrição objetiva do problema constatado;',
+        'Data e hora da identificação da falha;',
+        'Fotos ou registros visuais do defeito (quando aplicável);',
+        'Número do contrato ou nota fiscal de referência.'
+      ],
+      atendimento: 'O prazo para atendimento técnico inicial é de até 02 (dois) dias úteis contados do recebimento formal da notificação. O atendimento poderá ser realizado de forma remota ou presencial, a critério técnico da CONTRATADA.',
+      obrigacoesIntro: 'Para manutenção da validade desta garantia, o CONTRATANTE se compromete a:',
+      obrigacoes: [
+        'Permitir acesso à instalação para inspeção, manutenção e reparos;',
+        'Utilizar o sistema dentro das especificações técnicas fornecidas;',
+        'Realizar as limpezas e manutenções preventivas periódicas recomendadas;',
+        'Não efetuar alterações, ampliações ou modificações no sistema sem autorização prévia e por escrito da CONTRATADA;',
+        'Comunicar a CONTRATADA imediatamente ao identificar qualquer anormalidade no funcionamento do sistema.'
+      ],
+      limitacao: [
+        'Esta garantia não assegura nível mínimo ou específico de geração de energia elétrica. A produção do sistema depende de fatores externos, tais como: incidência solar, nebulosidade, sombreamento, temperatura ambiente e condições climáticas locais, os quais estão fora do controle da CONTRATADA.',
+        'A responsabilidade da CONTRATADA limita-se ao reparo ou substituição dos itens com defeito cobertos por esta garantia, não sendo devida qualquer indenização por lucros cessantes, perdas de produção ou danos consequentes.'
+      ],
+      disposicoes: [
+        'Este Termo integra e complementa o contrato de fornecimento e instalação firmado entre as partes. Em caso de conflito, prevalecem as disposições contratuais específicas.',
+        'A garantia é intransferível e válida exclusivamente para o endereço de instalação indicado neste documento.',
+        'Quaisquer alterações a este Termo somente terão validade se formalizadas por escrito e assinadas por ambas as partes.',
+        'Fica eleito o foro da Comarca de {foro} para dirimir eventuais litígios decorrentes deste instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.'
+      ]
+    }
+  };
+
+  D.servicos = [
+    { id: 'srv-limpeza', descricao: 'Limpeza técnica de módulos fotovoltaicos', categoria: 'Limpeza', unidade: 'un', preco: 0, prazo: '1 dia', garantia: '', detalhes: 'Limpeza com água desmineralizada e escovas de cerdas macias, sem produtos abrasivos. Unidade = módulo.' },
+    { id: 'srv-preventiva', descricao: 'Manutenção preventiva de sistema fotovoltaico', categoria: 'Manutenção', unidade: 'vb', preco: 0, prazo: '1 dia', garantia: '', detalhes: 'Inspeção visual, reaperto de conexões CA/CC, verificação de proteções, aterramento, estrutura e parâmetros do inversor, com relatório.' },
+    { id: 'srv-corretiva', descricao: 'Manutenção corretiva (hora técnica)', categoria: 'Manutenção', unidade: 'h', preco: 0, prazo: 'Conforme diagnóstico', garantia: '', detalhes: '' },
+    { id: 'srv-termografia', descricao: 'Inspeção termográfica de módulos e quadros', categoria: 'Inspeção e laudos', unidade: 'vb', preco: 0, prazo: '2 dias úteis', garantia: '', detalhes: 'Identificação de pontos quentes, diodos e conexões com falha, com relatório fotográfico.' },
+    { id: 'srv-laudo', descricao: 'Laudo técnico com ART', categoria: 'Inspeção e laudos', unidade: 'vb', preco: 0, prazo: '5 dias úteis', garantia: '', detalhes: '' },
+    { id: 'srv-padrao', descricao: 'Adequação de padrão de entrada', categoria: 'Instalações elétricas', unidade: 'vb', preco: 0, prazo: 'A combinar', garantia: '', detalhes: '' },
+    { id: 'srv-spda', descricao: 'Sistema de aterramento / SPDA', categoria: 'Instalações elétricas', unidade: 'vb', preco: 0, prazo: 'A combinar', garantia: '', detalhes: '' },
+    { id: 'srv-wallbox', descricao: 'Instalação de carregador veicular (wallbox)', categoria: 'Mobilidade elétrica', unidade: 'un', preco: 0, prazo: '1 dia', garantia: '', detalhes: 'Circuito dedicado, proteção DR/DPS e comissionamento do carregador.' },
+    { id: 'srv-projeto', descricao: 'Projeto elétrico', categoria: 'Projetos', unidade: 'vb', preco: 0, prazo: '5 dias úteis', garantia: '', detalhes: '' },
+    { id: 'srv-ampliacao', descricao: 'Ampliação de sistema fotovoltaico', categoria: 'Projetos', unidade: 'kWp', preco: 0, prazo: 'A combinar', garantia: '', detalhes: '' },
+    { id: 'srv-monitoramento', descricao: 'Monitoramento remoto e suporte (mensalidade)', categoria: 'Monitoramento', unidade: 'mês', preco: 0, prazo: 'Contínuo', garantia: '', detalhes: '' }
+  ];
 
   D.concessionarias = [
     {
       id: 'energisa-ms', nome: 'Energisa MS', uf: 'MS',
       tarifas: { B1: 0.9762, B2: 0.72, B3: 0.98 },
+      branca: { ponta: '', intermediario: '', foraPonta: '' },
+      verde: { ponta: '', foraPonta: '', demanda: '' },
+      azul: { ponta: '', foraPonta: '', demandaPonta: '', demandaForaPonta: '' },
+      horarioPonta: '',
       tusdFioB: 0.32,
-      obs: 'Tarifas finais com impostos (R$/kWh). Confira sempre com a fatura do cliente.'
+      obs: 'Tarifas finais com impostos (R$/kWh e R$/kW). Confira sempre com a fatura do cliente e a resolução homologatória vigente.'
     }
   ];
 
@@ -213,6 +397,11 @@ window.App = window.App || {};
     {
       id: 'bat-pylon-us5000', tipo: 'bateria', ativo: true, fabricante: 'Pylontech', modelo: 'US5000',
       quimica: 'LiFePO4', tensao: 48, capacidadeAh: 100, energia: 4.8, dod: 95, ciclos: 6000, garantia: 10, preco: 0, obs: REF
+    },
+    {
+      id: 'bess-exemplo-100', tipo: 'bess', ativo: true, fabricante: 'Genérico', modelo: 'BESS 100 kWh / 50 kW (exemplo)',
+      quimica: 'LiFePO4', energia: 100, potencia: 50, dod: 90, eficiencia: 90, ciclos: 6000, fases: 'Trifásico', tensao: '380V',
+      garantia: 10, preco: 0, obs: 'Item de exemplo — substitua pelo equipamento e preço do seu fornecedor.'
     },
     {
       id: 'est-fibro-4', tipo: 'estrutura', ativo: true, fabricante: 'Solfácil', telhado: 'Fibrocimento',

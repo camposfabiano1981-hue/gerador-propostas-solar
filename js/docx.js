@@ -42,6 +42,7 @@ window.App = window.App || {};
     if (o.i) s += '<w:i/><w:iCs/>';
     if (o.color) s += '<w:color w:val="' + o.color + '"/>';
     if (o.sz) s += '<w:sz w:val="' + o.sz + '"/><w:szCs w:val="' + o.sz + '"/>';
+    if (o.u) s += '<w:u w:val="single"/>';
     return s ? '<w:rPr>' + s + '</w:rPr>' : '';
   }
 
@@ -49,20 +50,38 @@ window.App = window.App || {};
     return '<w:' + lado + ' w:val="single" w:sz="' + b.sz + '" w:space="' + (b.space || 0) + '" w:color="' + (b.color || 'auto') + '"/>';
   }
 
-  function secaoCapa(papel) {
-    return '<w:sectPr><w:pgSz w:w="' + papel.w + '" w:h="' + papel.h + '"/><w:pgMar w:top="720" w:right="1440" w:bottom="720" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="720"/><w:docGrid w:linePitch="360"/></w:sectPr>';
+  const MARGENS_CAPA = { top: 720, right: 1440, bottom: 720, left: 1440, header: 708, footer: 708 };
+  const MARGENS_CONTEUDO = { top: 1080, right: 1440, bottom: 1080, left: 1440, header: 708, footer: 708 };
+
+  function pgMar(m) {
+    return '<w:pgMar w:top="' + m.top + '" w:right="' + m.right + '" w:bottom="' + m.bottom + '" w:left="' + m.left + '" w:header="' + m.header + '" w:footer="' + m.footer + '" w:gutter="0"/>';
   }
 
-  function secaoConteudo(papel) {
+  function secaoCapa(papel, m) {
+    return '<w:sectPr><w:pgSz w:w="' + papel.w + '" w:h="' + papel.h + '"/>' + pgMar(m || MARGENS_CAPA) + '<w:cols w:space="720"/><w:docGrid w:linePitch="360"/></w:sectPr>';
+  }
+
+  function secaoConteudo(papel, m) {
     return '<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:footerReference w:type="default" r:id="rIdFooter"/>' +
-      '<w:pgSz w:w="' + papel.w + '" w:h="' + papel.h + '"/><w:pgMar w:top="1080" w:right="1440" w:bottom="1080" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>' +
+      '<w:pgSz w:w="' + papel.w + '" w:h="' + papel.h + '"/>' + pgMar(m || MARGENS_CONTEUDO) +
       '<w:cols w:space="720"/><w:docGrid w:linePitch="360"/></w:sectPr>';
+  }
+
+  function bordasCelula(b) {
+    return '<w:tcBorders>' + ['top', 'left', 'bottom', 'right'].map(function (l) {
+      return '<w:' + l + ' w:val="single" w:sz="' + (b.sz || 4) + '" w:space="0" w:color="' + (b.cor || 'auto') + '"/>';
+    }).join('') + '</w:tcBorders>';
+  }
+
+  function margensCelula(m) {
+    return '<w:tcMar><w:top w:w="' + m.t + '" w:type="dxa"/><w:left w:w="' + m.l + '" w:type="dxa"/><w:bottom w:w="' + m.b + '" w:type="dxa"/><w:right w:w="' + m.r + '" w:type="dxa"/></w:tcMar>';
   }
 
   /** Serializador do modelo para WordprocessingML. */
   function Serializador(modelo) {
     this.papel = modelo.papel;
     this.k = modelo.k;
+    this.margensCapa = modelo.margensCapa;
     this.idImg = 10;
   }
 
@@ -79,8 +98,9 @@ window.App = window.App || {};
     if (o.before != null || o.after != null) {
       s += '<w:spacing' + (o.before != null ? ' w:before="' + o.before + '"' : '') + (o.after != null ? ' w:after="' + o.after + '"' : '') + '/>';
     }
+    if (o.ind) s += '<w:ind w:left="' + o.ind + '"/>';
     if (o.jc) s += '<w:jc w:val="' + o.jc + '"/>';
-    if (o.sectPr) s += secaoCapa(this.papel);
+    if (o.sectPr) s += secaoCapa(this.papel, this.margensCapa);
     return s ? '<w:pPr>' + s + '</w:pPr>' : '';
   };
 
@@ -116,9 +136,10 @@ window.App = window.App || {};
       // célula "crua" (bloco de assinatura do modelo): só largura
       return '<w:tc><w:tcPr>' + pr + '</w:tcPr>' + (conteudo || '<w:p/>') + '</w:tc>';
     }
-    pr += o.semBorda ? TC_SEM_BORDA : TC_BORDERS;
+    pr += o.semBorda ? TC_SEM_BORDA : (o.borda ? bordasCelula(o.borda) : TC_BORDERS);
     if (o.fill) pr += '<w:shd w:val="clear" w:color="auto" w:fill="' + o.fill + '"/>';
-    if (!o.semBorda) pr += TC_MAR;
+    if (o.mar) pr += margensCelula(o.mar);
+    else if (!o.semBorda) pr += TC_MAR;
     pr += '<w:vAlign w:val="' + (o.vAlign || 'center') + '"/>';
     return '<w:tc><w:tcPr>' + pr + '</w:tcPr>' + (conteudo || '<w:p/>') + '</w:tc>';
   };
@@ -150,7 +171,7 @@ window.App = window.App || {};
   function serializar(modelo) {
     const s = new Serializador(modelo);
     const documento = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<w:document ' + NS + '><w:body>' +
-      s.lista(modelo.corpo) + secaoConteudo(modelo.papel) + '</w:body></w:document>';
+      s.lista(modelo.corpo) + secaoConteudo(modelo.papel, modelo.margens) + '</w:body></w:document>';
     const header = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<w:hdr ' + NS + '>' + s.lista(modelo.cabecalho) + '</w:hdr>';
     const footer = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<w:ftr ' + NS + '>' + s.lista(modelo.rodape) + '</w:ftr>';
     return { documento: documento, header: header, footer: footer };
@@ -195,15 +216,13 @@ window.App = window.App || {};
   const RT = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
 
   /**
-   * Gera o .docx da proposta.
-   * @returns {Promise<{blob: Blob, nome: string, resultado: object}>}
+   * Monta o pacote .docx a partir de um modelo de documento.
+   * rec: {logo: {bytes, ext}, grafico: dataURL (opcional)}; meta: {titulo, autor}
    */
-  async function gerar(p, ctx) {
-    const d = await App.Documento.preparar(p, ctx);
-    const partes = serializar(d.modelo);
+  async function pacote(modelo, rec, meta) {
+    const partes = serializar(modelo);
     const agora = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-    const emp = d.ctx.empresa;
-    const logo = d.logo;
+    const logo = rec.logo;
 
     const zip = new App.Zip();
     zip.add('[Content_Types].xml', contentTypes());
@@ -215,8 +234,8 @@ window.App = window.App || {};
     zip.add('docProps/core.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
       '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" ' +
       'xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
-      '<dc:title>' + x('Proposta Comercial ' + p.numero + ' — ' + d.nomeCliente) + '</dc:title>' +
-      '<dc:creator>' + x(emp.razao) + '</dc:creator><cp:lastModifiedBy>' + x(emp.razao) + '</cp:lastModifiedBy>' +
+      '<dc:title>' + x(meta.titulo) + '</dc:title>' +
+      '<dc:creator>' + x(meta.autor) + '</dc:creator><cp:lastModifiedBy>' + x(meta.autor) + '</cp:lastModifiedBy>' +
       '<dcterms:created xsi:type="dcterms:W3CDTF">' + agora + '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' + agora + '</dcterms:modified>' +
       '</cp:coreProperties>');
     zip.add('docProps/app.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
@@ -228,23 +247,33 @@ window.App = window.App || {};
     zip.add('word/theme/theme1.xml', App.docxParts.theme);
     zip.add('word/header1.xml', partes.header);
     zip.add('word/footer1.xml', partes.footer);
-    zip.add('word/_rels/document.xml.rels', rels([
+    const relsDoc = [
       ['rId1', RT + 'styles', 'styles.xml'],
       ['rId2', RT + 'settings', 'settings.xml'],
       ['rId3', RT + 'fontTable', 'fontTable.xml'],
       ['rId4', RT + 'theme', 'theme/theme1.xml'],
       ['rIdHeader', RT + 'header', 'header1.xml'],
       ['rIdFooter', RT + 'footer', 'footer1.xml'],
-      ['rIdLogo', RT + 'image', 'media/logo.' + logo.ext],
-      ['rIdGrafico', RT + 'image', 'media/grafico.png']
-    ]));
+      ['rIdLogo', RT + 'image', 'media/logo.' + logo.ext]
+    ];
+    if (rec.grafico) relsDoc.push(['rIdGrafico', RT + 'image', 'media/grafico.png']);
+    zip.add('word/_rels/document.xml.rels', rels(relsDoc));
     zip.add('word/_rels/header1.xml.rels', rels([['rIdLogo', RT + 'image', 'media/logo.' + logo.ext]]));
     zip.add('word/media/logo.' + logo.ext, logo.bytes);
-    zip.add('word/media/grafico.png', App.U.dataURLtoBytes(d.grafico));
+    if (rec.grafico) zip.add('word/media/grafico.png', App.U.dataURLtoBytes(rec.grafico));
+    return zip.gerar('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  }
 
-    const blob = await zip.gerar('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  /**
+   * Gera o .docx da proposta.
+   * @returns {Promise<{blob: Blob, nome: string, resultado: object}>}
+   */
+  async function gerar(p, ctx) {
+    const d = await App.Documento.preparar(p, ctx);
+    const blob = await pacote(d.modelo, { logo: d.logo, grafico: d.grafico },
+      { titulo: 'Proposta Comercial ' + p.numero + ' — ' + d.nomeCliente, autor: d.ctx.empresa.razao });
     return { blob: blob, nome: d.nomeBase + '.docx', resultado: d.r };
   }
 
-  App.Docx = { gerar: gerar, serializar: serializar };
+  App.Docx = { gerar: gerar, serializar: serializar, pacote: pacote };
 })(window.App);

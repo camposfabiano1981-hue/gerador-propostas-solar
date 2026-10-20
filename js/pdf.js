@@ -16,8 +16,11 @@ window.App = window.App || {};
   const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
   const FONTES = {
     normal: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/arimo@0.4.2/400Regular/Arimo_400Regular.ttf',
-    bold: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/arimo@0.4.2/700Bold/Arimo_700Bold.ttf'
+    bold: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/arimo@0.4.2/700Bold/Arimo_700Bold.ttf',
+    italic: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/arimo@0.4.2/400Regular_Italic/Arimo_400Regular_Italic.ttf',
+    bolditalic: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/arimo@0.4.2/700Bold_Italic/Arimo_700Bold_Italic.ttf'
   };
+  const ESTILOS = ['normal', 'bold', 'italic', 'bolditalic'];
   const FAMILIA = 'Arimo';
   const ALTURA_LINHA = 1.15;   // espaçamento simples da Arial no Word
   const ASCENDENTE = 0.905;
@@ -63,12 +66,12 @@ window.App = window.App || {};
   /** Baixa a fonte Arimo (uma vez por sessão). Sem internet, retorna null e o PDF usa Helvetica. */
   function carregarFontes() {
     if (!promessaFontes) {
-      promessaFontes = Promise.all([FONTES.normal, FONTES.bold].map(function (u) {
-        return fetch(u).then(function (r) {
+      promessaFontes = Promise.all(ESTILOS.map(function (k) {
+        return fetch(FONTES[k]).then(function (r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.arrayBuffer();
         }).then(paraBase64);
-      })).then(function (b) { return { normal: b[0], bold: b[1] }; })
+      })).then(function (b) { const o = {}; ESTILOS.forEach(function (k, i) { o[k] = b[i]; }); return o; })
         .catch(function (e) { console.warn('Fonte Arimo indisponível; usando Helvetica.', e); promessaFontes = null; return null; });
     }
     return promessaFontes;
@@ -99,8 +102,12 @@ window.App = window.App || {};
     this.fam = fonteOk ? FAMILIA : 'helvetica';
     this.pw = modelo.papel.w / 20;
     this.ph = modelo.papel.h / 20;
-    this.ml = 72;
-    this.cw = this.pw - 144;
+    const mg = modelo.margens || { top: 1080, right: 1440, bottom: 1080, left: 1440, header: 708, footer: 708 };
+    const mc = modelo.margensCapa || { top: 720, bottom: 720 };
+    this.mg = { top: mg.top / 20, right: mg.right / 20, bottom: mg.bottom / 20, left: mg.left / 20, header: mg.header / 20, footer: mg.footer / 20 };
+    this.mgCapa = { top: mc.top / 20, bottom: mc.bottom / 20 };
+    this.ml = this.mg.left;
+    this.cw = this.pw - this.mg.left - this.mg.right;
     this.k = modelo.k;
     this.glifos = {};
     this.mapa = null;
@@ -113,8 +120,12 @@ window.App = window.App || {};
       } catch (e) { /* mapa indisponível: usa heurística */ }
     }
     this.fonteOk = fonteOk;
-    this.capa = true;
-    this.y = 36;
+    this.capa = modelo.corpo.some(function (n) { return n.po && n.po.sectPr; });
+    this.y = this.mgCapa.top;
+    if (!this.capa) {
+      this.desenharCabecalhoRodape();
+      this.y = this.topoConteudo();
+    }
   }
 
   /** O caractere pode ser desenhado com a fonte do PDF? */
@@ -151,7 +162,7 @@ window.App = window.App || {};
   };
 
   Render.prototype.fonte = function (estilo) {
-    this.doc.setFont(this.fam, estilo.b ? 'bold' : 'normal');
+    this.doc.setFont(this.fam, estilo.b && estilo.i ? 'bolditalic' : (estilo.b ? 'bold' : (estilo.i ? 'italic' : 'normal')));
     this.doc.setFontSize(estilo.tam);
   };
 
@@ -185,7 +196,7 @@ window.App = window.App || {};
     const duras = [[]];
     runs.forEach(function (run) {
       const ro = run.ro || {};
-      const estilo = { b: !!ro.b, cor: ro.color || '000000', tam: (ro.sz || 20) / 2 };
+      const estilo = { b: !!ro.b, i: !!ro.i, u: !!ro.u, cor: ro.color || '000000', tam: (ro.sz || 20) / 2 };
       const texto = String(run.texto).replace(/R\$ (?=-?\d)/g, 'R$ ');
       texto.split('\n').forEach(function (parte, i) {
         if (i > 0) duras.push([]);
@@ -247,13 +258,20 @@ window.App = window.App || {};
     const self = this;
     // agrupa trechos consecutivos com o mesmo estilo num único texto (PDF menor e texto selecionável por frase)
     let buf = '', est = null, bx = 0;
-    const mesmo = function (a, b) { return a && b && a.b === b.b && a.cor === b.cor && a.tam === b.tam; };
+    const mesmo = function (a, b) { return a && b && a.b === b.b && a.i === b.i && a.u === b.u && a.cor === b.cor && a.tam === b.tam; };
     const despejar = function () {
       if (buf && est && buf.trim()) {
         self.fonte(est);
         const c = rgb(est.cor);
+        const txt = buf.replace(/ /g, ' ');
         doc.setTextColor(c[0], c[1], c[2]);
-        doc.text(buf.replace(/ /g, ' '), bx, base);
+        doc.text(txt, bx, base);
+        if (est.u) {
+          const wTxt = doc.getTextWidth(txt.replace(/\s+$/, ''));
+          doc.setDrawColor(c[0], c[1], c[2]);
+          doc.setLineWidth(Math.max(0.4, est.tam * 0.06));
+          doc.line(bx, base + est.tam * 0.12, bx + wTxt, base + est.tam * 0.12);
+        }
       }
       buf = ''; est = null;
     };
@@ -287,7 +305,7 @@ window.App = window.App || {};
   Render.prototype.medirParagrafo = function (no, larg) {
     const po = no.po || {};
     const img = filhoImg(no);
-    const linhas = img ? [] : this.linhas(filhosRun(no), larg);
+    const linhas = img ? [] : this.linhas(filhosRun(no), larg - (po.ind ? po.ind / 20 : 0));
     let h = (po.before || 0) / 20 + (po.after || 0) / 20;
     if (po.top) h += po.top.sz / 8 + (po.top.space || 0);
     if (po.bottom) h += po.bottom.sz / 8 + (po.bottom.space || 0);
@@ -301,6 +319,7 @@ window.App = window.App || {};
   Render.prototype.paragrafo = function (no, x, larg, y, fluxo, medida) {
     const doc = this.doc;
     const po = no.po || {};
+    if (po.ind) { x += po.ind / 20; larg -= po.ind / 20; }
     const med = medida || this.medirParagrafo(no, larg);
     y += (po.before || 0) / 20;
     if (po.top) {
@@ -358,6 +377,7 @@ window.App = window.App || {};
   /* ---------- tabelas */
 
   function margens(o) {
+    if (o.mar) return { t: o.mar.t / 20, b: o.mar.b / 20, l: o.mar.l / 20, r: o.mar.r / 20 };
     if (o.simples || o.semBorda) return { t: 0, b: 0, l: 0.5, r: 0.5 };
     return { t: 4, b: 4, l: 6, r: 6 };
   }
@@ -370,7 +390,7 @@ window.App = window.App || {};
     let max = 0;
     filhosRun(p).forEach(function (run) {
       const ro = run.ro || {};
-      const estilo = { b: !!ro.b, cor: ro.color || '000000', tam: (ro.sz || 20) / 2 };
+      const estilo = { b: !!ro.b, i: !!ro.i, cor: ro.color || '000000', tam: (ro.sz || 20) / 2 };
       String(run.texto).replace(/R\$ (?=-?\d)/g, 'R$ ').split(/[ \n]+/).forEach(function (pal) {
         pal.split(/(?<=-)/).forEach(function (seg) {
           if (!seg) return;
@@ -443,9 +463,9 @@ window.App = window.App || {};
         doc.rect(x, y, c.w, med.h, 'F');
       }
       if (!o.semBorda) {
-        const b = rgb(o.simples ? '000000' : 'CCCCCC');
+        const b = rgb(o.borda ? o.borda.cor : (o.simples ? '000000' : 'CCCCCC'));
         doc.setDrawColor(b[0], b[1], b[2]);
-        doc.setLineWidth(0.5);
+        doc.setLineWidth(o.borda ? (o.borda.sz || 4) / 8 : 0.5);
         doc.rect(x, y, c.w, med.h, 'S');
       }
       const conteudo = c.h - c.m.t - c.m.b;
@@ -488,26 +508,32 @@ window.App = window.App || {};
   /* ---------- páginas */
 
   Render.prototype.topoConteudo = function () {
-    return this.capa ? 36 : this.topoPagina;
+    return this.capa ? this.mgCapa.top : this.topoPagina;
   };
 
   Render.prototype.limite = function () {
-    return this.capa ? this.ph - 36 : this.limitePagina;
+    return this.capa ? this.ph - this.mgCapa.bottom : this.limitePagina;
   };
 
   Render.prototype.desenharCabecalhoRodape = function () {
-    let y = 708 / 20;
+    let y = this.mg.header;
     const self = this;
     this.m.cabecalho.forEach(function (no) {
       if (no.tipo === 'tbl') y = self.tabela(no, false, self.ml, y);
       else y = self.paragrafo(no, self.ml, self.cw, y, false);
     });
-    this.topoPagina = Math.max(1080 / 20, y);
-    const alturas = this.m.rodape.map(function (no) { return self.medirParagrafo(no, self.cw).h; });
+    this.topoPagina = Math.max(this.mg.top, y);
+    const alturas = this.m.rodape.map(function (no) {
+      if (no.tipo === 'tbl') { const cols = self.colunas(no); return no.linhas.reduce(function (a, tr) { return a + self.medirLinha(tr, cols).h; }, 0); }
+      return self.medirParagrafo(no, self.cw).h;
+    });
     const hRod = alturas.reduce(function (a, b) { return a + b; }, 0);
-    let yr = this.ph - 708 / 20 - hRod;
-    this.m.rodape.forEach(function (no) { yr = self.paragrafo(no, self.ml, self.cw, yr, false); });
-    this.limitePagina = Math.min(this.ph - 1080 / 20, this.ph - 708 / 20 - hRod);
+    let yr = this.ph - this.mg.footer - hRod;
+    this.m.rodape.forEach(function (no) {
+      if (no.tipo === 'tbl') yr = self.tabela(no, false, self.ml, yr);
+      else yr = self.paragrafo(no, self.ml, self.cw, yr, false);
+    });
+    this.limitePagina = Math.min(this.ph - this.mg.bottom, this.ph - this.mg.footer - hRod);
   };
 
   Render.prototype.novaPagina = function () {
@@ -534,6 +560,14 @@ window.App = window.App || {};
     for (let i = 0; i < corpo.length; i++) {
       const no = corpo[i];
       if (no.tipo === 'tbl') {
+        if (no.manterComProximo) {
+          // faixa de título (tabela de uma linha): não fica sozinha no pé da página
+          const cols = this.colunas(no), self = this;
+          const hTab = no.linhas.reduce(function (a, tr) { return a + self.medirLinha(tr, cols).h; }, 0);
+          let j = i + 1;
+          while (corpo[j] && corpo[j].tipo === 'p' && !corpo[j].filhos.length && j < corpo.length - 1) j++;
+          if (this.y + hTab + this.alturaInicial(corpo[j]) > this.limite() && this.y > this.topoConteudo() + 1) this.novaPagina();
+        }
         this.y = this.tabela(no, true);
         continue;
       }
@@ -559,45 +593,49 @@ window.App = window.App || {};
   /* ------------------------------------------------------------ API */
 
   /**
-   * Gera o PDF da proposta.
-   * @returns {Promise<{blob: Blob, nome: string, resultado: object, fonteOk: boolean}>}
+   * Gera o PDF de um modelo de documento.
+   * rec: {logo: {dataURL, ext}, grafico: dataURL (opcional)}; meta: {titulo, assunto, autor}
+   * @returns {Promise<{blob: Blob, fonteOk: boolean}>}
    */
-  async function gerar(p, ctx, opcoes) {
+  async function pacote(modelo, rec, meta, opcoes) {
     opcoes = opcoes || {};
-    const res = await Promise.all([App.Documento.preparar(p, ctx), carregarJsPDF(), carregarFontes()]);
-    const d = res[0], JsPDF = res[1], fontes = res[2];
-    const modelo = d.modelo;
+    const res = await Promise.all([carregarJsPDF(), carregarFontes()]);
+    const JsPDF = res[0], fontes = res[1];
     const pw = modelo.papel.w / 20, ph = modelo.papel.h / 20;
     const doc = new JsPDF({ unit: 'pt', format: [pw, ph], orientation: 'p', compress: opcoes.compress !== false });
     let fonteOk = false;
     if (fontes) {
       try {
-        doc.addFileToVFS('Arimo-Regular.ttf', fontes.normal);
-        doc.addFont('Arimo-Regular.ttf', FAMILIA, 'normal');
-        doc.addFileToVFS('Arimo-Bold.ttf', fontes.bold);
-        doc.addFont('Arimo-Bold.ttf', FAMILIA, 'bold');
+        ESTILOS.forEach(function (k) {
+          doc.addFileToVFS('Arimo-' + k + '.ttf', fontes[k]);
+          doc.addFont('Arimo-' + k + '.ttf', FAMILIA, k);
+        });
         doc.setFont(FAMILIA, 'normal');
         fonteOk = true;
       } catch (e) {
         console.warn('Falha ao registrar a fonte Arimo; usando Helvetica.', e);
       }
     }
-    const emp = d.ctx.empresa;
-    doc.setProperties({
-      title: 'Proposta Comercial ' + p.numero + ' — ' + d.nomeCliente,
-      subject: 'Proposta de sistema fotovoltaico',
-      author: emp.razao,
-      creator: 'Gerador de Propostas Solar'
-    });
+    doc.setProperties({ title: meta.titulo, subject: meta.assunto || '', author: meta.autor, creator: 'Gerador de Propostas Solar' });
     if (doc.setLanguage) doc.setLanguage('pt-BR');
     const recursos = {
-      logo: { url: d.logo.dataURL, formato: d.logo.ext === 'png' ? 'PNG' : 'JPEG' },
-      grafico: { url: d.grafico, formato: 'PNG' }
+      logo: { url: rec.logo.dataURL, formato: rec.logo.ext === 'png' ? 'PNG' : 'JPEG' },
+      grafico: rec.grafico ? { url: rec.grafico, formato: 'PNG' } : null
     };
     new Render(doc, modelo, recursos, fonteOk).render();
-    const blob = doc.output('blob');
-    return { blob: blob, nome: d.nomeBase + '.pdf', resultado: d.r, fonteOk: fonteOk };
+    return { blob: doc.output('blob'), fonteOk: fonteOk };
   }
 
-  App.Pdf = { gerar: gerar, carregarJsPDF: carregarJsPDF };
+  /**
+   * Gera o PDF da proposta.
+   * @returns {Promise<{blob: Blob, nome: string, resultado: object, fonteOk: boolean}>}
+   */
+  async function gerar(p, ctx, opcoes) {
+    const d = await App.Documento.preparar(p, ctx);
+    const out = await pacote(d.modelo, { logo: d.logo, grafico: d.grafico },
+      { titulo: 'Proposta Comercial ' + p.numero + ' — ' + d.nomeCliente, assunto: 'Proposta de sistema fotovoltaico', autor: d.ctx.empresa.razao }, opcoes);
+    return { blob: out.blob, nome: d.nomeBase + '.pdf', resultado: d.r, fonteOk: out.fonteOk };
+  }
+
+  App.Pdf = { gerar: gerar, pacote: pacote, carregarJsPDF: carregarJsPDF };
 })(window.App);

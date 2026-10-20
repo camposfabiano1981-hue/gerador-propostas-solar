@@ -98,6 +98,69 @@ window.App = window.App || {};
   };
 
   U.MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  U.MESES_NOMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+  /** "20 de maio de 2026" */
+  U.dataExtenso = function (iso) {
+    const p = String(iso || U.todayISO()).slice(0, 10).split('-');
+    if (p.length !== 3) return String(iso || '');
+    return parseInt(p[2], 10) + ' de ' + U.MESES_NOMES[parseInt(p[1], 10) - 1] + ' de ' + p[0];
+  };
+
+  /** Ordinal feminino abreviado: 1 → "1ª". */
+  U.ordinal = function (n) { return n + 'ª'; };
+
+  const UNIDADES = ['zero', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze',
+    'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+  const DEZENAS = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+  const CENTENAS = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+
+  function ate999(n) {
+    if (n === 100) return 'cem';
+    const c = Math.floor(n / 100), r = n % 100;
+    const partes = [];
+    if (c) partes.push(CENTENAS[c]);
+    if (r) partes.push(r < 20 ? UNIDADES[r] : DEZENAS[Math.floor(r / 10)] + (r % 10 ? ' e ' + UNIDADES[r % 10] : ''));
+    return partes.join(' e ');
+  }
+
+  /** Número inteiro por extenso (até a casa dos bilhões): 80 → "oitenta". */
+  U.numeroExtenso = function (v) {
+    let n = Math.floor(Math.abs(Number(v) || 0));
+    if (n === 0) return 'zero';
+    const escalas = [['', ''], ['mil', 'mil'], ['milhão', 'milhões'], ['bilhão', 'bilhões']];
+    const grupos = [];
+    while (n > 0) { grupos.push(n % 1000); n = Math.floor(n / 1000); }
+    const partes = [];
+    for (let i = grupos.length - 1; i >= 0; i--) {
+      const g = grupos[i];
+      if (!g) continue;
+      let t = i === 1 && g === 1 ? '' : ate999(g);
+      if (i > 0) t = (t ? t + ' ' : '') + escalas[i][g === 1 ? 0 : 1];
+      partes.push({ t: t, g: g });
+    }
+    // conector "e" antes do último grupo quando ele é < 100 ou centena exata (ex.: "mil e cem", "dois mil e cinco")
+    return partes.map(function (p, i) {
+      if (i === 0) return p.t;
+      const ult = i === partes.length - 1;
+      return (ult && (p.g < 100 || p.g % 100 === 0) ? ' e ' : ', ') + p.t;
+    }).join('');
+  };
+
+  /** Valor em reais por extenso, com inicial maiúscula: "Oitenta e seis mil, cento e dez reais e cinquenta e cinco centavos". */
+  U.extenso = function (v) {
+    const total = Math.round(Math.abs(Number(v) || 0) * 100);
+    const reais = Math.floor(total / 100), cent = total % 100;
+    const partes = [];
+    if (reais) {
+      const t = U.numeroExtenso(reais);
+      const de = reais % 1000000 === 0 ? ' de' : '';
+      partes.push(t + de + (reais === 1 ? ' real' : ' reais'));
+    }
+    if (cent) partes.push(U.numeroExtenso(cent) + (cent === 1 ? ' centavo' : ' centavos'));
+    const s = partes.length ? partes.join(' e ') : 'zero reais';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
 
   U.UF_NOMES = {
     AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal',

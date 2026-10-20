@@ -45,7 +45,7 @@ window.App = window.App || {};
     const rows = [];
     if (!o.semCabecalho) {
       rows.push(TR(colunas.map(function (c) {
-        return TC(T(c.t, alinhar(c.jc), { b: true, color: BRANCO }), { w: c.w, fill: AZUL });
+        return TC(T(c.t, alinhar(c.jc), { b: true, color: BRANCO }), { w: c.w, fill: c.fill || AZUL });
       }), true));
     }
     linhas.forEach(function (lin, i) {
@@ -124,13 +124,20 @@ window.App = window.App || {};
     const papel = emp.papel === 'a4' ? { w: 11906, h: 16838 } : { w: 12240, h: 15840 };
     const k = (papel.w - 2880) / 9360;
     const hib = r.hibridoAtivo && r.hibrido;
+    const arm = r.armazenamentoAtivo ? r.hibrido : null;
+    const cen = r.cen;
+    const temArm = !!(arm && cen && cen.n > 0);
+    const temFV = r.incluiFV && r.kwp > 0;
     const conc = r.concessionaria ? r.concessionaria.nome : '';
     const nomeCliente = (cliente && cliente.nome) || 'Cliente';
     const cidadeUF = [r.cidade, r.uf].filter(Boolean).join(' / ');
-    const inv = r.inversor, mod = r.modulo;
-    const bat = hib ? hib.bateria : null;
+    const inv = temFV ? r.inversor : null, mod = temFV ? r.modulo : null;
+    const bat = arm ? arm.bateria : null;
     const s = r.simultaneidade;
     const H = r.fin.horizonte;
+    const tf = r.tarifas;
+    const tou = r.modalidade.id !== 'conv';
+    const grupoA = r.grupo === 'A';
     let sec = 0;
     const secDimNum = 3;
 
@@ -141,6 +148,8 @@ window.App = window.App || {};
       fdi: U.fmt(r.fdi, 3), fdiIcone: r.fdiOk ? '✅' : '⚠️', secDim: String(secDimNum), cliente: nomeCliente, cidade: r.cidade || ''
     };
     const t = function (x) { return substituir(x, vars); };
+    const rs = function (v) { return 'R$' + U.fmt(v, Math.max(2, decimais(v))); };
+    const nomeArm = r.bessAtivo ? 'BESS' : 'baterias';
 
     const b = [];
 
@@ -150,8 +159,10 @@ window.App = window.App || {};
     b.push(P([], { bottom: { sz: 12, space: 2, color: AZUL }, after: 360 }));
     b.push(vazio(), vazio());
     b.push(T('PROPOSTA COMERCIAL', { after: 100, jc: 'center' }, { b: true, color: AZUL, sz: 44 }));
-    const subt = 'Sistema Fotovoltaico ' + (hib ? 'Híbrido' : 'On-Grid') + ' — ' + U.kwp(r.kwp) + ' kWp' +
-      (hib && bat ? ' + ' + U.fmtSmart(hib.capInstalada, 2) + ' kWh' : '');
+    const tipoNome = r.bessAtivo
+      ? (temFV ? 'Sistema Fotovoltaico + Armazenamento (BESS)' : 'Sistema de Armazenamento de Energia (BESS)')
+      : 'Sistema Fotovoltaico ' + (hib ? 'Híbrido' : 'On-Grid');
+    const subt = tipoNome + ' — ' + [temFV ? U.kwp(r.kwp) + ' kWp' : '', temArm ? U.fmtSmart(arm.capInstalada, 2) + ' kWh' : ''].filter(Boolean).join(' + ');
     b.push(T(subt, { after: 80, jc: 'center' }, { color: GRAFITE, sz: 28 }));
     b.push(vazio(), vazio());
     b.push(T(nomeCliente, { after: 80, jc: 'center' }, { b: true, color: AZUL, sz: 36 }));
@@ -185,52 +196,78 @@ window.App = window.App || {};
     if (cliente && cliente.documento) dados.push(['CPF / CNPJ', cliente.documento]);
     const endereco = p.enderecoInstalacao || (cliente ? [cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(', ') : '');
     if (endereco) dados.push(['Endereço de Instalação', endereco]);
-    dados.push(
-      ['Cidade / UF', cidadeUF],
-      ['Concessionária', conc],
-      ['Classe de Consumo', r.classe],
-      ['Tipo de Ligação', ligTxt],
-      ['Tensão de Atendimento', p.tensao || ''],
-      ['Consumo Médio Mensal', U.fmt(r.consumoMedio, 0) + ' kWh/mês' + (p.consumoModo === 'mensal' ? ' (média de 12 meses)' : '')],
-      ['Custo de Disponibilidade', U.fmt(r.disponibilidade, 0) + ' kWh/mês (' + C.LIG_ADJ[r.ligacao].replace('ásica', 'ásico') + ')'],
-      ['COSIP (iluminação pública)', U.brl(r.cosip) + '/mês — não compensável'],
-      ['Tipo de Telhado', [p.telhado, p.telhadoDetalhe].filter(Boolean).join(' — ')],
-      ['Nº da Proposta', p.numero],
-      ['Data de Emissão', U.dataBR(p.data)],
-      ['Validade', (p.validadeDias || emp.validadeDias) + ' dias']
-    );
+    const cp = r.consumoPostos;
+    const consumoTxt = U.fmt(r.consumoMedio, 0) + ' kWh/mês' + (tou
+      ? ' (ponta ' + U.fmt(cp.p, 0) + (r.modalidade.id === 'branca' ? ' / intermediário ' + U.fmt(cp.i, 0) : '') + ' / fora de ponta ' + U.fmt(cp.fp, 0) + ')'
+      : (p.consumoModo === 'mensal' ? ' (média de 12 meses)' : ''));
+    dados.push(['Cidade / UF', cidadeUF], ['Concessionária', conc]);
+    if (grupoA) {
+      const d = r.demanda || {};
+      dados.push(
+        ['Grupo / Subgrupo', 'A — ' + r.subgrupo],
+        ['Modalidade Tarifária', r.modalidade.label],
+        ['Tensão de Fornecimento', p.tensao || ''],
+        ['Demanda Contratada', r.modalidade.id === 'verde'
+          ? U.fmtSmart(d.contr, 1) + ' kW' + (d.med && d.med !== d.contr ? ' (máxima medida ' + U.fmtSmart(d.med, 1) + ' kW)' : '')
+          : 'Ponta ' + U.fmtSmart(d.contrP, 1) + ' kW / Fora de ponta ' + U.fmtSmart(d.contrFP, 1) + ' kW'],
+        ['Consumo Médio Mensal', consumoTxt]
+      );
+    } else {
+      dados.push(['Classe de Consumo', r.classe]);
+      if (tou) dados.push(['Modalidade Tarifária', r.modalidade.label]);
+      dados.push(
+        ['Tipo de Ligação', ligTxt],
+        ['Tensão de Atendimento', p.tensao || ''],
+        ['Consumo Médio Mensal', consumoTxt],
+        ['Custo de Disponibilidade', U.fmt(r.disponibilidade, 0) + ' kWh/mês (' + C.LIG_ADJ[r.ligacao].replace('ásica', 'ásico') + ')']
+      );
+    }
+    dados.push(['COSIP (iluminação pública)', U.brl(r.cosip) + '/mês — não compensável']);
+    if (temFV) dados.push(['Tipo de Telhado', [p.telhado, p.telhadoDetalhe].filter(Boolean).join(' — ')]);
+    dados.push(['Nº da Proposta', p.numero], ['Data de Emissão', U.dataBR(p.data)], ['Validade', (p.validadeDias || emp.validadeDias) + ' dias']);
     b.push(kv([3000, 6360], dados));
     b.push(vazio());
 
     /* ---------- 3. DIMENSIONAMENTO */
     b.push(titulo((++sec) + '. DIMENSIONAMENTO TÉCNICO'));
-    const ef = mod && mod.eficiencia ? 'Ef. ' + U.fmtSmart(mod.eficiencia, 2) + '%' : '';
-    const modExtra = [ef, mod && mod.detalhe ? String(mod.detalhe).toLowerCase() : ''].filter(Boolean).join(', ');
-    const dim = [
-      ['Potência Total do Sistema', U.kwp(r.kwp) + ' kWp'],
-      ['Módulos Fotovoltaicos', mod ? r.nModulos + ' módulos × ' + mod.potencia + ' Wp — ' + [mod.fabricante, mod.tecnologia, mod.modelo].filter(Boolean).join(' ') + (modExtra ? ' (' + modExtra + ')' : '') : '—'],
-      [hib ? 'Inversor Híbrido' : 'Inversor', inv ? r.nInversores + ' × ' + [inv.fabricante, inv.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(inv) : '—']
-    ];
-    if (hib) {
-      dim.push(['Banco de Baterias', bat ? hib.nBaterias + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') + ' — ' +
-        U.fmtSmart(hib.capInstalada, 2) + ' kWh' + (bat.quimica ? ' (' + bat.quimica + ')' : '') : '—']);
+    const u = r.unidadeArm;
+    const linhaArm = temArm && bat ? cen.n + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') + ' — ' +
+      U.fmtSmart(arm.capInstalada, 2) + ' kWh' + (arm.potenciaArm ? ' / ' + U.fmtSmart(arm.potenciaArm, 2) + ' kW' : '') + (bat.quimica ? ' (' + bat.quimica + ')' : '') : '—';
+    const dim = [];
+    if (temFV) {
+      const ef = mod && mod.eficiencia ? 'Ef. ' + U.fmtSmart(mod.eficiencia, 2) + '%' : '';
+      const modExtra = [ef, mod && mod.detalhe ? String(mod.detalhe).toLowerCase() : ''].filter(Boolean).join(', ');
+      dim.push(
+        ['Potência Total do Sistema', U.kwp(r.kwp) + ' kWp'],
+        ['Módulos Fotovoltaicos', mod ? r.nModulos + ' módulos × ' + mod.potencia + ' Wp — ' + [mod.fabricante, mod.tecnologia, mod.modelo].filter(Boolean).join(' ') + (modExtra ? ' (' + modExtra + ')' : '') : '—'],
+        [hib ? 'Inversor Híbrido' : 'Inversor', inv ? r.nInversores + ' × ' + [inv.fabricante, inv.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(inv) : '—']
+      );
+      if (temArm) dim.push([r.bessAtivo ? 'Armazenamento (BESS)' : 'Banco de Baterias', linhaArm]);
+      dim.push(
+        ['FDI (fator dimensional)', U.fmt(r.fdi, 3) + (r.fdiOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdiMin, 2) + '–' + U.fmt(prem.fdiMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
+        ['Estrutura de Fixação', r.estruturaTexto || '—'],
+        ['Geração Mensal Estimada', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'],
+        ['Geração Anual Estimada (Ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh/ano'],
+        ['Cobertura do Consumo', U.fmt(r.cobertura * 100, 1) + '% do consumo médio (' + U.fmt(r.consumoMedio, 0) + ' kWh/mês) ' + (r.cobertura >= 0.95 ? '✅' : '⚠️')],
+        ['Área Ocupada Aproximada', '~' + U.fmt(r.area, 0) + ' m² (' + r.nModulos + ' mód × ' + U.fmtSmart(r.areaModulo, 2) + ' m²)'],
+        ['HSP ' + [r.cidade, r.uf].filter(Boolean).join('/') + (r.localidade && r.localidade.fonte ? ' (' + r.localidade.fonte + ')' : ''), U.fmtSmart(r.hsp, 2) + ' kWh/m²/dia'],
+        ['Performance Ratio (PR)', U.fmt(prem.pr, 2)],
+        ['Simultaneidade Adotada', U.fmtSmart(s * 100, 1) + '% autoconsumo direto / ' + U.fmtSmart((1 - s) * 100, 1) + '% injetado na rede' +
+          (temArm && cen.id === 'ponta' ? ' (+ armazenamento diário nas baterias)' : '')],
+        ['Monitoramento', r.monitoramento]
+      );
+    } else {
+      dim.push(
+        ['Armazenamento (BESS)', linhaArm],
+        ['Capacidade Útil', temArm ? U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)' : '—'],
+        ['Eficiência de Ciclo', temArm ? U.fmtSmart(arm.eficiencia * 100, 1) + '%' : '—'],
+        ['Estratégia de Operação', cen ? cen.nome : '—'],
+        ['Recarga', 'Pela rede da concessionária, fora do horário de ponta']
+      );
     }
-    dim.push(
-      ['FDI (fator dimensional)', U.fmt(r.fdi, 3) + (r.fdiOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdiMin, 2) + '–' + U.fmt(prem.fdiMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
-      ['Estrutura de Fixação', r.estruturaTexto || '—'],
-      ['Geração Mensal Estimada', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'],
-      ['Geração Anual Estimada (Ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh/ano'],
-      ['Cobertura do Consumo', U.fmt(r.cobertura * 100, 1) + '% do consumo médio (' + U.fmt(r.consumoMedio, 0) + ' kWh/mês) ' + (r.cobertura >= 0.95 ? '✅' : '⚠️')],
-      ['Área Ocupada Aproximada', '~' + U.fmt(r.area, 0) + ' m² (' + r.nModulos + ' mód × ' + U.fmtSmart(r.areaModulo, 2) + ' m²)'],
-      ['HSP ' + [r.cidade, r.uf].filter(Boolean).join('/') + (r.localidade && r.localidade.fonte ? ' (' + r.localidade.fonte + ')' : ''), U.fmtSmart(r.hsp, 2) + ' kWh/m²/dia'],
-      ['Performance Ratio (PR)', U.fmt(prem.pr, 2)],
-      ['Simultaneidade Adotada', U.fmtSmart(s * 100, 1) + '% autoconsumo direto / ' + U.fmtSmart((1 - s) * 100, 1) + '% injetado na rede' +
-        (hib && hib.usoBateria === 'ciclagem' ? ' (+ armazenamento diário nas baterias)' : '')],
-      ['Monitoramento', r.monitoramento]
-    );
     b.push(kv([3800, 5560], dim, ['Parâmetro', 'Valor']));
     b.push(vazio());
-    if (!r.fdiOk && inv && r.kwp > 0) {
+    if (temFV && !r.fdiOk && inv) {
       const msg = '⚠ Alerta técnico: FDI ' + U.fmt(r.fdi, 3) + ' (potência do inversor ÷ potência FV) fora da faixa recomendada (' +
         U.fmt(prem.fdiMin, 2) + '–' + U.fmt(prem.fdiMax, 2) + '). ' +
         (r.fdi < prem.fdiMin
@@ -241,131 +278,254 @@ window.App = window.App || {};
       b.push(vazio());
     }
 
-    /* ---------- (Híbrido) ARMAZENAMENTO */
-    if (hib) {
-      b.push(titulo((++sec) + '. ARMAZENAMENTO DE ENERGIA E CARGAS CRÍTICAS'));
-      b.push(T('O sistema híbrido mantém as cargas críticas abaixo em funcionamento durante interrupções no fornecimento' +
-        (conc ? ' da ' + conc : '') + ', utilizando o banco de baterias e a geração fotovoltaica.' +
-        (hib.usoBateria === 'ciclagem' ? ' Fora dos períodos de falta, as baterias armazenam a energia excedente do dia para uso noturno, reduzindo a energia injetada na rede e o custo do Fio B.' : ''),
-        { after: 80 }, { color: GRAFITE }));
+    /* ---------- ARMAZENAMENTO */
+    if (temArm) {
+      const backupCen = cen.id === 'backup';
+      b.push(titulo((++sec) + '. ARMAZENAMENTO DE ENERGIA' + (backupCen && arm.cargas.length ? ' E CARGAS CRÍTICAS' : (r.bessAtivo ? ' (BESS)' : ''))));
+      let txt;
+      if (backupCen) {
+        txt = 'O sistema ' + (hib ? 'híbrido' : 'de armazenamento') + ' mantém as cargas críticas abaixo em funcionamento durante interrupções no fornecimento' +
+          (conc ? ' da ' + conc : '') + ', utilizando o ' + (r.bessAtivo ? 'BESS' : 'banco de baterias') + (temFV ? ' e a geração fotovoltaica.' : '.');
+      } else if (cen.id === 'ponta') {
+        txt = tou
+          ? 'O armazenamento carrega fora do horário de ponta' + (temFV ? ' (preferencialmente com o excedente solar)' : '') + ' e descarrega nos dias úteis durante a ponta (' +
+            U.fmtSmart(prem.armazenamento.duracaoPonta, 1) + ' h), quando a energia custa ' + rs(tf.ponta) + '/kWh contra ' + rs(tf.fp) + '/kWh fora de ponta.'
+          : 'Fora dos períodos de falta, as baterias armazenam a energia excedente do dia para uso noturno, reduzindo a energia injetada na rede e o custo do Fio B.';
+      } else {
+        const kw = cen.fin.reducaoKW1;
+        txt = 'O armazenamento corta os picos de demanda em até ' + U.fmtSmart(kw, 1) + ' kW, reduzindo a demanda faturada' +
+          (r.cenariosConfig.picos.readequar !== false ? ' e permitindo readequar a demanda contratada' : '') + ', além de evitar multas de ultrapassagem.';
+      }
+      if (!backupCen && arm.cargas.length) txt += ' Em caso de falta de energia, o sistema também pode alimentar as cargas críticas listadas.';
+      b.push(T(txt, { after: 80 }, { color: GRAFITE }));
       b.push(vazio());
-      const cargasCols = [{ t: 'Carga crítica', w: 3560 }, { t: 'Qtd.', w: 800, jc: 'center' }, { t: 'Potência (W)', w: 1500, jc: 'right' },
-        { t: 'Uso no backup (h)', w: 1500, jc: 'center' }, { t: 'Energia (Wh)', w: 2000, jc: 'right' }];
-      const cargasLin = hib.cargas.map(function (c) {
-        return [c.descricao, U.fmtSmart(c.qtd, 2), U.fmt(c.potTotal, 0), U.fmtSmart(c.horas, 1), U.fmt(c.energia, 0)];
-      });
-      const tot = [{ t: 'Total', b: true }, '', { t: U.fmt(hib.potCargas, 0), b: true }, '', { t: U.fmt(hib.energiaBackup, 0), b: true }];
-      tot.fundo = DESTAQUE;
-      cargasLin.push(tot);
-      b.push(tabela(cargasCols, cargasLin, { sz: 19 }));
-      b.push(vazio());
+      if (arm.cargas.length) {
+        const cargasCols = [{ t: 'Carga crítica', w: 3560 }, { t: 'Qtd.', w: 800, jc: 'center' }, { t: 'Potência (W)', w: 1500, jc: 'right' },
+          { t: 'Uso no backup (h)', w: 1500, jc: 'center' }, { t: 'Energia (Wh)', w: 2000, jc: 'right' }];
+        const cargasLin = arm.cargas.map(function (c) {
+          return [c.descricao, U.fmtSmart(c.qtd, 2), U.fmt(c.potTotal, 0), U.fmtSmart(c.horas, 1), U.fmt(c.energia, 0)];
+        });
+        const tot = [{ t: 'Total', b: true }, '', { t: U.fmt(arm.potCargas, 0), b: true }, '', { t: U.fmt(arm.energiaBackup, 0), b: true }];
+        tot.fundo = DESTAQUE;
+        cargasLin.push(tot);
+        b.push(tabela(cargasCols, cargasLin, { sz: 19 }));
+        b.push(vazio());
+      }
       const fs = prem.hibrido.fatorSegurancaInversor;
-      b.push(kv([3800, 5560], [
-        ['Potência das Cargas Críticas', U.fmtSmart(hib.potCargas / 1000, 2) + ' kW'],
-        ['Energia Necessária no Backup', U.fmtSmart(hib.energiaBackup / 1000, 2) + ' kWh'],
-        ['Autonomia Desejada', U.fmtSmart(hib.autonomiaHoras, 1) + ' h'],
-        ['Capacidade Necessária', U.fmtSmart(hib.capNecessaria, 2) + ' kWh (DoD ' + U.fmtSmart(hib.dod * 100, 0) + '% / eficiência ' + U.fmtSmart(hib.eficiencia * 100, 0) + '%)'],
-        ['Banco de Baterias', bat ? hib.nBaterias + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') + ' — ' + U.fmtSmart(bat.energia, 2) + ' kWh = ' + U.fmtSmart(hib.capInstalada, 2) + ' kWh' : '—'],
-        ['Configuração do Banco', hib.configuracao || '—'],
-        ['Capacidade Útil', U.fmtSmart(hib.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(hib.dod * 100, 0) + '%)'],
-        ['Autonomia Estimada', hib.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(hib.autonomiaEstimada, 1) + ' h com as cargas listadas ' + (hib.autonomiaEstimada + 1e-9 >= hib.autonomiaHoras ? '✅' : '⚠️') : '—'],
-        ['Potência de Backup do Inversor', U.fmtSmart(hib.potBackup, 2) + ' kW ' + (hib.backupOk ? '✅ (≥ ' + U.fmtSmart(fs, 2) + ' × cargas críticas)' : '⚠️ (abaixo de ' + U.fmtSmart(fs, 2) + ' × cargas críticas)')],
-        ['Modo de Operação', hib.usoBateria === 'ciclagem' ? 'Backup + ciclagem diária (autoconsumo noturno)' : 'Backup (baterias reservadas para falta de energia)']
-      ], ['Parâmetro', 'Valor']));
+      const linhas = [];
+      if (arm.cargas.length) {
+        linhas.push(
+          ['Potência das Cargas Críticas', U.fmtSmart(arm.potCargas / 1000, 2) + ' kW'],
+          ['Energia Necessária no Backup', U.fmtSmart(arm.energiaBackup / 1000, 2) + ' kWh'],
+          ['Autonomia Desejada', U.fmtSmart(arm.autonomiaHoras, 1) + ' h'],
+          ['Capacidade Necessária', U.fmtSmart(arm.capNecessaria, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '% / eficiência ' + U.fmtSmart(arm.eficiencia * 100, 0) + '%)']
+        );
+      }
+      linhas.push(
+        [r.bessAtivo ? 'Sistema de Armazenamento' : 'Banco de Baterias', bat ? cen.n + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') + ' — ' + U.fmtSmart(bat.energia, 2) + ' kWh = ' + U.fmtSmart(arm.capInstalada, 2) + ' kWh' : '—'],
+        ['Configuração', arm.configuracao || '—'],
+        ['Capacidade Útil', U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)']
+      );
+      if (arm.potenciaArm && isFinite(arm.potenciaArm)) linhas.push(['Potência de Descarga', U.fmtSmart(arm.potenciaArm, 2) + ' kW']);
+      if (arm.cargas.length) {
+        linhas.push(['Autonomia Estimada', arm.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(arm.autonomiaEstimada, 1) + ' h com as cargas listadas ' + (arm.autonomiaEstimada + 1e-9 >= arm.autonomiaHoras ? '✅' : '⚠️') : '—']);
+        linhas.push([hib ? 'Potência de Backup do Inversor' : 'Potência de Backup', U.fmtSmart(arm.potBackup, 2) + ' kW ' + (arm.backupOk ? '✅ (≥ ' + U.fmtSmart(fs, 2) + ' × cargas críticas)' : '⚠️ (abaixo de ' + U.fmtSmart(fs, 2) + ' × cargas críticas)')]);
+      }
+      if (cen.fin.kwhDeslocadosAno1) linhas.push(['Energia Deslocada (ano 1)', U.fmt(cen.fin.kwhDeslocadosAno1, 0) + ' kWh/ano']);
+      if (cen.fin.reducaoKW1) linhas.push(['Redução de Demanda', U.fmtSmart(cen.fin.reducaoKW1, 1) + ' kW']);
+      linhas.push(['Vida Útil Estimada', U.fmtSmart(cen.vidaArmAnos, 1) + ' anos' + (r.trocaBateria ? ' (substituição prevista no ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ')' : '')]);
+      linhas.push(['Modo de Operação', cen.id === 'ponta' ? (tou ? 'Deslocamento para o horário de ponta (arbitragem tarifária)' : 'Backup + ciclagem diária (autoconsumo noturno)')
+        : (cen.id === 'picos' ? 'Redução de picos de demanda (peak shaving)' : 'Backup (armazenamento reservado para falta de energia)')]);
+      b.push(kv([3800, 5560], linhas, ['Parâmetro', 'Valor']));
+      b.push(vazio());
+    }
+
+    /* ---------- COMPARATIVO DE CENÁRIOS */
+    if (r.comparar) {
+      const av = r.cenariosAvaliados;
+      const rec = r.recomendacao;
+      b.push(titulo((++sec) + '. COMPARATIVO DE CENÁRIOS'));
+      b.push(T(t(textos.cenariosIntro), { after: 80 }, { color: GRAFITE }));
+      b.push(vazio());
+      const wL = 2360;
+      const wC = Math.floor((9360 - wL) / av.length);
+      const cols = [{ t: 'Indicador', w: 9360 - wC * av.length }].concat(av.map(function (c) {
+        const ehRec = rec && rec.id === c.id;
+        return { t: c.nome + (ehRec ? ' ✅' : ''), w: wC, jc: 'center', fill: ehRec ? VERDE : null };
+      }));
+      const linha = function (rot, fn, negrito) {
+        return [{ t: rot, b: true }].concat(av.map(function (c) {
+          const ehRec = rec && rec.id === c.id;
+          return { t: fn(c), jc: 'center', b: negrito || ehRec, color: ehRec ? VERDE : null, fill: ehRec ? 'DCFCE7' : null };
+        }));
+      };
+      const tirTxt = function (f) { return f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? '> 1.000% a.a.' : '—'); };
+      const lin = [
+        linha('Sistema FV', function (c) { return c.incluirFV && r.kwp ? U.kwp(r.kwp) + ' kWp' : '—'; }),
+        linha('Armazenamento', function (c) { return c.n ? U.fmtSmart(c.capInstalada, 2) + ' kWh / ' + U.fmtSmart(c.potencia, 1) + ' kW' : '—'; }),
+        linha('Investimento', function (c) { return U.brl(c.investimento); }, true),
+        linha('Benefício no ano 1', function (c) { return U.brl(c.fin.beneficioAno1); }),
+        linha('Payback simples', function (c) { return U.anosMeses(c.fin.paybackSimples); }),
+        linha('Payback descontado', function (c) { return U.anosMeses(c.fin.paybackDescontado); }),
+        linha('VPL ' + H + ' anos', function (c) { return U.brl(c.fin.vpl); }, true),
+        linha('TIR', function (c) { return tirTxt(c.fin); }),
+        linha('Autonomia em falta de energia', function (c) { return c.metricas && c.metricas.autonomiaH ? '≈ ' + U.fmtSmart(c.metricas.autonomiaH, 1) + ' h' : '—'; }),
+        linha('Redução de demanda', function (c) { return c.fin.reducaoKW1 ? U.fmtSmart(c.fin.reducaoKW1, 1) + ' kW' : '—'; }),
+        linha('Energia deslocada (ano 1)', function (c) { return c.fin.kwhDeslocadosAno1 ? U.fmt(c.fin.kwhDeslocadosAno1, 0) + ' kWh' : '—'; })
+      ];
+      b.push(tabela(cols, lin, { sz: 18 }));
+      b.push(vazio());
+      if (rec) {
+        b.push(P([R('✅ Recomendação: ' + rec.nome, { b: true, color: VERDE, sz: 22 }),
+          R('\n' + rec.motivos.map(function (m) { return '• ' + m; }).join('\n'), { color: '14532D', sz: 19 })],
+        { left: { sz: 18, space: 6, color: '16A34A' }, shd: 'F0FDF4', after: 80 }));
+      }
+      const outros = r.cenarios.filter(function (c) { return c.ativo && !c.aplicavel; });
+      if (outros.length) {
+        b.push(T('Cenários não aplicáveis: ' + outros.map(function (c) { return c.nome + ' — ' + c.motivoNA; }).join(' | '), { after: 80 }, { color: CINZA, sz: 18 }));
+      }
+      b.push(T(rec && cen && rec.id !== cen.id
+        ? 'Por opção do cliente, as seções seguintes detalham o cenário "' + cen.nome + '".'
+        : 'As seções seguintes detalham o cenário recomendado.', { after: 80 }, { color: GRAFITE, sz: 18 }));
       b.push(vazio());
     }
 
     /* ---------- CONSUMO × GERAÇÃO */
-    b.push(titulo((++sec) + '. CONSUMO × GERAÇÃO MENSAL ESTIMADA'));
-    b.push(P(IMG('grafico', Math.round(5524500 * k), Math.round(2301875 * k), 'Grafico'), { after: 120, jc: 'center' }));
-    b.push(vazio());
+    if (temFV) {
+      b.push(titulo((++sec) + '. CONSUMO × GERAÇÃO MENSAL ESTIMADA'));
+      b.push(P(IMG('grafico', Math.round(5524500 * k), Math.round(2301875 * k), 'Grafico'), { after: 120, jc: 'center' }));
+      b.push(vazio());
+    }
 
     /* ---------- ANÁLISE FINANCEIRA */
     const f = r.fin;
-    b.push(titulo((++sec) + '. ANÁLISE FINANCEIRA'));
+    b.push(titulo((++sec) + '. ANÁLISE FINANCEIRA' + (r.comparar && cen ? ' — ' + cen.nome.toUpperCase() : '')));
     const adj = C.LIG_ADJ[r.ligacao];
-    const prems = [
-      'Simultaneidade ' + U.fmtSmart(s * 100, 1) + '% autoconsumo / ' + U.fmtSmart((1 - s) * 100, 1) + '% injetado',
-      'Fio B: ' + C.fioBTexto(r.anoBase, prem, ', '),
-      'TUSD Fio B R$' + U.fmt(r.tusdFioB, Math.max(2, decimais(r.tusdFioB))) + '/kWh',
-      'Tarifa R$' + U.fmt(r.tarifa, Math.max(2, decimais(r.tarifa))) + '/kWh',
-      'Inflação tarifária ' + U.fmtSmart(prem.inflacaoTarifa * 100, 2) + '% a.a.',
-      'Degradação módulos ' + U.fmtSmart(prem.degradacao * 100, 2) + '% a.a.',
-      'TMA (' + (prem.tmaNome || 'SELIC') + ') ' + U.fmt(prem.tma * 100, 2) + '% a.a.',
-      'Disponibilidade ' + adj + ' ' + U.fmt(r.disponibilidade, 0) + ' kWh/mês',
-      'COSIP ' + U.brl(r.cosip) + '/mês' + (prem.reajusteCosip > 0 ? ' (reajuste ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.)' : ''),
-      'Consumo ' + U.fmt(r.consumoMedio, 0) + ' kWh/mês'
-    ];
-    if (hib && hib.usoBateria === 'ciclagem') prems.push('Baterias: ciclagem diária de ' + U.fmtSmart(hib.capUtil * hib.eficiencia, 2) + ' kWh');
+    const prems = [];
+    if (temFV) {
+      prems.push('Simultaneidade ' + U.fmtSmart(s * 100, 1) + '% autoconsumo / ' + U.fmtSmart((1 - s) * 100, 1) + '% injetado',
+        'Fio B: ' + C.fioBTexto(r.anoBase, prem, ', '),
+        'TUSD Fio B R$' + U.fmt(r.tusdFioB, Math.max(2, decimais(r.tusdFioB))) + '/kWh');
+    }
+    if (!tou) prems.push('Tarifa ' + rs(r.tarifa) + '/kWh');
+    else {
+      prems.push('Tarifas: ponta ' + rs(tf.ponta) + (r.modalidade.id === 'branca' ? ' | intermediária ' + rs(tf.inter) : '') + ' | fora de ponta ' + rs(tf.fp) + '/kWh');
+      if (r.modalidade.id === 'verde') prems.push('Demanda ' + rs(tf.dem) + '/kW');
+      if (r.modalidade.id === 'azul') prems.push('Demanda ponta ' + rs(tf.demP) + ' | fora de ponta ' + rs(tf.demFP) + '/kW');
+    }
+    prems.push('Inflação tarifária ' + U.fmtSmart(prem.inflacaoTarifa * 100, 2) + '% a.a.');
+    if (temFV) prems.push('Degradação módulos ' + U.fmtSmart(prem.degradacao * 100, 2) + '% a.a.');
+    prems.push('TMA (' + (prem.tmaNome || 'SELIC') + ') ' + U.fmt(prem.tma * 100, 2) + '% a.a.');
+    if (!grupoA) prems.push('Disponibilidade ' + adj + ' ' + U.fmt(r.disponibilidade, 0) + ' kWh/mês');
+    prems.push('COSIP ' + U.brl(r.cosip) + '/mês' + (prem.reajusteCosip > 0 ? ' (reajuste ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.)' : ''));
+    prems.push('Consumo ' + U.fmt(r.consumoMedio, 0) + ' kWh/mês');
+    if (temArm) {
+      const ar = prem.armazenamento;
+      if (cen.id === 'ponta' && !tou) prems.push('Baterias: ciclagem diária de ' + U.fmtSmart(arm.capUtil * arm.eficiencia, 2) + ' kWh');
+      prems.push('Armazenamento: eficiência ' + U.fmtSmart(arm.eficiencia * 100, 0) + '%, DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%, degradação ' +
+        U.fmtSmart(ar.degradacao * 100, 1) + '% a.a.' + (cen.id !== 'backup' && tou ? ', ' + ar.diasUteis + ' dias úteis/ano' : ''));
+    }
     b.push(T('📌 Premissas: ' + prems.join(' │ '), { left: { sz: 12, space: 4, color: AZUL }, shd: DESTAQUE, after: 80 }, { color: AZUL, sz: 18 }));
     b.push(vazio());
     const destaque = function (v) { return { t: v, b: true, color: AZUL, jc: 'right' }; };
     const sub = function (v) { return { t: v, jc: 'right' }; };
-    const finLin = [
-      [{ t: '💰 Investimento Total (CAPEX)', b: true }, destaque(U.brl(r.total))],
-      ['   ↳ ' + (hib ? 'Kit Fotovoltaico + Baterias (módulos, inversor híbrido, baterias, estrutura, cabos e conectores)' : 'Kit Fotovoltaico (módulos, inversor, estrutura, cabos e conectores)'), sub(U.brl(r.kit))]
-    ];
-    if (r.infra > 0) finLin.push(['   ↳ Infraestrutura Elétrica CA (DPS, disjuntores, aterramento)', sub(U.brl(r.infra))]);
-    finLin.push(['   ↳ Mão de Obra + Projeto + Instalação + Homologação', sub(U.brl(r.maoObra))]);
+    const finLin = [[{ t: '💰 Investimento Total (CAPEX)', b: true }, destaque(U.brl(r.total))]];
+    if (r.incluiFV) {
+      finLin.push(['   ↳ Kit Fotovoltaico (módulos, inversor' + (hib ? ' híbrido' : '') + ', estrutura, cabos e conectores)', sub(U.brl(r.kit))]);
+    }
+    if (temArm) {
+      finLin.push(['   ↳ Armazenamento — ' + (r.bessAtivo ? 'BESS' : 'baterias') + ' (equipamento)', sub(U.brl(r.kitArm))],
+        ['   ↳ Instalação e integração do armazenamento', sub(U.brl(r.instalArm))]);
+    }
+    if (r.incluiFV && r.infra > 0) finLin.push(['   ↳ Infraestrutura Elétrica CA (DPS, disjuntores, aterramento)', sub(U.brl(r.infra))]);
+    if (r.incluiFV) finLin.push(['   ↳ Mão de Obra + Projeto + Instalação + Homologação', sub(U.brl(r.maoObra))]);
     finLin.push(
-      [{ t: '📅 Economia Mensal Ano 1 (sim. ' + U.fmtSmart(s * 100, 1) + '%)', b: true }, destaque(U.brl(f.economiaMes1))],
-      [{ t: '📅 Economia Anual Ano 1', b: true }, destaque(U.brl(f.economiaAno1))],
+      [{ t: '📅 Economia Mensal Ano 1' + (temFV ? ' (sim. ' + U.fmtSmart(s * 100, 1) + '%)' : ''), b: true }, destaque(U.brl(f.economiaMes1))],
+      [{ t: '📅 Economia Anual Ano 1', b: true }, destaque(U.brl(f.economiaAno1))]
+    );
+    if (f.anos[0].beneficioBackup > 0) finLin.push([{ t: '🔋 Benefício de backup (prejuízos evitados/ano)', b: true }, destaque(U.brl(f.anos[0].beneficioBackup))]);
+    finLin.push(
       [{ t: '⏱ Payback Simples', b: true }, destaque(U.anosMeses(f.paybackSimples))],
       [{ t: '⏱ Payback Descontado (' + (prem.tmaNome || 'SELIC') + ' ' + U.fmt(prem.tma * 100, 2) + '% a.a.)', b: true }, destaque(U.anosMeses(f.paybackDescontado))],
       [{ t: '📈 VPL ' + H + ' anos', b: true }, destaque(U.brl(f.vpl))],
-      [{ t: '📈 TIR', b: true }, destaque(f.tir != null ? U.fmt(f.tir * 100, 2) + '% a.a.' : (f.tirAcima ? 'acima de 1.000% a.a.' : '—'))],
-      [{ t: '🌿 CO₂ Evitado em ' + H + ' anos', b: true }, destaque(U.fmt(f.co2t, 1) + ' toneladas')],
-      [{ t: '💵 Economia Total Acumulada ' + H + ' anos', b: true }, destaque(U.brl(f.economiaTotal))]
+      [{ t: '📈 TIR', b: true }, destaque(f.tir != null ? U.fmt(f.tir * 100, 2) + '% a.a.' : (f.tirAcima ? 'acima de 1.000% a.a.' : '—'))]
     );
+    if (temFV) finLin.push([{ t: '🌿 CO₂ Evitado em ' + H + ' anos', b: true }, destaque(U.fmt(f.co2t, 1) + ' toneladas')]);
+    finLin.push([{ t: '💵 Economia Total Acumulada ' + H + ' anos', b: true }, destaque(U.brl(f.economiaTotal))]);
     if (r.trocaBateria && r.trocaBateria.custo > 0) {
-      finLin.push([{ t: '🔋 Substituição das baterias (ano ' + r.trocaBateria.ano + ')', b: true }, destaque(U.brl(r.trocaBateria.custo))]);
+      finLin.push([{ t: '🔋 Substituição ' + (r.bessAtivo ? 'do BESS' : 'das baterias') + ' (ano ' + r.trocaBateria.ano + ')', b: true }, destaque(U.brl(r.trocaBateria.custo))]);
     }
     b.push(tabela([{ t: 'Indicador', w: 4200 }, { t: 'Valor', w: 5160 }], finLin));
     b.push(vazio());
 
     /* ---------- PROJEÇÃO DA CONTA */
-    b.push(titulo((++sec) + '. PROJEÇÃO DA CONTA COM FIO B (LEI 14.300/2022)'));
-    const pct0 = C.pctFioB(r.anoBase, prem);
-    const pctFim = prem.fioBDepois == null ? 1 : prem.fioBDepois;
-    let ano100 = null;
-    for (let a = r.anoBase; a <= r.anoBase + 30; a++) { if (C.pctFioB(a, prem) >= pctFim) { ano100 = a; break; } }
-    const pctFinal = U.fmtSmart(pctFim * 100, 1) + '%';
-    const cron = pct0 < pctFim && ano100
-      ? 'O percentual sobe de ' + U.fmtSmart(pct0 * 100, 1) + '% em ' + r.anoBase + ' até ' + pctFinal + ' a partir de ' + ano100 + '.'
-      : 'Em ' + r.anoBase + ' o Fio B já é cobrado em ' + U.fmtSmart(pct0 * 100, 1) + '%.';
-    b.push(T('A Lei 14.300/2022 estabelece cronograma gradual de cobrança do Fio B sobre a energia injetada (' + U.fmtSmart((1 - s) * 100, 1) +
-      '% do total gerado, conforme simultaneidade de ' + U.fmtSmart(s * 100, 1) + '%). ' + cron +
-      (hib && hib.usoBateria === 'ciclagem' ? ' Com a ciclagem diária das baterias, parte do excedente é armazenada e consumida no local, reduzindo a energia injetada.' : '') +
-      ' A COSIP (Contribuição para Custeio da Iluminação Pública) de ' + U.brl(r.cosip) + '/mês não é compensável por geração própria e permanece em ambos os cenários' +
-      (prem.reajusteCosip > 0 ? ', com reajuste projetado de ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.' : '.'),
-      { after: 80 }, { color: GRAFITE }));
+    b.push(titulo((++sec) + '. PROJEÇÃO DA CONTA' + (temFV ? ' COM FIO B (LEI 14.300/2022)' : ' DE ENERGIA')));
+    if (temFV) {
+      const pct0 = C.pctFioB(r.anoBase, prem);
+      const pctFim = prem.fioBDepois == null ? 1 : prem.fioBDepois;
+      let ano100 = null;
+      for (let a = r.anoBase; a <= r.anoBase + 30; a++) { if (C.pctFioB(a, prem) >= pctFim) { ano100 = a; break; } }
+      const pctFinal = U.fmtSmart(pctFim * 100, 1) + '%';
+      const cron = pct0 < pctFim && ano100
+        ? 'O percentual sobe de ' + U.fmtSmart(pct0 * 100, 1) + '% em ' + r.anoBase + ' até ' + pctFinal + ' a partir de ' + ano100 + '.'
+        : 'Em ' + r.anoBase + ' o Fio B já é cobrado em ' + U.fmtSmart(pct0 * 100, 1) + '%.';
+      b.push(T('A Lei 14.300/2022 estabelece cronograma gradual de cobrança do Fio B sobre a energia injetada (' + U.fmtSmart((1 - s) * 100, 1) +
+        '% do total gerado, conforme simultaneidade de ' + U.fmtSmart(s * 100, 1) + '%). ' + cron +
+        (temArm && cen.id === 'ponta' && !tou ? ' Com a ciclagem diária das baterias, parte do excedente é armazenada e consumida no local, reduzindo a energia injetada.' : '') +
+        (tou ? ' Os créditos compensam primeiro o consumo fora de ponta; o saldo é aplicado ao consumo de ponta, valorado pela tarifa fora de ponta.' : '') +
+        ' A COSIP (Contribuição para Custeio da Iluminação Pública) de ' + U.brl(r.cosip) + '/mês não é compensável por geração própria e permanece em ambos os cenários' +
+        (prem.reajusteCosip > 0 ? ', com reajuste projetado de ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.' : '.'),
+        { after: 80 }, { color: GRAFITE }));
+    } else {
+      b.push(T('Projeção da fatura mensal média com e sem o sistema de armazenamento, considerando a inflação tarifária de ' +
+        U.fmtSmart(prem.inflacaoTarifa * 100, 2) + '% a.a. e a degradação do armazenamento.', { after: 80 }, { color: GRAFITE }));
+    }
     b.push(vazio());
-    const projCols = [{ t: 'Ano', w: 640, jc: 'center' }, { t: '% Fio B', w: 640, jc: 'center' }, { t: 'Conta s/ Sistema', w: 1500, jc: 'right' },
-      { t: 'Disponib. Mín.', w: 1080, jc: 'right' }, { t: 'Custo Fio B', w: 1080, jc: 'right' }, { t: 'COSIP', w: 900, jc: 'right' },
-      { t: 'Conta c/ Sistema', w: 1560, jc: 'right' }, { t: 'Economia/mês', w: 1960, jc: 'right' }];
-    const projLin = f.projecao.map(function (a) {
-      return [{ t: String(a.ano), b: true, jc: 'center' }, { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' }, U.brl(a.contaSem), U.brl(a.contaMin),
-        U.brl(a.fioBMes), U.brl(a.cosip), U.brl(a.contaCom), { t: U.brl(a.economiaMes), b: true, color: VERDE }];
-    });
+    let projCols, projLin;
+    if (grupoA) {
+      projCols = [{ t: 'Ano', w: 640, jc: 'center' }, { t: '% Fio B', w: 640, jc: 'center' }, { t: 'Conta s/ Sistema', w: 1500, jc: 'right' },
+        { t: 'Energia c/ Sist.', w: 1180, jc: 'right' }, { t: 'Demanda c/ Sist.', w: 1180, jc: 'right' }, { t: 'Custo Fio B', w: 1000, jc: 'right' },
+        { t: 'Conta c/ Sistema', w: 1460, jc: 'right' }, { t: 'Economia/mês', w: 1760, jc: 'right' }];
+      projLin = f.projecao.map(function (a) {
+        return [{ t: String(a.ano), b: true, jc: 'center' }, { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' }, U.brl(a.contaSem), U.brl(a.contaMin),
+          U.brl(a.demandaCom), U.brl(a.fioBMes), U.brl(a.contaCom), { t: U.brl(a.economiaMes), b: true, color: VERDE }];
+      });
+    } else {
+      projCols = [{ t: 'Ano', w: 640, jc: 'center' }, { t: '% Fio B', w: 640, jc: 'center' }, { t: 'Conta s/ Sistema', w: 1500, jc: 'right' },
+        { t: tou ? 'Energia c/ Sist.' : 'Disponib. Mín.', w: 1080, jc: 'right' }, { t: 'Custo Fio B', w: 1080, jc: 'right' }, { t: 'COSIP', w: 900, jc: 'right' },
+        { t: 'Conta c/ Sistema', w: 1560, jc: 'right' }, { t: 'Economia/mês', w: 1960, jc: 'right' }];
+      projLin = f.projecao.map(function (a) {
+        return [{ t: String(a.ano), b: true, jc: 'center' }, { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' }, U.brl(a.contaSem), U.brl(a.contaMin),
+          U.brl(a.fioBMes), U.brl(a.cosip), U.brl(a.contaCom), { t: U.brl(a.economiaMes), b: true, color: VERDE }];
+      });
+    }
     b.push(tabelaCabecalhoCentral(projCols, projLin, 19));
-    b.push(T('⚠ Fio B incide sobre a energia injetada (' + U.fmtSmart((1 - s) * 100, 1) + '%). Disponibilidade mínima ' + adj + ': ' +
-      U.fmt(r.disponibilidade, 0) + ' kWh/mês. COSIP de ' + U.brl(r.cosip) + '/mês não compensável (' +
-      (prem.reajusteCosip > 0 ? 'reajuste projetado de ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.' : 'valor nominal, sujeito a reajuste municipal') +
-      '). Cronograma Fio B: ' + C.fioBTexto(r.anoBase, prem, ' | ') + '.', { after: 80 }, { color: CINZA, sz: 18 }));
+    if (grupoA) {
+      b.push(T('⚠ Valores mensais médios com impostos. Demanda faturada = maior valor entre contratada e medida; ultrapassagem acima de ' +
+        U.fmtSmart(prem.armazenamento.toleranciaUltrapassagem * 100, 1) + '% cobrada em ' + U.fmtSmart(prem.armazenamento.fatorUltrapassagem, 1) + '×. ' +
+        'COSIP de ' + U.brl(r.cosip) + '/mês incluída nas contas.' + (temFV ? ' Cronograma Fio B: ' + C.fioBTexto(r.anoBase, prem, ' | ') + '.' : ''),
+      { after: 80 }, { color: CINZA, sz: 18 }));
+    } else {
+      b.push(T('⚠ Fio B incide sobre a energia injetada (' + U.fmtSmart((1 - s) * 100, 1) + '%). Disponibilidade mínima ' + adj + ': ' +
+        U.fmt(r.disponibilidade, 0) + ' kWh/mês. COSIP de ' + U.brl(r.cosip) + '/mês não compensável (' +
+        (prem.reajusteCosip > 0 ? 'reajuste projetado de ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.' : 'valor nominal, sujeito a reajuste municipal') +
+        '). Cronograma Fio B: ' + C.fioBTexto(r.anoBase, prem, ' | ') + '.', { after: 80 }, { color: CINZA, sz: 18 }));
+    }
     b.push(vazio());
 
     /* ---------- FLUXO DE CAIXA */
     b.push(titulo((++sec) + '. FLUXO DE CAIXA — ' + H + ' ANOS'));
-    const fcCols = [{ t: 'Ano', w: 680, jc: 'center' }, { t: 'Geração (kWh)', w: 1100, jc: 'right' }, { t: 'Tarifa (R$/kWh)', w: 1000, jc: 'right' },
+    const fcCols = [{ t: 'Ano', w: 680, jc: 'center' }, { t: temFV ? 'Geração (kWh)' : 'Energia desloc. (kWh)', w: 1100, jc: 'right' },
+      { t: tou ? 'Tarifa FP (R$/kWh)' : 'Tarifa (R$/kWh)', w: 1000, jc: 'right' },
       { t: '% Fio B', w: 700, jc: 'center' }, { t: 'Econ. Bruta (R$)', w: 1300, jc: 'right' }, { t: 'Custo Fio B (R$)', w: 1200, jc: 'right' },
       { t: 'Econ. Líq. (R$)', w: 1280, jc: 'right' }, { t: 'Acumulado (R$)', w: 2100, jc: 'right' }];
     const fcLin = f.anos.map(function (a) {
-      return [{ t: String(a.ano), b: true, jc: 'center' }, U.fmt(a.geracao, 0), 'R$ ' + U.fmt(a.tarifa, 4), { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' },
+      return [{ t: String(a.ano), b: true, jc: 'center' }, U.fmt(temFV ? a.geracao : a.descarga, 0), 'R$ ' + U.fmt(a.tarifa, 4), { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' },
         U.brl(a.bruta), U.brl(a.fioB), U.brl(a.liq), { t: U.brl(a.acumulado), color: a.acumulado < 0 ? VERMELHO : VERDE }];
     });
     b.push(tabelaCabecalhoCentral(fcCols, fcLin, 18));
     if (r.trocaBateria && r.trocaBateria.custo > 0) {
-      b.push(T('🔋 A economia líquida do ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ' já desconta a substituição do banco de baterias (' + U.brl(r.trocaBateria.custo) + ').', { after: 80 }, { color: CINZA, sz: 18 }));
+      b.push(T('🔋 A economia líquida do ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ' já desconta a substituição ' + (r.bessAtivo ? 'do BESS' : 'do banco de baterias') + ' (' + U.brl(r.trocaBateria.custo) + ').', { after: 80 }, { color: CINZA, sz: 18 }));
     }
     b.push(vazio());
 
@@ -384,7 +544,7 @@ window.App = window.App || {};
     const eqLin = r.itens.map(function (it, i) {
       return [String(i + 1), C.qtdTxt(it), it.descricao, it.garantia || ''];
     });
-    if (r.infra > 0) {
+    if (r.incluiFV && r.infra > 0) {
       eqLin.push([{ t: '—', b: true }, '', { t: '── INFRAESTRUTURA ELÉTRICA (CA, PROTEÇÕES, ATERRAMENTO) ──', b: true }, '']);
       eqLin.push([String(r.itens.length + 1), '—', (p.infraDescricao || textos.infraDescricao) + ' — ' + U.brl(r.infra), 'Conf. fabricante']);
     }
@@ -393,8 +553,10 @@ window.App = window.App || {};
 
     /* ---------- SERVIÇOS */
     b.push(titulo((++sec) + '. SERVIÇOS INCLUSOS E NÃO INCLUSOS'));
-    const inc = (textos.inclusos || []).concat(hib ? textos.inclusosHibrido || [] : []).map(t).filter(Boolean);
-    const ninc = (textos.naoInclusos || []).concat(hib ? textos.naoInclusosHibrido || [] : []).map(t).filter(Boolean);
+    const extraInc = hib ? textos.inclusosHibrido || [] : (r.bessAtivo ? textos.inclusosBess || [] : []);
+    const extraNinc = hib ? textos.naoInclusosHibrido || [] : (r.bessAtivo ? textos.naoInclusosBess || [] : []);
+    const inc = (textos.inclusos || []).concat(extraInc).map(t).filter(Boolean);
+    const ninc = (textos.naoInclusos || []).concat(extraNinc).map(t).filter(Boolean);
     b.push(TBL([4680, 4680], [
       TR([TC(T('✅ Inclusos', null, { b: true, color: BRANCO }), { w: 4680, fill: AZUL }), TC(T('❌ Não Inclusos', null, { b: true, color: BRANCO }), { w: 4680, fill: AZUL })], true),
       TR([TC(T(inc.join('\n')), { w: 4680, fill: ZEBRA, vAlign: 'top' }), TC(T(ninc.join('\n')), { w: 4680, fill: BRANCO, vAlign: 'top' })])
@@ -409,15 +571,16 @@ window.App = window.App || {};
 
     /* ---------- CONDIÇÕES COMERCIAIS */
     b.push(titulo((++sec) + '. CONDIÇÕES COMERCIAIS'));
-    const cond = [['Valor Total da Proposta', { t: U.brl(r.total), b: true }],
-      [hib ? 'Kit Fotovoltaico + Baterias' : 'Kit Fotovoltaico Completo', U.brl(r.kit)]];
-    if (r.infra > 0) cond.push(['Infraestrutura Elétrica CA', U.brl(r.infra)]);
-    cond.push(['Mão de Obra + Projeto + Instalação + Homologação', U.brl(r.maoObra)]);
+    const cond = [['Valor Total da Proposta', { t: U.brl(r.total), b: true }]];
+    if (r.incluiFV) cond.push([hib && temArm ? 'Kit Fotovoltaico (com inversor híbrido)' : 'Kit Fotovoltaico Completo', U.brl(r.kit)]);
+    if (temArm) cond.push(['Armazenamento (' + nomeArm + ') + Instalação', U.brl(r.kitArm + r.instalArm)]);
+    if (r.incluiFV && r.infra > 0) cond.push(['Infraestrutura Elétrica CA', U.brl(r.infra)]);
+    if (r.incluiFV) cond.push(['Mão de Obra + Projeto + Instalação + Homologação', U.brl(r.maoObra)]);
     cond.push(['Validade da Proposta', (p.validadeDias || emp.validadeDias) + ' dias a partir da data de emissão']);
     if (mod) cond.push(['Garantia Módulos ' + mod.fabricante, C.garantiaModulo(mod)]);
     const garFab = function (e) { return U.num(e.garantia) > 0 ? e.garantia + ' anos (conforme fabricante)' : 'Conforme fabricante'; };
     if (inv) cond.push(['Garantia Inversor ' + inv.fabricante, garFab(inv)]);
-    if (bat) cond.push(['Garantia Baterias ' + bat.fabricante, garFab(bat)]);
+    if (bat && temArm) cond.push([(r.bessAtivo ? 'Garantia BESS ' : 'Garantia Baterias ') + bat.fabricante, garFab(bat)]);
     cond.push(['Garantia Instalação ' + (emp.nomeCurto || emp.razao), textos.garantiaInstalacao]);
     if (p.condicoesObs) cond.push(['Observações', p.condicoesObs]);
     b.push(kv([3600, 5760], cond));
@@ -425,7 +588,7 @@ window.App = window.App || {};
 
     /* ---------- CONFORMIDADE */
     b.push(titulo((++sec) + '. CONFORMIDADE LEGAL E TÉCNICA'));
-    const conf = (textos.conformidade || []).concat(hib ? textos.conformidadeHibrido || [] : []);
+    const conf = (textos.conformidade || []).concat(r.bessAtivo ? textos.conformidadeBess || [] : (hib ? textos.conformidadeHibrido || [] : []));
     b.push(kv([2800, 6560], conf.map(function (c) { return [t(c.norma), t(c.descricao)]; })));
     b.push(vazio());
 
@@ -506,5 +669,12 @@ window.App = window.App || {};
     return { ctx: ctx, r: r, cliente: cliente, nomeCliente: nomeCliente, logo: logo, grafico: grafico, modelo: modelo, nomeBase: nomeBase };
   }
 
-  App.Documento = { montar: montar, preparar: preparar, prepararLogo: prepararLogo, COR: COR };
+  App.Documento = {
+    montar: montar, preparar: preparar, prepararLogo: prepararLogo, COR: COR,
+    // construtores de nós reaproveitados pelos demais documentos (contrato e proposta avulsa)
+    nos: {
+      R: R, P: P, T: T, IMG: IMG, TC: TC, TR: TR, TBL: TBL, encaixar: encaixar, substituir: substituir, decimais: decimais,
+      tabela: tabela, kv: kv, titulo: titulo, vazio: vazio
+    }
+  };
 })(window.App);
