@@ -54,6 +54,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav a { color: #DCE3F3; text-decoration: none; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
 .nav a:hover { background: rgba(255,255,255,.07); }
 .nav a.ativo { background: var(--azul-2); color: #fff; font-weight: 600; }
+.versao-app { display: block; padding: 0 20px 18px; color: #8A98BC; font-size: 11px; }
 
 #conteudo { margin-left: var(--lateral); padding: 26px 30px 80px; min-height: 100vh; outline: none; max-width: calc(var(--lateral) + 1500px); }
 .barra-mobile { display: none; }

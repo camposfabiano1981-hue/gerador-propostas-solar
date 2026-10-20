@@ -2,6 +2,9 @@
 (function (App) {
   'use strict';
 
+  /** Versão publicada — a mesma usada em ?v= no index.html (evita o navegador usar arquivos antigos em cache). */
+  App.VERSAO_APP = '2026.10.20.3';
+
   App.atualizarMarca = function () {
     const emp = App.Store.config().empresa;
     const img = document.getElementById('marca-logo');
@@ -18,6 +21,8 @@
       console.error(e);
     }
     App.atualizarMarca();
+    const versao = document.getElementById('versao-app');
+    if (versao) versao.textContent = 'Versão ' + App.VERSAO_APP;
     document.getElementById('btn-menu').addEventListener('click', function () {
       document.body.classList.toggle('menu-aberto');
     });
