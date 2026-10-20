@@ -240,7 +240,7 @@ window.App = window.App || {};
       dim.push(
         ['Potência Total do Sistema', U.kwp(r.kwp) + ' kWp'],
         ['Módulos Fotovoltaicos', mod ? r.nModulos + ' módulos × ' + mod.potencia + ' Wp — ' + [mod.fabricante, mod.tecnologia, mod.modelo].filter(Boolean).join(' ') + (modExtra ? ' (' + modExtra + ')' : '') : '—'],
-        [hib ? 'Inversor Híbrido' : 'Inversor', inv ? r.nInversores + ' × ' + [inv.fabricante, inv.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(inv) : '—']
+        [hib ? 'Inversor Híbrido' : (r.micro ? 'Microinversores' : 'Inversor'), inv ? r.nInversores + ' × ' + [inv.fabricante, inv.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(inv) : '—']
       );
       if (temArm) dim.push([r.bessAtivo ? 'Armazenamento (BESS)' : 'Banco de Baterias', linhaArm]);
       dim.push(

@@ -7,7 +7,7 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 2;
+  const VERSAO = 3;
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
@@ -62,6 +62,18 @@ window.App = window.App || {};
         D.equipamentos.filter(function (e) { return e.tipo === 'bess'; }).forEach(function (e) { eqs.push(U.clone(e)); });
         gravar('col.equipamentos', eqs);
       }
+    }
+    if (v < 3) {
+      // catálogo ampliado: acrescenta os itens novos (por id) sem alterar os já cadastrados/editados
+      const eqs = Store.list('equipamentos');
+      const ids = {};
+      eqs.forEach(function (e) { ids[e.id] = true; });
+      D.equipamentos.forEach(function (e) { if (!ids[e.id]) eqs.push(U.clone(e)); });
+      // cabos CC e MC4 do catálogo original deixam de entrar em propostas com microinversores
+      eqs.forEach(function (e) {
+        if (['mat-cabo-vm', 'mat-cabo-pt', 'mat-mc4'].indexOf(e.id) >= 0 && (!e.aplicaEm || e.aplicaEm === 'ambos')) e.aplicaEm = 'string';
+      });
+      gravar('col.equipamentos', eqs);
     }
     gravar('v', VERSAO);
   };
@@ -169,7 +181,10 @@ window.App = window.App || {};
     COLECOES.forEach(function (c) {
       if (Array.isArray(dados.colecoes[c])) gravar('col.' + c, dados.colecoes[c]);
     });
-    gravar('v', VERSAO);
+    // backup de versão anterior: aplica as mesmas atualizações de base
+    const vb = parseInt(dados.versao, 10) || 1;
+    if (vb < VERSAO) Store.migrar(vb);
+    else gravar('v', VERSAO);
   };
 
   Store.restaurarPadroes = function () {

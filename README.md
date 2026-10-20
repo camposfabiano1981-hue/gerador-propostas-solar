@@ -39,7 +39,15 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - Catálogo de serviços (Cadastros › Serviços) com categoria, unidade, preço e escopo.
 - Proposta com itens do catálogo ou avulsos, desconto, prazo, garantia, opções de pagamento e textos próprios, na mesma identidade visual da proposta solar (PDF e Word). Usa a mesma numeração das propostas solares.
 
-**Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, inversores híbridos, baterias, BESS, estruturas e materiais com regras de quantidade), serviços, concessionárias e tarifas (B1/B2/B3, branca, verde, azul e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal) e condições de pagamento.
+**Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, **microinversores**, inversores híbridos, baterias, BESS, estruturas e materiais com regras de quantidade), serviços, concessionárias e tarifas (B1/B2/B3, branca, verde, azul e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal) e condições de pagamento.
+
+**Catálogo inicial de equipamentos** (preços em branco — informe os do seu distribuidor):
+- Módulos: Trina Solar, Astronergy, TCL Solar, OSDA, Honor Solar, ERA Solar (e DMEGC), com Voc/Vmp/Isc quando disponíveis na ficha.
+- Inversores on-grid: Huawei, Sungrow, Sofar, GoodWe e Solis (monofásicos 220 V e trifásicos 220/380 V).
+- Microinversores: Hoymiles, GoodWe e Sungrow — a quantidade é calculada pelo nº de módulos (entradas por micro) e a potência do módulo é conferida com a faixa do fabricante.
+- Híbridos e baterias: Deye, Huawei (LUNA2000), Sungrow, GoodWe, Solis, Growatt, Pylontech, BYD e Dyness; a plataforma só combina bateria e inversor da mesma classe (48 V ou alta tensão).
+- Estruturas para telhado cerâmico, fibrocimento, metálico (trapezoidal, ondulado, zipado, sanduíche), laje, solo, shingle e carport, além de suportes e cabos específicos de microinversores.
+- Itens com dados parciais estão identificados nas observações; confira sempre o datasheet vigente.
 
 **Configurações**: dados da empresa e logotipo (inclusive dados do contrato e bancários, que ficam só no navegador), premissas técnicas/financeiras (PR, degradação, inflação, TMA/SELIC, cronograma do Fio B, disponibilidade, limites, parâmetros de baterias e BESS), textos padrão da proposta, modelo de contrato e backup/importação dos dados.
 

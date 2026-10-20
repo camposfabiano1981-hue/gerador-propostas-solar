@@ -196,6 +196,54 @@
   ok('BESS: proposta usa o cenário recomendado', rA.cen.id === rA.recomendacao.id && rA.total === rA.cen.investimento);
   ok('BESS: itens com o gabinete BESS', rA.itens.length === 1 && rA.itens[0].categoria === 'bess' && rA.itens[0].qtd === rA.cen.n, JSON.stringify(rA.itens.map(function (i) { return i.categoria + ':' + i.qtd; })));
 
+  // ---------------------------------------------------------------- microinversores
+  const pM = Object.assign(U.clone(p), { topologia: 'micro', inversorId: null, moduloId: 'mod-osda-620', nModulos: 14, kitManual: true });
+  const rM = C.calcular(pM, ctx);
+  ok('micro: microinversor escolhido', rM.micro && rM.inversor.tipo === 'micro', rM.inversor && rM.inversor.modelo);
+  igual('micro: quantidade = módulos ÷ 4 entradas', rM.nInversores, 4);
+  ok('micro: módulo dentro da faixa do micro', !rM.inversor.potModuloMax || rM.inversor.potModuloMax >= 620);
+  perto('micro: FDI mais próximo do alvo (2 kW × 4 ÷ 8,68 kWp)', rM.fdi, 8 / 8.68, 1e-9);
+  const descM = rM.itens.map(function (i) { return i.descricao; }).join(' | ');
+  ok('micro: cabo tronco e suporte do micro na lista', /Cabo tronco/.test(descM) && /Suporte de fixação do microinversor/.test(descM), descM);
+  ok('micro: sem cabo solar CC nem MC4', !/Cabo Solar 4,0mm|MC4/.test(descM));
+  igual('micro: terminais de fim de linha (ramais de até 3)', rM.itens.find(function (i) { return /Terminal de fim de linha/.test(i.descricao); }).qtd, 2);
+  const rM2 = C.calcular(Object.assign(U.clone(pM), { nModulos: 15, inversorId: 'mic-hoymiles-2000', nInversores: 3 }), ctx);
+  ok('micro: alerta quando faltam entradas', rM2.alertas.some(function (a) { return a.nivel === 'erro' && /entradas/.test(a.msg); }));
+  const rM3 = C.calcular(Object.assign(U.clone(pM), { inversorId: 'mic-hoymiles-1600' }), ctx);
+  ok('micro: alerta de módulo acima da faixa do micro', rM3.alertas.some(function (a) { return /fora da faixa recomendada/.test(a.msg); }));
+  const rS = C.calcular(Object.assign(U.clone(p), { moduloId: 'mod-osda-620' }), ctx);
+  ok('string: cabos CC e MC4 continuam na lista', rS.itens.some(function (i) { return /Cabo Solar/.test(i.descricao); }) && !rS.micro);
+
+  // ---------------------------------------------------------------- compatibilidade bateria × inversor híbrido
+  const pHV = Object.assign(U.clone(pH), { bateriaId: 'bat-byd-hvs51' });
+  const rHV = C.calcular(pHV, ctxH);
+  igual('híbrido: bateria de alta tensão → inversor HV', C.classeBateriaInversor(rHV.inversor), 'HV');
+  ok('híbrido: sem alerta de incompatibilidade na escolha automática', !rHV.alertas.some(function (a) { return /incompatível com o inversor/.test(a.msg); }));
+  const rLVxHV = C.calcular(Object.assign(U.clone(pHV), { inversorId: 'hib-deye-5' }), ctxH);
+  ok('híbrido: alerta 48 V × alta tensão', rLVxHV.alertas.some(function (a) { return a.nivel === 'erro' && /incompatível com o inversor/.test(a.msg); }));
+  const rBatAuto = C.calcular(Object.assign(U.clone(pH), { bateriaId: null, inversorId: 'hib-huawei-5-l1' }), ctxH);
+  igual('híbrido: bateria padrão compatível com o inversor escolhido', C.classeBateria(rBatAuto.hibrido.bateria), 'HV');
+
+  // ---------------------------------------------------------------- estruturas por tipo de telhado
+  function itensTelhado(telhado, nMod) {
+    return C.calcular(Object.assign(U.clone(p), { telhado: telhado, moduloId: 'mod-osda-620', nModulos: nMod }), ctx).itens
+      .filter(function (i) { return i.categoria === 'estrutura'; });
+  }
+  const cer = itensTelhado('Cerâmico', 10);
+  ok('cerâmico: ganchos, perfis, emendas, grampos e aterramento', ['Gancho regulável', 'Perfil/trilho', 'Emenda', 'Grampo intermediário', 'Grampo final', 'aterramento']
+    .every(function (t) { return cer.some(function (i) { return i.descricao.indexOf(t) >= 0; }); }), cer.map(function (i) { return i.descricao; }).join(' | '));
+  igual('cerâmico: 2 ganchos por módulo', cer.find(function (i) { return /Gancho regulável/.test(i.descricao); }).qtd, 20);
+  const met = itensTelhado('Metálico', 10);
+  igual('metálico: mini trilhos (2,2 por módulo)', met.find(function (i) { return /Mini trilho/.test(i.descricao); }).qtd, 22);
+  ok('metálico: alternativas não entram automaticamente', !met.some(function (i) { return /zipada|sanduíche|Suporte "L"/.test(i.descricao); }));
+  const solo = itensTelhado('Solo', 26);
+  igual('solo: mesas combinadas (2 × 12 + 1 × 4)', solo.filter(function (i) { return /Mesa de solo/.test(i.descricao); }).map(function (i) { return i.qtd + '×' + i.descricao.match(/p\/ (\d+)/)[1]; }).join(', '), '2×12, 1×4');
+  ok('fibrocimento: somente o kit original (sem alternativas)', itensTelhado('Fibrocimento', 9).every(function (i) { return /Solfácil/.test(i.descricao); }));
+  ok('catálogo: ids únicos', (function () { const v = {}; return D.equipamentos.every(function (e) { if (v[e.id]) return false; v[e.id] = true; return true; }); })());
+  ok('catálogo: fabricantes pedidos presentes', ['Huawei', 'Sungrow', 'Sofar', 'GoodWe', 'Solis', 'Hoymiles', 'Trina Solar', 'Astronergy', 'TCL Solar', 'OSDA', 'Honor Solar', 'ERA Solar']
+    .every(function (f) { return D.equipamentos.some(function (e) { return e.fabricante === f; }); }));
+  ok('catálogo: microinversores Sungrow, GoodWe e Hoymiles', ['Sungrow', 'GoodWe', 'Hoymiles'].every(function (f) { return D.equipamentos.some(function (e) { return e.tipo === 'micro' && e.fabricante === f; }); }));
+
   // ---------------------------------------------------------------- valores por extenso
   igual('extenso: valor do contrato modelo', U.extenso(86110.55), 'Oitenta e seis mil, cento e dez reais e cinquenta e cinco centavos');
   igual('extenso: 12.700,00', U.extenso(12700), 'Doze mil e setecentos reais');

@@ -215,11 +215,12 @@ window.App = window.App || {};
         ? U.fmt(potW, 0) + ' W (× ' + r.nInversores + ' un.) = ' + U.fmt(potW * r.nInversores, 0) + ' W total'
         : U.fmt(potW, 0) + ' W';
       grupos.push({
-        titulo: i.tipo === 'hibrido' ? 'Inversores Híbridos' : 'Inversores', tipo: 'spec', linhas: [
+        titulo: i.tipo === 'hibrido' ? 'Inversores Híbridos' : (i.tipo === 'micro' ? 'Microinversores' : 'Inversores'), tipo: 'spec', linhas: [
           ['Fabricante', String(i.fabricante || '').toUpperCase()],
           ['Modelo', i.modelo || ''],
           ['Potência', pot],
           ['Fase', [[i.fases, i.tensao].filter(Boolean).join(' '), U.num(i.mppts) > 0 ? i.mppts + ' MPPT' : ''].filter(Boolean).join(' – ')],
+          i.tipo === 'micro' && U.num(i.modulosPorUnidade) > 0 ? ['Módulos por Microinversor', String(i.modulosPorUnidade)] : ['', ''],
           ['Quantidade', un(r.nInversores)],
           ['Garantia', anos(i.garantia)]
         ].filter(function (l) { return l[1]; })

@@ -97,7 +97,8 @@
     function mudou(k) {
       sujo = true;
       const reDesenho = {
-        tipoSistema: ['sistema', 'hibrido', 'cenarios', 'materiais', 'ident'], localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
+        tipoSistema: ['sistema', 'hibrido', 'cenarios', 'materiais', 'ident'], topologia: ['sistema', 'materiais'],
+        localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
         modalidade: ['local', 'consumo', 'cenarios'], bessComFV: ['sistema', 'cenarios', 'materiais'],
         consumoModo: ['consumo'], clienteId: ['cliente'], precoModo: ['materiais'], kitManual: ['materiais'], data: ['ident'],
         'cenarios.ativo': ['cenarios']
@@ -106,9 +107,11 @@
         const loc = ctx.localidades.find(function (l) { return l.id === p.localidadeId; });
         if (loc && loc.concessionariaId) p.concessionariaId = loc.concessionariaId;
       }
-      if (k === 'tipoSistema') {
+      if (k === 'tipoSistema' || k === 'topologia') {
         p.inversorId = null;
         p.nInversores = '';
+      }
+      if (k === 'tipoSistema') {
         if (p.tipoSistema === 'hibrido' && !p.cargas.length) p.cargas = U.clone(D.cargasExemplo);
         if (p.cenarios) garantirCenarios();
       }
@@ -284,15 +287,26 @@
           return;
         }
       }
-      const tipoInv = p.tipoSistema === 'hibrido' ? 'hibrido' : 'inversor';
+      const micro = p.tipoSistema !== 'hibrido' && p.topologia === 'micro';
+      const tipoInv = p.tipoSistema === 'hibrido' ? 'hibrido' : (micro ? 'micro' : 'inversor');
+      if (p.tipoSistema !== 'hibrido') {
+        c.appendChild(h('div.campo', h('label', 'Tipo de inversor'), h('div.opcoes-cartao',
+          [['string', 'Inversor string', 'Um ou mais inversores centrais; menor custo por kWp.'],
+            ['micro', 'Microinversores', 'Um micro a cada 2–4 módulos: MPPT por módulo, sombreamento parcial e telhados com várias águas.']].map(function (o) {
+            return h('button.opcao' + ((p.topologia || 'string') === o[0] ? '.ativa' : ''), {
+              type: 'button', onclick: function () { if ((p.topologia || 'string') !== o[0]) { p.topologia = o[0]; mudou('topologia'); } }
+            }, h('strong', o[1]), h('small', o[2]));
+          }))));
+      }
       infos.placeModulos = UI.campo({ k: 'nModulos', label: 'Quantidade de módulos', type: 'int', help: 'Em branco = quantidade sugerida.' }, p, mudou);
-      infos.placeInv = UI.campo({ k: 'nInversores', label: 'Quantidade de inversores', type: 'int', help: 'Em branco = automático.' }, p, mudou);
+      infos.placeInv = UI.campo({ k: 'nInversores', label: micro ? 'Quantidade de microinversores' : 'Quantidade de inversores', type: 'int',
+        help: micro ? 'Em branco = módulos ÷ entradas por micro.' : 'Em branco = automático.' }, p, mudou);
       c.appendChild(UI.grade([
         { k: 'moduloId', label: 'Módulo fotovoltaico', type: 'select', required: true, cls: 'span2',
           options: [{ v: '', t: '— selecione —' }].concat(opcoesEquip(ctx, 'modulo', p.moduloId)) },
         { el: infos.placeModulos },
-        { k: 'inversorId', label: tipoInv === 'hibrido' ? 'Inversor híbrido' : 'Inversor', type: 'select', cls: 'span2',
-          options: function () { return [{ v: '', t: 'Automático (melhor FDI)' }].concat(opcoesEquip(ctx, tipoInv, p.inversorId)); } },
+        { k: 'inversorId', label: tipoInv === 'hibrido' ? 'Inversor híbrido' : (micro ? 'Microinversor' : 'Inversor'), type: 'select', cls: 'span2',
+          options: function () { return [{ v: '', t: micro ? 'Automático (compatível com o módulo)' : 'Automático (melhor FDI)' }].concat(opcoesEquip(ctx, tipoInv, p.inversorId)); } },
         { el: infos.placeInv }
       ], p, mudou, 3));
       infos.sistema = h('div.info');
@@ -466,7 +480,7 @@
       selAdd.addEventListener('change', function () {
         const e = ctx.equipamentos.find(function (x) { return x.id === selAdd.value; });
         if (!e) return;
-        const cat = { modulo: 'modulo', inversor: 'inversor', hibrido: 'inversor', bateria: 'bateria', estrutura: 'estrutura' }[e.tipo] || 'material';
+        const cat = { modulo: 'modulo', inversor: 'inversor', hibrido: 'inversor', micro: 'inversor', bateria: 'bateria', bess: 'bess', estrutura: 'estrutura' }[e.tipo] || 'material';
         p.itens.push({ id: U.uid(), equipamentoId: e.id, categoria: cat, descricao: C.descEquip(e), qtd: 1, unidade: e.unidade || 'un', precoUnit: U.numOr(e.preco, 0), garantia: C.garantiaEquip(e), manual: true });
         sujo = true;
         desenharItens();
@@ -586,7 +600,7 @@
         const itensInfo = [
           linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp'),
           linhaInfo('Potência do sistema', U.kwp(r.kwp) + ' kWp', 'destaque'),
-          linhaInfo('Inversor', r.inversor ? r.nInversores + ' × ' + C.nomeEquip(r.inversor) : '—'),
+          linhaInfo(r.micro ? 'Microinversores' : 'Inversor', r.inversor ? r.nInversores + ' × ' + C.nomeEquip(r.inversor) : '—'),
           linhaInfo('FDI (P inv ÷ P FV)', r.kwp ? U.fmt(r.fdi, 3) + (r.fdiOk ? ' ✅' : ' ⚠️') : '—', r.kwp && !r.fdiOk ? 'alerta' : null),
           linhaInfo('Geração mensal', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'),
           linhaInfo('Geração anual (ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh'),
@@ -720,7 +734,7 @@
         temFV ? h('div.kpis',
           kpi('Potência', U.kwp(r.kwp) + ' kWp', 'grande'),
           kpi('Módulos', r.modulo ? r.nModulos + ' × ' + r.modulo.potencia + ' Wp' : '—'),
-          kpi('Inversor', r.inversor ? r.nInversores + ' × ' + U.fmtSmart(r.inversor.potencia, 2) + ' kW' : '—'),
+          kpi(r.micro ? 'Microinversores' : 'Inversor', r.inversor ? r.nInversores + ' × ' + U.fmtSmart(r.inversor.potencia, 2) + ' kW' : '—'),
           kpi('FDI', r.kwp ? U.fmt(r.fdi, 3) : '—', r.kwp && !r.fdiOk ? 'alerta' : null),
           kpi('Geração', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'),
           kpi('Cobertura', U.fmt(r.cobertura * 100, 0) + '%')) : null,

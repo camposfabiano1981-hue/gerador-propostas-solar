@@ -6,6 +6,14 @@
   const h = U.h;
 
   const SIM_NAO = function (v) { return v === false ? UI.badge('Inativo', 'cinza') : UI.badge('Ativo', 'ok'); };
+  const FASES = ['Monofásico', 'Bifásico', 'Trifásico'];
+  const CLASSE_BAT = [{ v: 'LV', t: 'Baixa tensão (48 V)' }, { v: 'HV', t: 'Alta tensão (HV)' }];
+  const APLICA_EM = [
+    { v: 'ambos', t: 'Todos os sistemas' }, { v: 'ongrid', t: 'Somente On-Grid' }, { v: 'hibrido', t: 'Somente Híbrido' }, { v: 'bess', t: 'Somente BESS' },
+    { v: 'string', t: 'Somente com inversor string' }, { v: 'micro', t: 'Somente com microinversores' }
+  ];
+  const APLICA_TXT = {};
+  APLICA_EM.forEach(function (a) { APLICA_TXT[a.v] = a.t.replace(/^Somente (com )?/, ''); });
   const UF_OPTS = [{ v: '', t: '—' }].concat(U.UFS.map(function (u) { return { v: u, t: u }; }));
 
   function usoEmPropostas(fn) {
@@ -103,14 +111,22 @@
         { k: 'fabricante', label: 'Fabricante', required: true },
         { k: 'modelo', label: 'Modelo', required: true },
         { k: 'potencia', label: 'Potência nominal CA', type: 'number', suffix: 'kW', required: true },
-        { k: 'fases', label: 'Fases', type: 'select', options: ['Monofásico', 'Trifásico'] },
+        { k: 'fases', label: 'Fases', type: 'select', options: FASES },
         { k: 'tensao', label: 'Tensão de saída', placeholder: 'Ex.: 220V' },
         { k: 'mppts', label: 'Nº de MPPTs', type: 'int' }
       ];
-      if (hibrido) {
+      if (hibrido === 'micro') {
+        c.push(
+          { k: 'modulosPorUnidade', label: 'Módulos por microinversor (entradas)', type: 'int', required: true, help: 'Ex.: 4 para micros 4 em 1.' },
+          { k: 'potModuloMin', label: 'Potência de módulo recomendada — mín.', type: 'number', suffix: 'Wp' },
+          { k: 'potModuloMax', label: 'Potência de módulo recomendada — máx.', type: 'number', suffix: 'Wp' }
+        );
+      }
+      if (hibrido === true) {
         c.push(
           { k: 'potenciaBackup', label: 'Potência de backup (off-grid)', type: 'number', suffix: 'kW', help: 'Em branco = potência nominal.' },
-          { k: 'tensaoBateria', label: 'Tensão nominal da bateria', type: 'number', suffix: 'V', help: 'Ex.: 48 (baixa tensão) ou 200+ (alta tensão).' }
+          { k: 'tipoBateria', label: 'Bateria compatível', type: 'select', options: CLASSE_BAT },
+          { k: 'tensaoBateria', label: 'Tensão nominal da bateria', type: 'number', suffix: 'V', help: 'Ex.: 48 (baixa tensão). Em branco para alta tensão (associação definida pelo fabricante).' }
         );
       }
       c.push(
@@ -134,6 +150,7 @@
         { k: 'modelo', label: 'Modelo', required: true },
         { k: 'quimica', label: 'Química', type: 'select', options: ['LiFePO4', 'Lítio NMC', 'Chumbo-ácido', 'Chumbo-carbono', 'Outra'] },
         { k: 'energia', label: 'Energia nominal', type: 'number', suffix: 'kWh', required: true },
+        { k: 'tipoBateria', label: 'Classe de tensão', type: 'select', options: CLASSE_BAT, help: 'Deve coincidir com a bateria aceita pelo inversor híbrido.' },
         { k: 'tensao', label: 'Tensão nominal', type: 'number', suffix: 'V' },
         { k: 'capacidadeAh', label: 'Capacidade', type: 'number', suffix: 'Ah' },
         { k: 'dod', label: 'Profundidade de descarga (DoD)', type: 'number', suffix: '%' },
@@ -174,8 +191,10 @@
         { k: 'regra', label: 'Regra de quantidade', type: 'select', options: D.REGRAS_QTD.map(function (r) { return { v: r.id, t: r.label }; }), cls: 'span2' },
         { k: 'fator', label: 'Fator / N', type: 'number', help: 'Kit: nº de módulos por kit. Proporcional: multiplicador. Fixa: quantidade.' },
         { k: 'unidade', label: 'Unidade', type: 'select', options: ['un', 'm', 'pt', 'cj', 'kg'] },
+        { k: 'aplicaEm', label: 'Aplica-se a', type: 'select', options: APLICA_EM },
         { k: 'garantia', label: 'Garantia', placeholder: 'Ex.: Vitalícia' },
         { k: 'preco', label: 'Preço unitário', type: 'money' },
+        { k: 'obs', label: 'Observações internas', cls: 'span2' },
         { k: 'autoIncluir', label: 'Incluir automaticamente nas propostas (telhado compatível)', type: 'checkbox', cls: 'span2' },
         { k: 'ativo', label: 'Ativo', type: 'checkbox' }
       ];
@@ -186,7 +205,7 @@
         { k: 'regra', label: 'Regra de quantidade', type: 'select', options: D.REGRAS_QTD.filter(function (r) { return r.id !== 'kitModulos'; }).map(function (r) { return { v: r.id, t: r.label }; }), cls: 'span2' },
         { k: 'fator', label: 'Fator / quantidade', type: 'number' },
         { k: 'unidade', label: 'Unidade', type: 'select', options: ['un', 'm', 'pt', 'cj', 'kg'] },
-        { k: 'aplicaEm', label: 'Aplica-se a', type: 'select', options: [{ v: 'ambos', t: 'On-Grid e Híbrido' }, { v: 'ongrid', t: 'Somente On-Grid' }, { v: 'hibrido', t: 'Somente Híbrido' }] },
+        { k: 'aplicaEm', label: 'Aplica-se a', type: 'select', options: APLICA_EM },
         { k: 'garantia', label: 'Garantia', placeholder: 'Ex.: 5 anos' },
         { k: 'preco', label: 'Preço unitário', type: 'money' },
         { k: 'autoIncluir', label: 'Incluir automaticamente nas propostas', type: 'checkbox', cls: 'span2' },
@@ -212,11 +231,20 @@
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
     ],
+    micro: [
+      { t: 'Microinversor', v: function (e) { return h('span', h('strong', e.fabricante + ' '), e.modelo); } },
+      { t: 'Potência', cls: 'num', v: function (e) { return U.fmtSmart(e.potencia, 2) + ' kW'; } },
+      { t: 'Módulos', cls: 'num', v: function (e) { return e.modulosPorUnidade || '—'; } },
+      { t: 'Módulo (Wp)', v: function (e) { return e.potModuloMin || e.potModuloMax ? (e.potModuloMin || '…') + '–' + (e.potModuloMax || '…') : '—'; } },
+      { t: 'Fases', v: function (e) { return e.fases; } },
+      { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
+      { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
+    ],
     bateria: [
       { t: 'Bateria', v: function (e) { return h('span', h('strong', e.fabricante + ' '), e.modelo); } },
       { t: 'Energia', cls: 'num', v: function (e) { return U.fmtSmart(e.energia, 2) + ' kWh'; } },
       { t: 'Tensão', cls: 'num', v: function (e) { return e.tensao ? U.fmtSmart(e.tensao, 1) + ' V' : '—'; } },
-      { t: 'Química', v: function (e) { return e.quimica; } },
+      { t: 'Classe', v: function (e) { return C.classeBateria(e) === 'HV' ? 'Alta tensão' : '48 V'; } },
       { t: 'DoD', cls: 'num', v: function (e) { return e.dod ? e.dod + '%' : '—'; } },
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
@@ -232,7 +260,8 @@
     ],
     estrutura: [
       { t: 'Descrição', v: function (e) { return e.descricao; } },
-      { t: 'Telhado', v: function (e) { return e.telhado; } },
+      { t: 'Telhado', v: function (e) { return e.telhado + (e.aplicaEm && e.aplicaEm !== 'ambos' ? ' · ' + (APLICA_TXT[e.aplicaEm] || e.aplicaEm) : ''); } },
+      { t: 'Fabricante', v: function (e) { return e.fabricante || '—'; } },
       { t: 'Regra', v: function (e) { return regraTxt(e); } },
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
       { t: 'Auto', v: function (e) { return e.autoIncluir ? UI.badge('Sim', 'ok') : UI.badge('Não', 'cinza'); } },
@@ -241,7 +270,7 @@
     material: [
       { t: 'Descrição', v: function (e) { return e.descricao; } },
       { t: 'Regra', v: function (e) { return regraTxt(e); } },
-      { t: 'Aplica-se', v: function (e) { return { ambos: 'Ambos', ongrid: 'On-Grid', hibrido: 'Híbrido' }[e.aplicaEm || 'ambos']; } },
+      { t: 'Aplica-se', v: function (e) { return APLICA_TXT[e.aplicaEm || 'ambos'] || e.aplicaEm; } },
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)) + ' / ' + (e.unidade || 'un'); } },
       { t: 'Auto', v: function (e) { return e.autoIncluir ? UI.badge('Sim', 'ok') : UI.badge('Não', 'cinza'); } },
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
@@ -276,14 +305,20 @@
       antesTabela: abas,
       filtro: function (e) { return e.tipo === def.id; },
       busca: function (e) { return [e.fabricante, e.modelo, e.descricao].join(' '); },
-      ordenar: function (a, b) { return (U.numOr(a.potencia, 0) - U.numOr(b.potencia, 0)) || String(a.fabricante || a.descricao).localeCompare(String(b.fabricante || b.descricao)); },
+      ordenar: function (a, b) {
+        // catálogo grande: agrupa por fabricante (ou por telhado, nas estruturas) e ordena por potência/capacidade
+        if (def.id === 'estrutura') return String(a.telhado).localeCompare(String(b.telhado), 'pt-BR') || String(a.descricao).localeCompare(String(b.descricao), 'pt-BR');
+        return String(a.fabricante || a.descricao || '').localeCompare(String(b.fabricante || b.descricao || ''), 'pt-BR') ||
+          (U.numOr(a.potencia || a.energia, 0) - U.numOr(b.potencia || b.energia, 0)) || String(a.modelo || '').localeCompare(String(b.modelo || ''));
+      },
       colunas: COLUNAS_EQUIP[def.id === 'hibrido' ? 'inversor' : def.id],
       novo: function () {
         const base = { tipo: def.id, ativo: true, preco: 0 };
         if (def.id === 'modulo') Object.assign(base, { area: 2.8, garantiaProduto: 12, garantiaPerformance: 25 });
         if (def.id === 'inversor' || def.id === 'hibrido') Object.assign(base, { fases: 'Monofásico', tensao: '220V', mppts: 1, garantia: 10 });
-        if (def.id === 'hibrido') Object.assign(base, { tensaoBateria: 48 });
-        if (def.id === 'bateria') Object.assign(base, { quimica: 'LiFePO4', dod: 90, garantia: 10 });
+        if (def.id === 'micro') Object.assign(base, { fases: 'Monofásico', tensao: '220V', mppts: 4, modulosPorUnidade: 4, garantia: 12 });
+        if (def.id === 'hibrido') Object.assign(base, { tensaoBateria: 48, tipoBateria: 'LV' });
+        if (def.id === 'bateria') Object.assign(base, { quimica: 'LiFePO4', dod: 90, garantia: 10, tipoBateria: 'LV' });
         if (def.id === 'bess') Object.assign(base, { quimica: 'LiFePO4', fases: 'Trifásico', dod: 90, eficiencia: 90, ciclos: 6000, garantia: 10 });
         if (def.id === 'estrutura') Object.assign(base, { regra: 'kitModulos', fator: 4, unidade: 'un', telhado: 'Fibrocimento', garantia: 'Vitalícia', autoIncluir: true });
         if (def.id === 'material') Object.assign(base, { regra: 'fixa', fator: 1, unidade: 'un', aplicaEm: 'ambos', autoIncluir: true });
@@ -294,6 +329,7 @@
         if (!String(e.fabricante || '').trim() || !String(e.modelo || '').trim()) return 'Informe fabricante e modelo.';
         if (def.id === 'bateria') return U.num(e.energia) > 0 ? null : 'Informe a energia nominal (kWh).';
         if (def.id === 'bess') return U.num(e.energia) > 0 && U.num(e.potencia) > 0 ? null : 'Informe energia (kWh) e potência (kW) do BESS.';
+        if (def.id === 'micro' && !(U.num(e.modulosPorUnidade) > 0)) return 'Informe quantos módulos cada microinversor recebe.';
         return U.num(e.potencia) > 0 ? null : 'Informe a potência.';
       },
       podeExcluir: function (e) {
@@ -303,7 +339,11 @@
         });
         return n ? 'Item usado em ' + n + ' proposta(s). Desative-o em vez de excluir.' : null;
       },
-      campos: function () { return def.id === 'hibrido' ? CAMPOS_EQUIP.inversor(true) : CAMPOS_EQUIP[def.id](); }
+      campos: function () {
+        if (def.id === 'hibrido') return CAMPOS_EQUIP.inversor(true);
+        if (def.id === 'micro') return CAMPOS_EQUIP.inversor('micro');
+        return CAMPOS_EQUIP[def.id]();
+      }
     });
   });
 

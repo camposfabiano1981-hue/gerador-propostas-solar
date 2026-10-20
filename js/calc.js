@@ -124,14 +124,17 @@ window.App = window.App || {};
     if (!i) return '';
     let s = U.fmtSmart(i.potencia, 2) + ' kW ' + [i.fases, i.tensao].filter(Boolean).join(' ');
     if (pos(i.mppts)) s += ' / ' + i.mppts + ' MPPT';
+    if (i.tipo === 'micro' && pos(i.modulosPorUnidade)) s += ' / ' + i.modulosPorUnidade + ' módulos';
     if (i.tipo === 'hibrido' && pos(i.tensaoBateria)) s += ' / Bateria ' + U.fmtSmart(i.tensaoBateria, 1) + 'V';
     return s.trim();
   };
 
+  C.TITULO_INVERSOR = { hibrido: 'Inversor Híbrido', micro: 'Microinversor', inversor: 'Inversor' };
+
   C.descInversor = function (i) {
     if (!i) return '';
     if (i.descricaoProposta) return i.descricaoProposta;
-    return (i.tipo === 'hibrido' ? 'Inversor Híbrido ' : 'Inversor ') + [i.fabricante, i.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(i);
+    return (C.TITULO_INVERSOR[i.tipo] || 'Inversor') + ' ' + [i.fabricante, i.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(i);
   };
 
   C.descBateria = function (b) {
@@ -169,7 +172,7 @@ window.App = window.App || {};
   C.descEquip = function (e) {
     if (!e) return '';
     if (e.tipo === 'modulo') return C.descModulo(e);
-    if (e.tipo === 'inversor' || e.tipo === 'hibrido') return C.descInversor(e);
+    if (e.tipo === 'inversor' || e.tipo === 'hibrido' || e.tipo === 'micro') return C.descInversor(e);
     if (e.tipo === 'bateria') return C.descBateria(e);
     if (e.tipo === 'bess') return C.descBess(e);
     return e.descricaoProposta || e.descricao || [e.fabricante, e.modelo].filter(Boolean).join(' ');
@@ -178,7 +181,7 @@ window.App = window.App || {};
   C.garantiaEquip = function (e) {
     if (!e) return '';
     if (e.tipo === 'modulo') return C.garantiaModulo(e);
-    if (['inversor', 'hibrido', 'bateria', 'bess'].indexOf(e.tipo) >= 0) return pos(e.garantia) ? e.garantia + ' anos' : 'Conf. fabricante';
+    if (['inversor', 'hibrido', 'micro', 'bateria', 'bess'].indexOf(e.tipo) >= 0) return pos(e.garantia) ? e.garantia + ' anos' : 'Conf. fabricante';
     return e.garantia || 'Conf. fabricante';
   };
 
@@ -186,9 +189,24 @@ window.App = window.App || {};
     if (!e) return '';
     if (e.tipo === 'modulo') return [e.fabricante, e.modelo, e.potencia ? e.potencia + ' Wp' : ''].filter(Boolean).join(' ');
     if (e.tipo === 'inversor' || e.tipo === 'hibrido') return [e.fabricante, e.modelo, e.potencia ? U.fmtSmart(e.potencia, 2) + ' kW' : ''].filter(Boolean).join(' ');
+    if (e.tipo === 'micro') return [e.fabricante, e.modelo, e.potencia ? U.fmtSmart(e.potencia, 2) + ' kW' : '', pos(e.modulosPorUnidade) ? '(' + e.modulosPorUnidade + ' módulos)' : ''].filter(Boolean).join(' ');
     if (e.tipo === 'bateria') return [e.fabricante, e.modelo, e.energia ? U.fmtSmart(e.energia, 2) + ' kWh' : ''].filter(Boolean).join(' ');
     if (e.tipo === 'bess') return [e.fabricante, e.modelo, C.specBess(e)].filter(Boolean).join(' ');
     return e.descricao || [e.fabricante, e.modelo].filter(Boolean).join(' ');
+  };
+
+  /** Classe de tensão da bateria: 'LV' (48 V) ou 'HV' (alta tensão). */
+  C.classeBateria = function (b) {
+    if (!b) return null;
+    if (b.tipoBateria) return b.tipoBateria;
+    return pos(b.tensao) && b.tensao > 60 ? 'HV' : 'LV';
+  };
+
+  /** Classe de bateria aceita pelo inversor híbrido. */
+  C.classeBateriaInversor = function (inv) {
+    if (!inv) return null;
+    if (inv.tipoBateria) return inv.tipoBateria;
+    return pos(inv.tensaoBateria) && inv.tensaoBateria > 60 ? 'HV' : 'LV';
   };
 
   function fasesCompat(inv, ligacao) {
@@ -197,8 +215,25 @@ window.App = window.App || {};
     return { ok: !tri, pen: 0 };
   }
 
-  /** Escolhe inversor e quantidade com FDI (P_inversor / P_FV) mais próximo do alvo. */
-  C.sugerirInversor = function (kwp, ligacao, candidatos, prem, potCargasW) {
+  /** Nº de microinversores para N módulos (cada unidade recebe `modulosPorUnidade` módulos). */
+  C.qtdMicro = function (inv, nModulos) {
+    const m = pos(inv && inv.modulosPorUnidade) || 1;
+    return Math.max(1, Math.ceil(nModulos / m - 1e-9));
+  };
+
+  /** Módulo dentro da faixa de potência recomendada pelo fabricante do microinversor? */
+  function moduloCompativel(inv, wp) {
+    if (!wp) return true;
+    if (pos(inv.potModuloMin) && wp < inv.potModuloMin) return false;
+    if (pos(inv.potModuloMax) && wp > inv.potModuloMax) return false;
+    return true;
+  }
+
+  /**
+   * Escolhe inversor e quantidade com FDI (P_inversor / P_FV) mais próximo do alvo.
+   * Microinversores: a quantidade é definida pelo nº de módulos (nMod) e a compatibilidade pela potência do módulo (wp).
+   */
+  C.sugerirInversor = function (kwp, ligacao, candidatos, prem, potCargasW, nMod, wp) {
     let melhor = null;
     if (!(kwp > 0)) return null;
     (candidatos || []).forEach(function (inv) {
@@ -206,6 +241,18 @@ window.App = window.App || {};
       if (!pot) return;
       const fc = fasesCompat(inv, ligacao);
       if (!fc.ok) return;
+      if (inv.tipo === 'micro') {
+        if (!(nMod > 0)) return;
+        const n = C.qtdMicro(inv, nMod);
+        const fdi = (n * pot) / kwp;
+        let score = Math.abs(fdi - prem.fdiAlvo) + fc.pen;
+        if (fdi < prem.fdiMin || fdi > prem.fdiMax) score += 10;
+        if (!moduloCompativel(inv, wp)) score += 20;
+        // módulos ociosos na última unidade (ex.: 3 módulos num micro de 4 entradas)
+        score += ((n * (pos(inv.modulosPorUnidade) || 1)) - nMod) * 0.02;
+        if (!melhor || score < melhor.score) melhor = { inv: inv, n: n, fdi: fdi, score: score };
+        return;
+      }
       for (let n = 1; n <= 4; n++) {
         const fdi = (n * pot) / kwp;
         let score = Math.abs(fdi - prem.fdiAlvo) + fc.pen + (n - 1) * 0.08;
@@ -272,18 +319,26 @@ window.App = window.App || {};
       nBat: nArm
     };
     const ativos = (ctx.equipamentos || []).filter(function (e) { return e.ativo !== false && e.autoIncluir; });
+    // aplicaEm: ambos | ongrid | hibrido | bess (tipo de sistema) ou string | micro (topologia do inversor)
+    const ehMicro = !!(r.inversor && r.inversor.tipo === 'micro');
+    const aplica = function (e) {
+      const a = e.aplicaEm || 'ambos';
+      if (a === 'ambos') return true;
+      if (a === 'micro') return ehMicro;
+      if (a === 'string') return !ehMicro;
+      return a === p.tipoSistema;
+    };
 
     const estruturas = ativos.filter(function (e) {
-      return e.tipo === 'estrutura' && (!e.telhado || e.telhado === 'Todos' || e.telhado === p.telhado);
+      return e.tipo === 'estrutura' && (!e.telhado || e.telhado === 'Todos' || e.telhado === p.telhado) && aplica(e);
     });
     C.combinarKits(estruturas.filter(function (e) { return e.regra === 'kitModulos'; }), r.nModulos)
       .forEach(function (k) { add(k.eq, 'estrutura', k.qtd); });
     estruturas.filter(function (e) { return e.regra !== 'kitModulos'; })
       .forEach(function (e) { add(e, 'estrutura', qtdRegra(e.regra, e.fator, q)); });
 
-    ativos.filter(function (e) {
-      return e.tipo === 'material' && (!e.aplicaEm || e.aplicaEm === 'ambos' || e.aplicaEm === p.tipoSistema);
-    }).forEach(function (e) { add(e, 'material', qtdRegra(e.regra, e.fator, q)); });
+    ativos.filter(function (e) { return e.tipo === 'material' && aplica(e); })
+      .forEach(function (e) { add(e, 'material', qtdRegra(e.regra, e.fator, q)); });
 
     return itens;
   };
@@ -434,7 +489,13 @@ window.App = window.App || {};
       const tipoEq = r.bessAtivo ? 'bess' : 'bateria';
       const idEq = r.bessAtivo ? p.bessId : p.bateriaId;
       h.tipoEquip = tipoEq;
-      h.bateria = porId(eqs, idEq) || eqs.find(function (e) { return e.tipo === tipoEq && e.ativo !== false; }) || null;
+      // sem bateria escolhida: a primeira ativa compatível com o inversor híbrido selecionado (48 V × alta tensão)
+      const invSel = r.hibridoAtivo ? porId(eqs, p.inversorId) : null;
+      const classeInv = invSel ? C.classeBateriaInversor(invSel) : null;
+      const ativaDoTipo = function (e) { return e.tipo === tipoEq && e.ativo !== false; };
+      h.bateria = porId(eqs, idEq) ||
+        eqs.find(function (e) { return ativaDoTipo(e) && (!classeInv || tipoEq !== 'bateria' || C.classeBateria(e) === classeInv); }) ||
+        eqs.find(ativaDoTipo) || null;
       h.dod = pos(p.dod) ? U.num(p.dod) / 100 : (h.bateria && pos(h.bateria.dod) ? h.bateria.dod / 100 : prem.hibrido.dod);
       h.eficiencia = h.bateria && pos(h.bateria.eficiencia) ? h.bateria.eficiencia / 100 : prem.hibrido.eficiencia;
       h.capNecessaria = h.energiaBackup / 1000 / (h.dod * h.eficiencia);
@@ -459,19 +520,34 @@ window.App = window.App || {};
     r.areaModulo = (modulo && pos(modulo.area)) || prem.areaModulo;
     r.area = r.nModulos * r.areaModulo;
 
-    // Inversor
-    const tipoInv = r.hibridoAtivo ? 'hibrido' : 'inversor';
-    const candidatos = eqs.filter(function (e) { return e.tipo === tipoInv && e.ativo !== false; });
+    // Inversor (string, microinversor ou híbrido)
+    r.topologia = !r.hibridoAtivo && p.topologia === 'micro' ? 'micro' : 'string';
+    const tipoInv = r.hibridoAtivo ? 'hibrido' : (r.topologia === 'micro' ? 'micro' : 'inversor');
+    let candidatos = eqs.filter(function (e) { return e.tipo === tipoInv && e.ativo !== false; });
+    const batHib = r.hibridoAtivo && r.hibrido ? r.hibrido.bateria : null;
+    if (batHib) {
+      const compat = candidatos.filter(function (e) { return C.classeBateriaInversor(e) === C.classeBateria(batHib); });
+      if (compat.length) candidatos = compat;
+    }
     const invPreSel = r.permiteFV ? porId(eqs, p.inversorId) : null;
-    const sug = r.permiteFV ? C.sugerirInversor(r.kwp, r.ligacao, candidatos, prem, r.hibrido && r.hibridoAtivo ? r.hibrido.potCargas : 0) : null;
+    const sug = r.permiteFV ? C.sugerirInversor(r.kwp, r.ligacao, candidatos, prem, r.hibrido && r.hibridoAtivo ? r.hibrido.potCargas : 0, r.nModulos, wp) : null;
     r.inversorSugerido = sug;
     const inv = invPreSel || (sug && sug.inv) || null;
     r.inversor = inv;
-    if (r.permiteFV && !inv && (r.kwp > 0 || !candidatos.length)) alerta('erro', r.hibridoAtivo ? 'Cadastre/selecione um inversor híbrido compatível.' : 'Cadastre/selecione um inversor compatível com a ligação.');
+    r.micro = !!(inv && inv.tipo === 'micro');
+    if (inv && batHib && C.classeBateriaInversor(inv) !== C.classeBateria(batHib)) {
+      alerta('erro', 'Bateria ' + batHib.fabricante + ' ' + batHib.modelo + ' (' + (C.classeBateria(batHib) === 'HV' ? 'alta tensão' : '48 V') +
+        ') incompatível com o inversor ' + inv.fabricante + ' ' + inv.modelo + ' (' + (C.classeBateriaInversor(inv) === 'HV' ? 'alta tensão' : '48 V') + ').');
+    }
+    if (r.permiteFV && !inv && (r.kwp > 0 || !candidatos.length)) {
+      alerta('erro', r.hibridoAtivo ? 'Cadastre/selecione um inversor híbrido compatível.'
+        : (tipoInv === 'micro' ? 'Cadastre/selecione um microinversor compatível com a ligação.' : 'Cadastre/selecione um inversor compatível com a ligação.'));
+    }
     const potInv = inv ? U.numOr(inv.potencia, 0) : 0;
     let nInv;
     if (!inv) nInv = 0;
     else if (pos(p.nInversores)) nInv = Math.round(U.num(p.nInversores));
+    else if (r.micro) nInv = r.nModulos > 0 ? C.qtdMicro(inv, r.nModulos) : 1;
     else if (!invPreSel && sug) nInv = sug.n;
     else nInv = potInv > 0 && r.kwp > 0 ? Math.max(1, Math.round((r.kwp * prem.fdiAlvo) / potInv)) : 1;
     r.nInversores = nInv;
@@ -484,9 +560,17 @@ window.App = window.App || {};
     }
     if (inv && r.ligacao !== 'tri' && /tri/i.test(inv.fases || '')) alerta('erro', 'Inversor trifásico incompatível com ligação ' + C.LIG_ADJ[r.ligacao] + '.');
 
+    // Microinversor: entradas suficientes, faixa de potência e tensão do módulo
+    if (r.micro && modulo) {
+      const capacidade = nInv * (pos(inv.modulosPorUnidade) || 1);
+      if (r.nModulos > capacidade) alerta('erro', r.nModulos + ' módulos para ' + nInv + ' microinversor(es) de ' + (inv.modulosPorUnidade || 1) + ' entradas (máx. ' + capacidade + ' módulos).');
+      if (!moduloCompativel(inv, wp)) alerta('aviso', 'Módulo de ' + wp + ' W fora da faixa recomendada para o ' + inv.modelo + ' (' + (inv.potModuloMin || '—') + '–' + (inv.potModuloMax || '—') + ' W).');
+      if (pos(modulo.voc) && pos(inv.vmaxCC) && modulo.voc * prem.fatorVocFrio > inv.vmaxCC) alerta('erro', 'Voc do módulo (corrigido p/ frio) acima da tensão máxima de entrada do microinversor (' + inv.vmaxCC + ' V).');
+    }
+
     // Arranjo (strings) — validação opcional quando houver dados elétricos
     r.strings = null;
-    if (modulo && inv && pos(modulo.voc) && pos(inv.vmaxCC) && r.nModulos > 0) {
+    if (!r.micro && modulo && inv && pos(modulo.voc) && pos(inv.vmaxCC) && r.nModulos > 0) {
       const maxSerie = Math.floor(inv.vmaxCC / (modulo.voc * prem.fatorVocFrio));
       const totMppt = (pos(inv.mppts) || 1) * nInv;
       const nStr = Math.max(1, Math.ceil(r.nModulos / Math.max(1, maxSerie)));
@@ -810,6 +894,7 @@ window.App = window.App || {};
       simultaneidade: ctx.premissas.simultaneidade,
       moduloId: mod ? mod.id : null,
       nModulos: '',
+      topologia: 'string',
       inversorId: null,
       nInversores: '',
       cargas: [],
