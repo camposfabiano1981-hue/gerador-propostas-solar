@@ -351,16 +351,18 @@
       c.appendChild(UI.grade([
         { k: 'objetivo', label: 'Objetivo principal do cliente', type: 'select', cls: 'span2', options: D.OBJETIVOS.map(function (o) { return { v: o.id, t: o.label }; }) },
         { k: 'cenarioEscolhido', label: 'Cenário detalhado na proposta', type: 'select', cls: 'span2',
-          options: [{ v: 'auto', t: 'Automático — o recomendado' }].concat(App.Energia.CENARIOS.map(function (x) { return { v: x.id, t: x.nome }; })) }
+          options: [{ v: 'auto', t: 'Automático — o recomendado' }].concat(App.Energia.CENARIOS.map(function (x) { return { v: x.id, t: App.Energia.rotuloCenario(x, mod.id).nome }; })) }
       ], p, mudou, 4));
       const grade = h('div.cenarios-grade');
       App.Energia.CENARIOS.forEach(function (def) {
         const cc = cfg[def.id];
+        const rot = App.Energia.rotuloCenario(def, mod.id);
         const base = 'cenarios.' + def.id + '.';
         const campos = [{ k: base + 'ativo', label: 'Avaliar este cenário', type: 'checkbox' }];
         if (def.armazenamento) {
           if (p.tipoSistema !== 'bess' || p.bessComFV !== false) campos.push({ k: base + 'incluirFV', label: 'Incluir o sistema FV', type: 'checkbox' });
-          campos.push({ k: base + 'n', label: p.tipoSistema === 'bess' ? 'Gabinetes BESS' : 'Baterias', type: 'int', help: 'Em branco = dimensionamento automático.' });
+          campos.push({ k: base + 'n', label: p.tipoSistema === 'bess' ? 'Gabinetes BESS' : 'Baterias', type: 'int',
+            help: def.id === 'ponta' && mod.id === 'conv' ? 'Em branco = o mesmo banco do backup.' : 'Em branco = dimensionamento automático.' });
         }
         if (def.id === 'backup') {
           campos.push({ k: base + 'horasFaltaAno', label: 'Horas sem energia por ano', type: 'number', suffix: 'h/ano', help: 'Opcional — para valorar o backup.' },
@@ -375,8 +377,8 @@
           campos.push({ k: base + 'readequar', label: 'Readequar a demanda contratada', type: 'checkbox' });
         }
         const card = h('div.cenario-card' + (cc.ativo ? '' : '.inativo'), { 'data-cenario': def.id },
-          h('div.cenario-topo', h('strong', def.nome), h('span.cenario-selo')),
-          h('p.ajuda-sec', def.descricao),
+          h('div.cenario-topo', h('strong', rot.nome), h('span.cenario-selo')),
+          h('p.ajuda-sec', rot.descricao),
           UI.grade(campos, p, mudou, 1));
         grade.appendChild(card);
       });

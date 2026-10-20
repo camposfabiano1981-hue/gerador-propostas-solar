@@ -480,13 +480,15 @@ window.App = window.App || {};
 
     // Armazenamento: cargas críticas e equipamento (bateria do híbrido ou gabinete BESS)
     if (r.armazenamentoAtivo) {
-      const h = { cargas: (p.cargas || []).map(function (c) {
-        const qtd = U.numOr(c.qtd, 0), pot = U.numOr(c.potencia, 0), horas = U.numOr(c.horas, 0);
+      const aut = U.numOr(p.autonomiaHoras, prem.hibrido.autonomiaHoras);
+      // horas de uso de cada carga durante a falta de energia, limitadas à autonomia desejada (em branco = toda a autonomia)
+      const h = { autonomiaHoras: aut, cargas: (p.cargas || []).map(function (c) {
+        const qtd = U.numOr(c.qtd, 0), pot = U.numOr(c.potencia, 0);
+        const horas = aut > 0 ? Math.min(pos(c.horas) || aut, aut) : U.numOr(c.horas, 0);
         return { descricao: c.descricao || '', qtd: qtd, potencia: pot, horas: horas, potTotal: qtd * pot, energia: qtd * pot * horas };
       }) };
       h.potCargas = h.cargas.reduce(function (s, c) { return s + c.potTotal; }, 0);
       h.energiaBackup = h.cargas.reduce(function (s, c) { return s + c.energia; }, 0);
-      h.autonomiaHoras = U.numOr(p.autonomiaHoras, prem.hibrido.autonomiaHoras);
       const tipoEq = r.bessAtivo ? 'bess' : 'bateria';
       const idEq = r.bessAtivo ? p.bessId : p.bateriaId;
       h.tipoEquip = tipoEq;
@@ -499,7 +501,10 @@ window.App = window.App || {};
         eqs.find(ativaDoTipo) || null;
       h.dod = pos(p.dod) ? U.num(p.dod) / 100 : (h.bateria && pos(h.bateria.dod) ? h.bateria.dod / 100 : prem.hibrido.dod);
       h.eficiencia = h.bateria && pos(h.bateria.eficiencia) ? h.bateria.eficiencia / 100 : prem.hibrido.eficiencia;
+      // capacidade instalada para o backup: energia das cargas ÷ (DoD × eficiência bateria + inversor)
       h.capNecessaria = h.energiaBackup / 1000 / (h.dod * h.eficiencia);
+      // energia útil mantida como reserva (SOC de backup) quando o banco também faz ciclagem ou corte de picos
+      h.reservaUtil = h.energiaBackup / 1000 / h.eficiencia;
       r.hibrido = h;
       if (!h.bateria) alerta('erro', r.bessAtivo ? 'Cadastre/selecione um equipamento BESS (Cadastros › Equipamentos › BESS).' : 'Cadastre/selecione uma bateria para o sistema híbrido.');
     }
@@ -666,25 +671,27 @@ window.App = window.App || {};
         const nP = r.bessAtivo && h.potCargas > 0 ? Math.ceil((h.potCargas / 1000) * prem.hibrido.fatorSegurancaInversor / pU - 1e-9) : 0;
         n = Math.max(1, nE, nP);
       } else if (id === 'ponta') {
-        let eDia = 0, pNec = 0;
         if (r.modalidade.id === 'conv') {
-          if (c.incluirFV && sol > 0) eDia = Math.min(injMes, Math.max(0, cp.fp - sol / 12 * r.simultaneidade)) / (365 / 12);
-        } else {
-          eDia = cp.p * 12 / ar.diasUteis;
-          pNec = eDia / ar.duracaoPonta;
+          // Sem tarifa horária não há arbitragem: o ganho de guardar o excedente solar é só o Fio B evitado
+          // (frequentemente nulo, pois prevalece o custo de disponibilidade — art. 655-I) menos as perdas do ciclo.
+          // Por isso a ciclagem usa o mesmo banco do backup, em vez de um banco para todo o excedente.
+          return c.incluirFV && injMes > 0 ? dimensionar('backup', cfg.backup) : 0;
         }
-        if (eDia > 0) n = Math.max(1, Math.ceil(util(eDia) / eU - 1e-9), pNec > 0 ? Math.ceil(pNec / pU - 1e-9) : 0);
+        const eDia = cp.p * 12 / ar.diasUteis;
+        const pNec = eDia / ar.duracaoPonta;
+        if (eDia > 0) n = Math.max(1, Math.ceil((util(eDia) + h.capNecessaria) / eU - 1e-9), pNec > 0 ? Math.ceil(pNec / pU - 1e-9) : 0);
       } else if (id === 'picos') {
         const kw = C.reducaoAlvo(r, c, prem);
         const dur = pos(c.duracaoH) || ar.duracaoPonta;
-        if (kw > 0) n = Math.max(1, Math.ceil(util(kw * dur) / eU - 1e-9), Math.ceil(kw / pU - 1e-9));
+        if (kw > 0) n = Math.max(1, Math.ceil((util(kw * dur) + h.capNecessaria) / eU - 1e-9), Math.ceil(kw / pU - 1e-9));
       }
       return n > 0 ? arredSerie(n) : 0;
     };
 
     const cenarios = E.CENARIOS.map(function (def) {
       const c = cfg[def.id];
-      const cen = { id: def.id, nome: def.nome, descricao: def.descricao, ativo: !!c.ativo, aplicavel: true, motivoNA: '' };
+      const rot = E.rotuloCenario(def, r.modalidade.id);
+      const cen = { id: def.id, nome: rot.nome, descricao: rot.descricao, ativo: !!c.ativo, aplicavel: true, motivoNA: '' };
       cen.incluirFV = def.id === 'solar' ? true : (r.permiteFV && c.incluirFV !== false);
       if (def.id === 'solar' && !(r.permiteFV && r.kwp > 0)) { cen.aplicavel = false; cen.motivoNA = 'Sem sistema fotovoltaico nesta proposta.'; }
       if (def.armazenamento && !unid) { cen.aplicavel = false; cen.motivoNA = 'Selecione o equipamento de armazenamento.'; }
@@ -692,7 +699,7 @@ window.App = window.App || {};
       cen.n = def.armazenamento && cen.aplicavel ? dimensionar(def.id, c) : 0;
       if (def.id === 'ponta' && cen.aplicavel && !cen.n) {
         cen.aplicavel = false;
-        cen.motivoNA = r.modalidade.id === 'conv' ? 'Na tarifa convencional o deslocamento só se aplica ao excedente solar.' : 'Informe o consumo na ponta.';
+        cen.motivoNA = r.modalidade.id === 'conv' ? 'Na tarifa convencional a ciclagem diária só se aplica com excedente solar injetado.' : 'Informe o consumo na ponta.';
       }
       if (def.id === 'picos' && cen.aplicavel && !cen.n) { cen.aplicavel = false; cen.motivoNA = 'Informe a demanda medida/contratada para definir a redução.'; }
       if (!cen.aplicavel || !cen.ativo || !tarifasOk) {
@@ -723,7 +730,7 @@ window.App = window.App || {};
           vida: trocaManual ? prem.hibrido.trocaBateriaAno - 1 : vida,
           custoTroca: cen.kitArm * (trocaManual ? prem.hibrido.trocaBateriaPct : ar.trocaPct),
           reducaoKW: C.reducaoAlvo(r, c, prem), duracao: pos(c.duracaoH) || ar.duracaoPonta,
-          posto: c.posto || '', readequar: c.readequar !== false
+          posto: c.posto || '', readequar: c.readequar !== false, reserva: h.reservaUtil
         } : null,
         beneficioBackup: def.id === 'backup' ? custoHora * horasFalta : 0
       });
@@ -739,7 +746,16 @@ window.App = window.App || {};
     r.cenarios = cenarios;
     const avaliados = cenarios.filter(function (c) { return c.ativo && c.aplicavel && c.fin; });
     r.cenariosAvaliados = avaliados;
-    r.recomendacao = avaliados.length > 1 ? E.recomendar(avaliados, objetivo, { modalidade: r.modalidade.id, ponta: r.tarifas.ponta, fp: r.tarifas.fp }) : null;
+    // híbrido/BESS: a recomendação escolhe entre os cenários com armazenamento; "Geração solar" fica só como comparação
+    const comArm = avaliados.filter(function (c) { return c.n > 0; });
+    const candRec = r.armazenamentoAtivo && comArm.length ? comArm : avaliados;
+    r.recomendacao = avaliados.length > 1 ? E.recomendar(candRec, objetivo, { modalidade: r.modalidade.id, ponta: r.tarifas.ponta, fp: r.tarifas.fp }) : null;
+    const soSolar = avaliados.find(function (c) { return c.id === 'solar'; });
+    const recCen = r.recomendacao && avaliados.find(function (c) { return c.id === r.recomendacao.id; });
+    if (candRec !== avaliados && soSolar && recCen && soSolar.fin.vpl > recCen.fin.vpl + 0.5) {
+      r.recomendacao.motivos.push('Sem armazenamento (cenário "' + soSolar.nome + '") o VPL seria ' + U.brl(soSolar.fin.vpl - recCen.fin.vpl) +
+        ' maior: as baterias se justificam pela segurança no fornecimento, não pela economia na conta.');
+    }
     let escolhidoId = p.cenarioEscolhido && p.cenarioEscolhido !== 'auto' ? p.cenarioEscolhido : null;
     if (!escolhidoId && !p.cenarioEscolhido && r.hibridoAtivo && p.usoBateria) escolhidoId = p.usoBateria === 'ciclagem' ? 'ponta' : 'backup';
     let escolhido = avaliados.find(function (c) { return c.id === escolhidoId; }) ||
@@ -758,11 +774,15 @@ window.App = window.App || {};
       h.potenciaArm = potenciaArm(h.nBaterias);
       h.autonomiaEstimada = h.energiaBackup > 0 && h.nBaterias > 0 ? (h.capUtil * h.eficiencia) / (h.energiaBackup / 1000) * h.autonomiaHoras : null;
       h.tensaoBanco = (vb || 0) * (h.serie || 1);
+      const altaTensao = !r.bessAtivo && C.classeBateria(h.bateria) === 'HV';
       h.configuracao = r.bessAtivo
         ? (h.nBaterias > 1 ? h.nBaterias + ' gabinetes em paralelo' : '1 gabinete')
-        : ((h.serie || 1) > 1
-          ? h.serie + ' em série × ' + h.paralelo + ' em paralelo (' + U.fmtSmart(h.tensaoBanco, 1) + ' V)'
-          : (h.nBaterias > 1 ? h.nBaterias + ' em paralelo' : '1 unidade') + (vb ? ' (' + U.fmtSmart(vb, 1) + ' V)' : ''));
+        : (altaTensao && h.nBaterias > 1
+          // alta tensão: a capacidade cresce com módulos em série na torre (e torres em paralelo), conforme o fabricante
+          ? h.nBaterias + ' × ' + U.fmtSmart(unid ? unid.energia : 0, 2) + ' kWh = ' + U.fmtSmart(h.capInstalada, 2) + ' kWh em alta tensão (módulos/torres conforme o fabricante)'
+          : ((h.serie || 1) > 1
+            ? h.serie + ' em série × ' + h.paralelo + ' em paralelo (' + U.fmtSmart(h.tensaoBanco, 1) + ' V)'
+            : (h.nBaterias > 1 ? h.nBaterias + ' em paralelo' : '1 unidade') + (vb ? ' (' + U.fmtSmart(vb, 1) + ' V)' : '')));
       h.usoBateria = escolhido && escolhido.id === 'ponta' ? 'ciclagem' : 'backup';
       h.estrategia = escolhido ? escolhido.id : null;
       h.potBackup = r.hibridoAtivo ? (inv ? (pos(inv.potenciaBackup) || potInv) * nInv : 0) : h.potenciaArm;
@@ -772,8 +792,13 @@ window.App = window.App || {};
         alerta('aviso', 'Potência de backup (' + U.fmtSmart(h.potBackup, 2) + ' kW) abaixo de ' +
           U.fmtSmart(prem.hibrido.fatorSegurancaInversor, 2) + ' × potência das cargas críticas (' + U.fmtSmart(h.potCargas / 1000, 2) + ' kW).');
       }
-      if (temArm && escolhido.id === 'backup' && h.autonomiaEstimada != null && h.autonomiaEstimada + 1e-9 < h.autonomiaHoras) {
+      if (temArm && h.autonomiaEstimada != null && h.autonomiaEstimada + 1e-9 < h.autonomiaHoras) {
         alerta('aviso', 'Armazenamento atende ' + U.fmtSmart(h.autonomiaEstimada, 1) + ' h das ' + U.fmtSmart(h.autonomiaHoras, 1) + ' h de autonomia desejadas.');
+      }
+      const capMax = h.bateria && !r.bessAtivo ? pos(h.bateria.capMaxSistema) : null;
+      if (temArm && capMax && h.capInstalada > capMax + 1e-9) {
+        alerta('aviso', 'Banco de ' + U.fmtSmart(h.capInstalada, 2) + ' kWh acima do máximo do sistema ' + [h.bateria.fabricante, h.bateria.modelo].filter(Boolean).join(' ') +
+          ' (' + U.fmtSmart(capMax, 2) + ' kWh por inversor, conforme o fabricante). Reduza as baterias ou use outro modelo.');
       }
       if (escolhido && escolhido.id === 'backup' && !h.cargas.length) alerta('aviso', 'Informe as cargas críticas que devem funcionar durante a falta de energia.');
     }

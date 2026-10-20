@@ -153,6 +153,7 @@
         { k: 'tipoBateria', label: 'Classe de tensão', type: 'select', options: CLASSE_BAT, help: 'Deve coincidir com a bateria aceita pelo inversor híbrido.' },
         { k: 'tensao', label: 'Tensão nominal', type: 'number', suffix: 'V' },
         { k: 'capacidadeAh', label: 'Capacidade', type: 'number', suffix: 'Ah' },
+        { k: 'capMaxSistema', label: 'Capacidade máxima do sistema', type: 'number', suffix: 'kWh', help: 'Por inversor, conforme o fabricante (módulos por torre × torres em paralelo). Em branco = sem limite.' },
         { k: 'dod', label: 'Profundidade de descarga (DoD)', type: 'number', suffix: '%' },
         { k: 'ciclos', label: 'Vida útil', type: 'int', suffix: 'ciclos' },
         { k: 'garantia', label: 'Garantia', type: 'number', suffix: 'anos' },

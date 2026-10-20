@@ -161,6 +161,29 @@
   ok('híbrido: backup dimensionado para as cargas críticas', bkp.capInstalada >= rH.hibrido.capNecessaria, bkp.n + ' un / ' + bkp.capInstalada + ' kWh');
   perto('híbrido: backup sem efeito na conta = cenário solar', bkp.fin.anos[0].economiaMes, rH.cenarios[0].fin.anos[0].economiaMes, 1e-9);
 
+  // ---------------------------------------------------------------- híbrido: dimensionamento das baterias pelas cargas críticas
+  const ctxG = U.clone(ctxH);
+  ctxG.equipamentos.forEach(function (e) { if (e.id === 'bat-byd-hvs51') e.preco = 14000; });
+  const pG = Object.assign(U.clone(pH), { bateriaId: 'bat-byd-hvs51', inversorId: 'hib-huawei-6-l1', usoBateria: undefined, cenarioEscolhido: 'auto',
+    cargas: [{ descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 4 }], autonomiaHoras: 5 });
+  const rG = C.calcular(pG, ctxG);
+  const cenG = function (id) { return rG.cenarios.find(function (c) { return c.id === id; }); };
+  perto('híbrido geladeira: energia de backup 150 W × 4 h', rG.hibrido.energiaBackup, 600, 1e-9);
+  perto('híbrido geladeira: capacidade necessária = 0,6 ÷ (DoD 100% × 90%)', rG.hibrido.capNecessaria, 0.6 / 0.9, 1e-9);
+  igual('híbrido geladeira: backup com 1 bateria', cenG('backup').n, 1);
+  igual('híbrido geladeira: ciclagem (tarifa convencional) usa o mesmo banco do backup', cenG('ponta').n, cenG('backup').n);
+  igual('híbrido geladeira: cenário renomeado na tarifa convencional', cenG('ponta').nome, 'Backup + ciclagem diária');
+  perto('híbrido geladeira: ciclagem só acima da reserva de backup', cenG('ponta').fin.kwhDeslocadosAno1, (5.12 - 0.6 / 0.9) * 0.9 * 365, 1e-6);
+  ok('híbrido geladeira: proposta detalha um cenário com baterias', rG.cen.n > 0 && rG.cen.id !== 'solar', rG.cen.id);
+  ok('híbrido geladeira: recomendação informa o VPL sem baterias', rG.recomendacao.motivos.some(function (m) { return /Sem armazenamento/.test(m); }));
+  perto('híbrido geladeira: autonomia estimada (5,12 × 0,9 ÷ 0,6 kWh × 5 h)', rG.hibrido.autonomiaEstimada, 5.12 * 0.9 / 0.6 * 5, 1e-9);
+  const rGaut = C.calcular(Object.assign(U.clone(pG), { cargas: [{ descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 8 }, { descricao: 'Roteador', qtd: 1, potencia: 12, horas: '' }] }), ctxG);
+  perto('híbrido: horas limitadas à autonomia e em branco = autonomia', rGaut.hibrido.energiaBackup, 150 * 5 + 12 * 5, 1e-9);
+  const rG9 = C.calcular(Object.assign(U.clone(pG), { cenarios: { backup: { n: 9 } } }), ctxG);
+  ok('híbrido: alerta de capacidade acima do máximo da BYD HVS (38,4 kWh)', rG9.alertas.some(function (a) { return /acima do máximo do sistema/.test(a.msg); }));
+  ok('híbrido: configuração de alta tensão sem "em paralelo"', /alta tensão/.test(rG9.hibrido.configuracao) && !/paralelo/.test(rG9.hibrido.configuracao), rG9.hibrido.configuracao);
+  ok('catálogo: capacidade máxima das baterias HV', D.equipamentos.find(function (e) { return e.id === 'bat-byd-hvs51'; }).capMaxSistema === 38.4);
+
   // ---------------------------------------------------------------- tarifas grupo A / branca
   const E = App.Energia;
   const prA = U.clone(D.premissas);

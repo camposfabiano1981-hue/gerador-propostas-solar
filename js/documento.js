@@ -292,7 +292,8 @@ window.App = window.App || {};
         txt = tou
           ? 'O armazenamento carrega fora do horário de ponta' + (temFV ? ' (preferencialmente com o excedente solar)' : '') + ' e descarrega nos dias úteis durante a ponta (' +
             U.fmtSmart(prem.armazenamento.duracaoPonta, 1) + ' h), quando a energia custa ' + rs(tf.ponta) + '/kWh contra ' + rs(tf.fp) + '/kWh fora de ponta.'
-          : 'Fora dos períodos de falta, as baterias armazenam a energia excedente do dia para uso noturno, reduzindo a energia injetada na rede e o custo do Fio B.';
+          : 'Fora dos períodos de falta, as baterias armazenam a energia excedente do dia para uso noturno, reduzindo a energia injetada na rede' +
+            (arm.cargas.length ? ', e mantêm reservados ' + U.fmtSmart(arm.reservaUtil, 2) + ' kWh para as cargas críticas em caso de falta de energia.' : '.');
       } else {
         const kw = cen.fin.reducaoKW1;
         txt = 'O armazenamento corta os picos de demanda em até ' + U.fmtSmart(kw, 1) + ' kW, reduzindo a demanda faturada' +
@@ -328,6 +329,7 @@ window.App = window.App || {};
         ['Configuração', arm.configuracao || '—'],
         ['Capacidade Útil', U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)']
       );
+      if (!backupCen && arm.cargas.length) linhas.push(['Reserva para Backup', U.fmtSmart(arm.reservaUtil, 2) + ' kWh úteis (fora da ' + (cen.id === 'picos' ? 'redução de picos' : 'ciclagem diária') + ')']);
       if (arm.potenciaArm && isFinite(arm.potenciaArm)) linhas.push(['Potência de Descarga', U.fmtSmart(arm.potenciaArm, 2) + ' kW']);
       if (arm.cargas.length) {
         linhas.push(['Autonomia Estimada', arm.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(arm.autonomiaEstimada, 1) + ' h com as cargas listadas ' + (arm.autonomiaEstimada + 1e-9 >= arm.autonomiaHoras ? '✅' : '⚠️') : '—']);

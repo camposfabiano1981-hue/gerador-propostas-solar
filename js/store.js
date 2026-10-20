@@ -7,7 +7,7 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 3;
+  const VERSAO = 4;
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
@@ -73,6 +73,12 @@ window.App = window.App || {};
       eqs.forEach(function (e) {
         if (['mat-cabo-vm', 'mat-cabo-pt', 'mat-mc4'].indexOf(e.id) >= 0 && (!e.aplicaEm || e.aplicaEm === 'ambos')) e.aplicaEm = 'string';
       });
+      gravar('col.equipamentos', eqs);
+    }
+    if (v < 4) {
+      // baterias de alta tensão: capacidade máxima por inversor (módulos por torre × torres)
+      const eqs = Store.list('equipamentos');
+      eqs.forEach(function (e) { if (D.CAP_MAX_SISTEMA[e.id] && e.capMaxSistema === undefined) e.capMaxSistema = D.CAP_MAX_SISTEMA[e.id]; });
       gravar('col.equipamentos', eqs);
     }
     gravar('v', VERSAO);

@@ -682,6 +682,16 @@ window.App = window.App || {};
     }
   ];
 
+  /**
+   * Capacidade máxima por inversor (kWh) das baterias modulares de alta tensão, conforme os datasheets:
+   * BYD HVS — torres de 2 a 5 módulos de 2,56 kWh, até 3 torres; BYD HVM — 3 a 8 módulos de 2,76 kWh, até 3 torres;
+   * Huawei LUNA2000-S0 — até 3 módulos de 5 kWh por torre, até 2 torres.
+   */
+  D.CAP_MAX_SISTEMA = {
+    'bat-byd-hvs51': 38.4, 'bat-byd-hvm83': 66.24, 'bat-huawei-luna5': 30, 'bat-huawei-luna10': 30, 'bat-huawei-luna15': 30
+  };
+  D.equipamentos.forEach(function (e) { if (D.CAP_MAX_SISTEMA[e.id]) e.capMaxSistema = D.CAP_MAX_SISTEMA[e.id]; });
+
   /** Cargas críticas de exemplo para novos sistemas híbridos. */
   D.cargasExemplo = [
     { descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 6 },

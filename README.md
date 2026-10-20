@@ -15,7 +15,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 **Propostas**
 - Formulário completo com cálculo ao vivo e painel-resumo (potência, FDG, geração, investimento, economia, payback simples/descontado, TIR, VPL, gráfico e alertas).
 - **On-Grid**: nº de módulos sugerido pelo consumo, seleção automática do inversor pelo melhor FDG — fator de dimensionamento global (Pcc ÷ Pca = P FV ÷ P inversor), verificação de strings (opcional), alerta de limite por tipo de ligação.
-- **Híbrido**: cadastro de cargas críticas, autonomia desejada, dimensionamento do banco de baterias (DoD, eficiência, série/paralelo pela tensão do inversor), verificação da potência de backup e modo *backup* ou *backup + ciclagem diária* (reduz a energia injetada e o Fio B).
+- **Híbrido**: cadastro de cargas críticas, autonomia desejada, dimensionamento do banco de baterias pelas cargas críticas (DoD, eficiência, série/paralelo pela tensão do inversor; capacidade máxima por inversor das baterias modulares de alta tensão), verificação da potência de backup e modo *backup* ou *backup + ciclagem diária* — na tarifa convencional a ciclagem usa o mesmo banco do backup e mantém a reserva para falta de energia.
 - Lista de materiais gerada automaticamente (módulos, inversor, baterias, kits de estrutura combinados, perfis, cabos, conectores), editável, com soma automática do kit.
 - Composição do preço: **valor total** (mão de obra calculada) ou **itens separados** (total calculado); valor do kit pela soma dos itens ou manual (cotação do distribuidor); **outros valores** com descrição própria (discriminados na proposta) e **valor da comissão**, que faz parte da mão de obra e aparece só no painel interno (uso gerencial), nunca na proposta nem no contrato.
 - Opções de pagamento: à vista, cartão com acréscimo fixo e financiamentos (BV, Solfácil…) por PMT.
@@ -106,7 +106,8 @@ e acesse `http://localhost:8765/`.
 | Nº de módulos | `⌈kWp × 1000 ÷ Wp_módulo⌉` |
 | Geração mensal / anual | `kWp × HSP × 30 × PR` / `kWp × HSP × 365 × PR` |
 | FDG (fator de dimensionamento global) | `Pcc ÷ Pca = P_FV ÷ P_inversor` (faixa padrão 0,80–1,35; alvo 1,15) |
-| Capacidade de baterias | `energia_backup ÷ (DoD × eficiência)` |
+| Capacidade de baterias (backup) | `energia_backup ÷ (DoD × eficiência)`, com `energia_backup = Σ qtd × potência × min(horas de uso, autonomia)` (horas em branco = autonomia) |
+| Ciclagem / redução de picos | a reserva `energia_backup ÷ eficiência` fica fora da ciclagem; na tarifa convencional não há arbitragem (o ganho é só o Fio B evitado − perdas), então a ciclagem usa o mesmo banco do backup em vez de um banco para todo o excedente solar |
 | Fio B (ano N) | `energia_compensada × TUSD_FioB × %FioB(ano)`, com `energia_compensada = min(energia_injetada, consumo − autoconsumo)` e `energia_injetada = geração × (1 − simultaneidade)` (− energia armazenada na ciclagem); o autoconsumo simultâneo não paga Fio B |
 | Conta sem sistema | `consumo × tarifa_N + COSIP_N` |
 | Conta com sistema (grupo B) | `max(disponibilidade × tarifa_N, energia_não_compensada × tarifa_N + Fio B) + COSIP_N` — REN ANEEL 1.000/2021, art. 655-I (os dois não se somam). Opção em Premissas para a leitura de algumas distribuidoras: `max(energia_não_compensada, disponibilidade) × tarifa_N + Fio B sobre (energia_compensada − kWh que completam a disponibilidade) + COSIP_N` |

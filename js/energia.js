@@ -37,6 +37,15 @@ window.App = window.App || {};
     return E.CENARIOS.find(function (c) { return c.id === id; }) || E.CENARIOS[0];
   };
 
+  /** Nome e descrição do cenário conforme a modalidade: sem tarifa horária, "ponta" é a ciclagem diária do banco do backup. */
+  E.rotuloCenario = function (def, modalidadeId) {
+    if (def.id === 'ponta' && (modalidadeId || 'conv') === 'conv') {
+      return { nome: 'Backup + ciclagem diária', curto: 'Ciclagem diária',
+        descricao: 'O mesmo banco do backup guarda o excedente solar do dia para uso à noite, mantendo a reserva para falta de energia.' };
+    }
+    return { nome: def.nome, curto: def.curto, descricao: def.descricao };
+  };
+
   function pos(v) {
     const n = U.num(v);
     return isFinite(n) && n > 0 ? n : null;
@@ -268,7 +277,7 @@ window.App = window.App || {};
    * Fluxo de caixa anual de um cenário.
    * o: {prem, anoBase, investimento, tarifas, consumo {p,i,fp}, demanda, disp, cosip, tusd, s, geracaoAnual1,
    *     estrategia: null|'backup'|'ponta'|'picos', arm: {capUtil, potencia, eta, degradacao, vida, custoTroca,
-   *     reducaoKW, duracao, posto, readequar}, beneficioBackup (R$/ano)}
+   *     reducaoKW, duracao, posto, readequar, reserva (kWh úteis guardados para o backup)}, beneficioBackup (R$/ano)}
    */
   E.fluxo = function (o) {
     const prem = o.prem;
@@ -296,18 +305,20 @@ window.App = window.App || {};
         if (idade >= o.arm.vida) { idade = 0; extra = o.arm.custoTroca; }
         const cap = o.arm.capUtil * Math.pow(1 - (o.arm.degradacao || 0), idade);
         idade += 1;
+        // a reserva para as cargas críticas (SOC de backup) fica fora da ciclagem e do corte de picos
+        const capCiclo = Math.max(0, cap - (o.arm.reserva || 0));
         const eta = o.arm.eta;
         const diasUteis = ar.diasUteis;
         if (o.estrategia === 'ponta') {
           if (t.modalidade === 'conv') {
-            armMes = { eta: eta, descNoite: cap * eta * 365 / 12 };
+            armMes = { eta: eta, descNoite: capCiclo * eta * 365 / 12 };
           } else {
-            const lim = Math.min(cap * eta, o.arm.potencia * ar.duracaoPonta) * diasUteis / 12;
+            const lim = Math.min(capCiclo * eta, o.arm.potencia * ar.duracaoPonta) * diasUteis / 12;
             armMes = { eta: eta, descPonta: lim };
           }
         } else if (o.estrategia === 'picos' && t.grupo === 'A') {
           const dur = o.arm.duracao || ar.duracaoPonta;
-          reducaoKW = Math.max(0, Math.min(o.arm.reducaoKW || 0, o.arm.potencia, (cap * eta) / dur));
+          reducaoKW = Math.max(0, Math.min(o.arm.reducaoKW || 0, o.arm.potencia, (capCiclo * eta) / dur));
           const energia = reducaoKW * dur * diasUteis / 12;
           const posto = t.modalidade === 'verde' ? (o.arm.posto || 'foraPonta') : (o.arm.posto || 'ponta');
           armMes = { eta: eta, readequar: o.arm.readequar !== false };
@@ -403,7 +414,7 @@ window.App = window.App || {};
       if (escolhido.metricas && escolhido.metricas.autonomiaH) motivos.push('Mantém as cargas críticas por cerca de ' + U.fmtSmart(escolhido.metricas.autonomiaH, 1) + ' h em falta de energia.');
     }
     const segundo = porVpl.find(function (c) { return c !== escolhido; });
-    if (segundo && escolhido.fin.vpl >= segundo.fin.vpl) {
+    if (segundo && escolhido.fin.vpl >= segundo.fin.vpl + 1) {
       motivos.push('Supera a segunda melhor alternativa ("' + segundo.nome + '") em ' + U.brl(escolhido.fin.vpl - segundo.fin.vpl) + ' de VPL.');
     }
     return { id: escolhido.id, nome: escolhido.nome, motivos: motivos };
