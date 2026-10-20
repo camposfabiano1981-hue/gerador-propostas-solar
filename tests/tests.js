@@ -1,7 +1,9 @@
 /*
  * Testes do motor de cálculo e do gerador .docx.
  * O cenário "referência" reproduz as premissas da proposta GE-20260929-012 (TUSD Fio B R$ 0,08, COSIP sem reajuste)
- * e confere os valores publicados naquele documento.
+ * e confere geração, parcelas e materiais publicados naquele documento. A conta com sistema segue a REN ANEEL 1.000/2021,
+ * art. 655-I (maior valor entre custo de disponibilidade e energia não compensada + Fio B sobre a energia compensada),
+ * e por isso difere da publicada, que somava a disponibilidade e o Fio B sobre toda a energia injetada.
  */
 (function () {
   'use strict';
@@ -74,8 +76,8 @@
   perto('kWp', r.kwp, 5.625, 1e-9);
   igual('geração mensal', U.fmt(r.geracaoMensal, 0), '702');
   igual('geração anual', U.fmt(r.geracaoAnual, 0), '8.541');
-  igual('FDI', U.fmt(r.fdi, 3), '0,711');
-  ok('FDI fora da faixa', !r.fdiOk);
+  igual('FDG (Pcc/Pca)', U.fmt(r.fdg, 3), '1,406');
+  ok('FDG acima da faixa (inversor subdimensionado)', !r.fdgOk && r.alertas.some(function (x) { return /FDG \(Pcc\/Pca\) 1,406 .*subdimensionado/.test(x.msg); }));
   igual('cobertura', U.fmt(r.cobertura * 100, 1), '108,0');
   igual('área', U.fmt(r.area, 0), '25');
   perto('mão de obra', r.maoObra, 3022.92);
@@ -90,22 +92,27 @@
   const a = r.fin.anos;
   perto('2026 conta s/ sistema', a[0].contaSem, 695.53);
   perto('2026 disponib. mín.', a[0].contaMin, 48.81);
-  perto('2026 Fio B/mês', a[0].fioBMes, 17.08);
-  perto('2026 conta c/ sistema', a[0].contaCom, 126.89);
-  perto('2026 economia/mês', a[0].economiaMes, 568.64);
-  perto('2026 Fio B anual', a[0].fioB, 204.98);
+  perto('2026 energia compensada = consumo da rede (650 − autoconsumo de 50%)', a[0].compensada / 12, 650 - r.geracaoAnual / 12 * 0.5, 1e-9);
+  perto('2026 Fio B calculado só sobre a energia compensada (× R$ 0,08 × 60%)', a[0].fioBCalcMes, 294.125 * 0.08 * 0.6, 1e-9);
+  perto('2026 custo de disponibilidade (50 kWh)', a[0].custoDisp, 48.81);
+  ok('2026 prevalece o custo de disponibilidade', a[0].minimo && a[0].energiaGD < a[0].custoDisp);
+  perto('2026 Fio B/mês absorvido pela disponibilidade', a[0].fioBMes, 0);
+  perto('2026 conta c/ sistema (maior valor + COSIP)', a[0].contaCom, 109.81);
+  perto('2026 economia/mês', a[0].economiaMes, 585.72);
+  perto('2026 Fio B anual', a[0].fioB, 0);
   perto('2027 conta s/ sistema', a[1].contaSem, 727.26);
-  perto('2027 Fio B/mês', a[1].fioBMes, 21.25);
-  perto('2027 conta c/ sistema', a[1].contaCom, 133.50);
-  perto('2027 economia/mês', a[1].economiaMes, 593.76);
+  perto('2027 Fio B/mês', a[1].fioBMes, 0);
+  perto('2027 conta c/ sistema', a[1].contaCom, 112.25);
+  perto('2027 economia/mês', a[1].economiaMes, 615.006);
   igual('2027 geração', U.fmt(a[1].geracao, 0), '8.498');
   igual('2027 tarifa', U.fmt(a[1].tarifa, 4), '1,0250');
-  perto('2029 conta c/ sistema', a[3].contaCom, 145.55);
-  perto('2029 economia/mês', a[3].economiaMes, 650.00);
+  perto('2029 conta c/ sistema', a[3].contaCom, 117.50);
+  perto('2029 economia/mês', a[3].economiaMes, 678.04);
   perto('2035 conta s/ sistema', a[9].contaSem, 1045.36);
   perto('2035 disponib. mín.', a[9].contaMin, 75.72);
-  perto('2035 Fio B/mês', a[9].fioBMes, 27.21);
-  perto('2035 economia/mês', a[9].economiaMes, 881.43);
+  perto('2035 Fio B/mês', a[9].fioBMes, 0);
+  perto('2035 economia/mês', a[9].economiaMes, 908.64);
+  ok('todos os anos: conta c/ sistema = maior valor + COSIP', a.every(function (x) { return Math.abs(x.contaCom - (Math.max(x.custoDisp, x.energiaGD) + x.cosip)) < 1e-9; }));
   igual('anos da projeção', r.fin.projecao.map(function (x) { return x.ano; }).join(','), '2026,2027,2028,2029,2030,2031,2035,2040,2045,2050');
   perto('economia líquida = economia/mês × 12', a[0].liq, a[0].economiaMes * 12, 1e-6);
   ok('payback simples calculado', r.fin.paybackSimples > 1 && r.fin.paybackSimples < 3, String(r.fin.paybackSimples));
@@ -145,7 +152,7 @@
   perto('híbrido: energia de backup (Wh)', rH.hibrido.energiaBackup, 150 * 6 + 8 * 10 * 4 + 12 * 6 + 100 * 3 + 2 * 80 * 4, 1e-9);
   perto('híbrido: capacidade necessária', rH.hibrido.capNecessaria, (rH.hibrido.energiaBackup / 1000) / (0.9 * 0.9), 1e-9);
   ok('híbrido: baterias suficientes', rH.hibrido.capInstalada >= rH.hibrido.capNecessaria, rH.hibrido.nBaterias + ' un');
-  ok('híbrido: ciclagem reduz Fio B', rH.fin.anos[0].fioB < C.calcular(Object.assign(U.clone(pH), { usoBateria: 'backup' }), ctxH).fin.anos[0].fioB);
+  ok('híbrido: ciclagem reduz a energia compensada (base do Fio B)', rH.fin.anos[0].compensada < C.calcular(Object.assign(U.clone(pH), { usoBateria: 'backup' }), ctxH).fin.anos[0].compensada);
   ok('híbrido: itens incluem bateria', rH.itens.some(function (i) { return i.categoria === 'bateria'; }));
   ok('híbrido: cenários avaliados (solar, backup, horários)', rH.cenariosAvaliados.map(function (c) { return c.id; }).join(',') === 'solar,backup,ponta',
     rH.cenariosAvaliados.map(function (c) { return c.id; }).join(','));
@@ -170,6 +177,59 @@
   perto('branca: energia por posto', E.conta(tBranca, { p: 50, i: 30, fp: 420 }, null, { cosip: 0, disp: 50 }, prA).energia, 50 * 1.6 + 30 * 1.05 + 420 * 0.75, 1e-9);
   const apB = E.aplicar(tBranca, { p: 50, i: 30, fp: 420 }, null, { G: 600, s: 0.5 }, null);
   ok('branca: créditos excedentes abatem intermediário e ponta', apB.c.fp === 0 && apB.c.i === 0 && apB.c.p < 50, JSON.stringify(apB.c));
+
+  // ---------------------------------------------------------------- conta mínima com geração (REN 1.000/2021, art. 655-I)
+  const tConv = { grupo: 'B', modalidade: 'conv', conv: 1.15933, ponta: 1.15933, inter: 1.15933, fp: 1.15933, referencia: 1.15933 };
+  const celesc = E.conta(tConv, { p: 0, i: 0, fp: 0 }, null, { cosip: 0, disp: 30, compensada: 1000, fioBTarifa: 0.07965 }, prA);
+  perto('655-I (ex. Celesc): Fio B de R$ 79,65 > disponibilidade de R$ 34,78 → não se somam', celesc.total, 79.65, 1e-9);
+  ok('655-I (ex. Celesc): sem mínimo aplicado', !celesc.minimo);
+  const tUm = { grupo: 'B', modalidade: 'conv', conv: 1, ponta: 1, inter: 1, fp: 1, referencia: 1 };
+  perto('655-I: disponibilidade maior que o Fio B → paga só a disponibilidade',
+    E.conta(tUm, { p: 0, i: 0, fp: 0 }, null, { cosip: 10, disp: 50, compensada: 185, fioBTarifa: 0.2 }, prA).total, 50 + 10, 1e-9);
+  perto('655-I: energia não compensada + Fio B maior que a disponibilidade',
+    E.conta(tUm, { p: 0, i: 0, fp: 40 }, null, { cosip: 10, disp: 50, compensada: 100, fioBTarifa: 0.2 }, prA).total, 40 + 20 + 10, 1e-9);
+  perto('regra "disponibilidade" (ex. Luvik): 50 kWh pela tarifa + Fio B sobre 135 kWh',
+    E.conta(tUm, { p: 0, i: 0, fp: 0 }, null, { cosip: 0, disp: 50, compensada: 185, fioBTarifa: 0.2, regra: 'disponibilidade' }, prA).total, 50 + 135 * 0.2, 1e-9);
+  perto('sem geração: custo de disponibilidade (art. 291)', E.conta(tUm, { p: 0, i: 0, fp: 20 }, null, { cosip: 0, disp: 50 }, prA).total, 50, 1e-9);
+  const apS = E.aplicar(tUm, { p: 0, i: 0, fp: 500 }, null, { G: 400, s: 0.3 }, null);
+  perto('simultaneidade: autoconsumo fora da compensação (400 × 30%)', apS.autoconsumo, 120, 1e-9);
+  perto('simultaneidade: energia compensada = injetada até o consumo da rede', apS.compensada, 280, 1e-9);
+  const pGrande = Object.assign(U.clone(p), { consumoMedio: 3000, nModulos: 30, inversorId: null, valorTotal: 50000, kitManual: true, kitValor: 30000 });
+  const aG = C.calcular(pGrande, ctx).fin.anos;
+  ok('consumidor maior: energia + Fio B prevalece sobre a disponibilidade', aG.every(function (x) { return !x.minimo && x.fioBMes > 0; }));
+  perto('consumidor maior: Fio B efetivo = Fio B calculado', aG[0].fioBMes, aG[0].fioBCalcMes, 1e-9);
+  perto('consumidor maior: conta = energia + Fio B + COSIP', aG[0].contaCom, aG[0].energiaGD + aG[0].cosip, 1e-9);
+  const aT = C.calcular(Object.assign(U.clone(pGrande), { nModulos: 40 }), ctx).fin.anos;
+  perto('tudo compensado: Fio B efetivo = acréscimo sobre a disponibilidade', aT[0].fioBMes, aT[0].fioBCalcMes - aT[0].custoDisp, 1e-9);
+  const ctxDisp = U.clone(ctx);
+  ctxDisp.premissas.regraDisponibilidade = 'disponibilidade';
+  const aD = C.calcular(Object.assign(U.clone(p), { premissas: ctxDisp.premissas }), ctxDisp).fin.anos;
+  perto('regra "disponibilidade" na referência: Fio B sobre (consumo da rede − 50 kWh)', aD[0].fioBMes, (294.125 - 50) * 0.08 * 0.6, 1e-9);
+  ok('regra "disponibilidade" nunca é menor que a do maior valor', aD.every(function (x, i) { return x.contaCom >= a[i].contaCom - 1e-9; }));
+
+  // ---------------------------------------------------------------- FDG: premissas antigas (FDI) convertidas
+  const premAntiga = Object.assign(U.clone(D.premissas), { fdiMin: 0.75, fdiMax: 1.2, fdiAlvo: 0.9 });
+  ['fdgMin', 'fdgMax', 'fdgAlvo', 'regraDisponibilidade'].forEach(function (k) { delete premAntiga[k]; });
+  const premConv = C.premissas({ premissas: premAntiga }, ctx);
+  ok('FDI padrão antigo → faixa FDG padrão', premConv.fdgMin === D.premissas.fdgMin && premConv.fdgMax === D.premissas.fdgMax &&
+    premConv.fdgAlvo === D.premissas.fdgAlvo && premConv.fdiMin === undefined && premConv.regraDisponibilidade === 'maior', JSON.stringify([premConv.fdgMin, premConv.fdgMax, premConv.fdgAlvo]));
+  const premPers = App.Store.ajustarPremissas({ fdiMin: 0.8, fdiMax: 1.25, fdiAlvo: 1 });
+  igual('FDI personalizado convertido (invertido)', [premPers.fdgMin, premPers.fdgMax, premPers.fdgAlvo].join(' | '), '0.8 | 1.25 | 1');
+
+  // ---------------------------------------------------------------- composição do preço: comissão e outros valores
+  const pPreco = Object.assign(U.clone(p), { comissaoValor: 500, outrosValor: 300, outrosDescricao: 'Adequação do padrão de entrada' });
+  const rPreco = C.calcular(pPreco, ctx);
+  perto('preço composto: total inalterado', rPreco.total, 12700, 1e-9);
+  perto('preço composto: mão de obra = total − kit − infra − outros (inclui a comissão)', rPreco.maoObra, 12700 - 8177.08 - 1500 - 300, 1e-9);
+  perto('preço composto: mão de obra líquida da comissão', rPreco.maoObraLiquida, 12700 - 8177.08 - 1500 - 300 - 500, 1e-9);
+  const rSep = C.calcular(Object.assign(U.clone(pPreco), { precoModo: 'separado', maoObraValor: 3000 }), ctx);
+  perto('itens separados: total = kit + infra + mão de obra + outros (comissão dentro da mão de obra)', rSep.total, 8177.08 + 1500 + 3000 + 300, 1e-9);
+  const txPreco = textoModelo(App.Documento.montar(pPreco, rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
+  ok('proposta: outros valores discriminados com a descrição', txPreco.indexOf('Adequação do padrão de entrada') >= 0 && txPreco.indexOf('R$ 300,00') >= 0);
+  ok('proposta: comissão não aparece', !/comiss[aã]o/i.test(txPreco) && txPreco.indexOf('R$ 500,00') < 0);
+  ok('proposta: mão de obra exibida inclui a comissão', txPreco.indexOf(U.brl(rPreco.maoObra)) >= 0);
+  ok('proposta: FDG (Pcc/Pca) no documento', /FDG — Fator de Dimensionamento Global \(Pcc\/Pca\)/.test(txPreco) && !/FDI/.test(txPreco));
+  ok('proposta: tabela da conta compara disponibilidade × energia + Fio B', txPreco.indexOf('Custo Disponib.') >= 0 && txPreco.indexOf('Energia + Fio B') >= 0 && /art\. 655-I/.test(txPreco));
 
   // ---------------------------------------------------------------- BESS no grupo A (verde) — picos e horários estratégicos
   const ctxA = ctxReferencia();
@@ -202,7 +262,7 @@
   ok('micro: microinversor escolhido', rM.micro && rM.inversor.tipo === 'micro', rM.inversor && rM.inversor.modelo);
   igual('micro: quantidade = módulos ÷ 4 entradas', rM.nInversores, 4);
   ok('micro: módulo dentro da faixa do micro', !rM.inversor.potModuloMax || rM.inversor.potModuloMax >= 620);
-  perto('micro: FDI mais próximo do alvo (2 kW × 4 ÷ 8,68 kWp)', rM.fdi, 8 / 8.68, 1e-9);
+  perto('micro: FDG mais próximo do alvo (8,68 kWp ÷ 4 × 2 kW)', rM.fdg, 8.68 / 8, 1e-9);
   const descM = rM.itens.map(function (i) { return i.descricao; }).join(' | ');
   ok('micro: cabo tronco e suporte do micro na lista', /Cabo tronco/.test(descM) && /Suporte de fixação do microinversor/.test(descM), descM);
   ok('micro: sem cabo solar CC nem MC4', !/Cabo Solar 4,0mm|MC4/.test(descM));

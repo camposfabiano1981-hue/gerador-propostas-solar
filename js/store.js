@@ -92,11 +92,38 @@ window.App = window.App || {};
     gravar('v', VERSAO);
   };
 
+  /**
+   * Premissas gravadas antes da troca do FDI (P inversor ÷ P FV) pelo FDG (P FV ÷ P inversor):
+   * a faixa padrão antiga passa a usar a nova; uma faixa personalizada é convertida (valores invertidos).
+   */
+  Store.ajustarPremissas = function (prem) {
+    if (!prem || prem.fdiMin === undefined) return prem;
+    const padraoAntigo = prem.fdiMin === 0.75 && prem.fdiMax === 1.2 && prem.fdiAlvo === 0.9;
+    const inverso = function (x) { const n = U.num(x); return n > 0 ? U.round(1 / n, 2) : undefined; };
+    if (prem.fdgMin === undefined && !padraoAntigo) {
+      prem.fdgMin = inverso(prem.fdiMax);
+      prem.fdgMax = inverso(prem.fdiMin);
+      prem.fdgAlvo = inverso(prem.fdiAlvo);
+    }
+    delete prem.fdiMin; delete prem.fdiMax; delete prem.fdiAlvo;
+    return prem;
+  };
+
+  /** Textos personalizados com o marcador antigo {fdi} passam a exibir o FDG. */
+  function ajustarTextos(tx) {
+    if (tx && Array.isArray(tx.conformidade)) {
+      tx.conformidade.forEach(function (c) {
+        if (c && typeof c.descricao === 'string') c.descricao = c.descricao.replace(/FDI \{fdi\}/g, 'FDG {fdg}').replace(/\{fdiIcone\}/g, '{fdgIcone}');
+      });
+    }
+    return tx;
+  }
+
   Store.config = function () {
     const c = ler('config', {}) || {};
     c.empresa = completar(c.empresa, D.empresa);
-    c.premissas = completar(c.premissas, D.premissas);
-    c.textos = completar(c.textos, D.textos);
+    c.premissas = completar(Store.ajustarPremissas(c.premissas), D.premissas);
+    c.textos = completar(ajustarTextos(c.textos), D.textos);
     c.contrato = completar(c.contrato, D.contrato);
     c.seq = c.seq || {};
     return c;

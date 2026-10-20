@@ -230,7 +230,7 @@ window.App = window.App || {};
   }
 
   /**
-   * Escolhe inversor e quantidade com FDI (P_inversor / P_FV) mais próximo do alvo.
+   * Escolhe inversor e quantidade com FDG (fator de dimensionamento global = P_FV / P_inversor, Pcc/Pca) mais próximo do alvo.
    * Microinversores: a quantidade é definida pelo nº de módulos (nMod) e a compatibilidade pela potência do módulo (wp).
    */
   C.sugerirInversor = function (kwp, ligacao, candidatos, prem, potCargasW, nMod, wp) {
@@ -244,24 +244,24 @@ window.App = window.App || {};
       if (inv.tipo === 'micro') {
         if (!(nMod > 0)) return;
         const n = C.qtdMicro(inv, nMod);
-        const fdi = (n * pot) / kwp;
-        let score = Math.abs(fdi - prem.fdiAlvo) + fc.pen;
-        if (fdi < prem.fdiMin || fdi > prem.fdiMax) score += 10;
+        const fdg = kwp / (n * pot);
+        let score = Math.abs(fdg - prem.fdgAlvo) + fc.pen;
+        if (fdg < prem.fdgMin || fdg > prem.fdgMax) score += 10;
         if (!moduloCompativel(inv, wp)) score += 20;
         // módulos ociosos na última unidade (ex.: 3 módulos num micro de 4 entradas)
         score += ((n * (pos(inv.modulosPorUnidade) || 1)) - nMod) * 0.02;
-        if (!melhor || score < melhor.score) melhor = { inv: inv, n: n, fdi: fdi, score: score };
+        if (!melhor || score < melhor.score) melhor = { inv: inv, n: n, fdg: fdg, score: score };
         return;
       }
       for (let n = 1; n <= 4; n++) {
-        const fdi = (n * pot) / kwp;
-        let score = Math.abs(fdi - prem.fdiAlvo) + fc.pen + (n - 1) * 0.08;
-        if (fdi < prem.fdiMin || fdi > prem.fdiMax) score += 10;
+        const fdg = kwp / (n * pot);
+        let score = Math.abs(fdg - prem.fdgAlvo) + fc.pen + (n - 1) * 0.08;
+        if (fdg < prem.fdgMin || fdg > prem.fdgMax) score += 10;
         if (potCargasW > 0) {
           const bk = (pos(inv.potenciaBackup) || pot) * n * 1000;
           if (bk < potCargasW * prem.hibrido.fatorSegurancaInversor) score += 5;
         }
-        if (!melhor || score < melhor.score) melhor = { inv: inv, n: n, fdi: fdi, score: score };
+        if (!melhor || score < melhor.score) melhor = { inv: inv, n: n, fdg: fdg, score: score };
       }
     });
     return melhor;
@@ -378,7 +378,8 @@ window.App = window.App || {};
 
   /** Premissas completas (com valores padrão para chaves novas). */
   C.premissas = function (p, ctx) {
-    const prem = U.clone(p.premissas || ctx.premissas || D.premissas);
+    const prem = App.Store.ajustarPremissas(U.clone(p.premissas || ctx.premissas || D.premissas));
+    ['fdgMin', 'fdgMax', 'fdgAlvo', 'regraDisponibilidade'].forEach(function (k) { if (prem[k] == null) prem[k] = D.premissas[k]; });
     prem.hibrido = Object.assign({}, D.premissas.hibrido, prem.hibrido || {});
     prem.armazenamento = Object.assign({}, D.premissas.armazenamento, prem.armazenamento || {});
     return prem;
@@ -549,14 +550,15 @@ window.App = window.App || {};
     else if (pos(p.nInversores)) nInv = Math.round(U.num(p.nInversores));
     else if (r.micro) nInv = r.nModulos > 0 ? C.qtdMicro(inv, r.nModulos) : 1;
     else if (!invPreSel && sug) nInv = sug.n;
-    else nInv = potInv > 0 && r.kwp > 0 ? Math.max(1, Math.round((r.kwp * prem.fdiAlvo) / potInv)) : 1;
+    else nInv = potInv > 0 && r.kwp > 0 ? Math.max(1, Math.round(r.kwp / (prem.fdgAlvo * potInv))) : 1;
     r.nInversores = nInv;
     r.potInversores = potInv * nInv;
-    r.fdi = r.kwp > 0 ? r.potInversores / r.kwp : 0;
-    r.fdiOk = r.fdi >= prem.fdiMin && r.fdi <= prem.fdiMax;
-    if (inv && r.kwp > 0 && !r.fdiOk) {
-      alerta('aviso', 'FDI ' + U.fmt(r.fdi, 3) + ' fora da faixa recomendada (' + U.fmt(prem.fdiMin, 2) + '–' + U.fmt(prem.fdiMax, 2) + '). ' +
-        (r.fdi < prem.fdiMin ? 'Inversor subdimensionado: haverá corte de potência (clipping) nos horários de pico.' : 'Inversor superdimensionado em relação ao gerador FV.'));
+    // FDG — fator de dimensionamento global: potência FV (Pcc) ÷ potência dos inversores (Pca)
+    r.fdg = r.kwp > 0 && r.potInversores > 0 ? r.kwp / r.potInversores : 0;
+    r.fdgOk = r.fdg >= prem.fdgMin && r.fdg <= prem.fdgMax;
+    if (inv && r.kwp > 0 && !r.fdgOk) {
+      alerta('aviso', 'FDG (Pcc/Pca) ' + U.fmt(r.fdg, 3) + ' fora da faixa recomendada (' + U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + '). ' +
+        (r.fdg > prem.fdgMax ? 'Inversor subdimensionado: haverá corte de potência (clipping) nos horários de pico.' : 'Inversor superdimensionado em relação ao gerador FV.'));
     }
     if (inv && r.ligacao !== 'tri' && /tri/i.test(inv.fases || '')) alerta('erro', 'Inversor trifásico incompatível com ligação ' + C.LIG_ADJ[r.ligacao] + '.');
 
@@ -601,17 +603,23 @@ window.App = window.App || {};
     r.kitFVSoma = somaItens(itensFVP.length ? itensFVP : itensFVGerados);
     r.kit = p.kitManual ? U.numOr(p.kitValor, 0) : r.kitFVSoma;
     r.infra = r.permiteFV ? U.numOr(p.infraValor, 0) : 0;
+    // outros valores: parcela própria do preço (com descrição); comissão: parte da mão de obra, só para controle gerencial
+    r.outros = r.permiteFV ? U.numOr(p.outrosValor, 0) : 0;
+    r.outrosDescricao = String(p.outrosDescricao || '').trim() || 'Outros valores';
     if (!r.permiteFV) {
       r.maoObra = 0;
       r.investimentoFV = 0;
     } else if (p.precoModo === 'separado') {
       r.maoObra = U.numOr(p.maoObraValor, 0);
-      r.investimentoFV = r.kit + r.infra + r.maoObra;
+      r.investimentoFV = r.kit + r.infra + r.maoObra + r.outros;
     } else {
       r.investimentoFV = U.numOr(p.valorTotal, 0);
-      r.maoObra = r.investimentoFV - r.kit - r.infra;
-      if (r.investimentoFV > 0 && r.maoObra < 0) alerta('erro', 'Valor do sistema FV menor que kit + infraestrutura: mão de obra ficaria negativa.');
+      r.maoObra = r.investimentoFV - r.kit - r.infra - r.outros;
+      if (r.investimentoFV > 0 && r.maoObra < 0) alerta('erro', 'Valor do sistema FV menor que kit + infraestrutura' + (r.outros ? ' + outros valores' : '') + ': mão de obra ficaria negativa.');
     }
+    r.comissao = r.permiteFV ? U.numOr(p.comissaoValor, 0) : 0;
+    r.maoObraLiquida = r.maoObra - r.comissao;
+    if (r.comissao > 0 && r.maoObra >= 0 && r.maoObraLiquida < 0) alerta('aviso', 'Comissão (' + U.brl(r.comissao) + ') maior que a mão de obra (' + U.brl(r.maoObra) + ').');
 
     // Unidade de armazenamento: energia, potência e custo
     const h = r.hibrido;
@@ -781,7 +789,7 @@ window.App = window.App || {};
     // Valores do cenário escolhido
     r.kitArm = escolhido ? escolhido.kitArm || 0 : 0;
     r.instalArm = escolhido ? escolhido.instalArm || 0 : 0;
-    if (!r.incluiFV) { r.kit = 0; r.infra = 0; r.maoObra = 0; }
+    if (!r.incluiFV) { r.kit = 0; r.infra = 0; r.maoObra = 0; r.outros = 0; r.comissao = 0; r.maoObraLiquida = 0; }
     r.total = escolhido ? escolhido.investimento : (r.incluiFV ? r.investimentoFV : 0);
     if (!(r.total > 0)) alerta('erro', r.permiteFV ? 'Informe o valor da proposta.' : 'Informe o preço do equipamento de armazenamento.');
     if (!p.kitManual && r.kitFVSoma === 0 && r.permiteFV && r.incluiFV && (itensP.length ? itensFVP : itensFVGerados).length) {
@@ -915,6 +923,9 @@ window.App = window.App || {};
       precoModo: 'composto',
       valorTotal: '',
       maoObraValor: '',
+      comissaoValor: '',
+      outrosValor: '',
+      outrosDescricao: '',
       pagamentosIds: (ctx.pagamentos || []).filter(function (p) { return p.ativo !== false; }).map(function (p) { return p.id; }),
       premissas: U.clone(ctx.premissas),
       tecnologiaTexto: '',

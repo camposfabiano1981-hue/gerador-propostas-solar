@@ -107,9 +107,13 @@ window.App = window.App || {};
     horizonte: 25,
     disponibilidade: { mono: 30, bi: 50, tri: 100 },
     limiteKwp: { mono: 8, bi: 15, tri: 75 },
-    fdiMin: 0.75,
-    fdiMax: 1.20,
-    fdiAlvo: 0.90,
+    // FDG — fator de dimensionamento global = potência FV (Pcc) ÷ potência dos inversores (Pca)
+    fdgMin: 0.80,
+    fdgMax: 1.35,
+    fdgAlvo: 1.15,
+    // custo de disponibilidade × Fio B no grupo B (REN 1.000/2021, art. 655-I):
+    // 'maior' = maior valor entre disponibilidade e (energia não compensada + Fio B); 'disponibilidade' = disponibilidade + Fio B sobre o restante
+    regraDisponibilidade: 'maior',
     areaModulo: 2.8,
     fatorVocFrio: 1.12,
     fioB: [
@@ -179,7 +183,7 @@ window.App = window.App || {};
     ],
     conformidade: [
       { norma: 'Lei 14.300/2022', descricao: 'Marco Legal da Geração Distribuída — Fio B e MMGD' },
-      { norma: 'REN ANEEL nº 1.000/2021', descricao: 'Condições de acesso — FDI {fdi} documentado (item {secDim}) {fdiIcone}' },
+      { norma: 'REN ANEEL nº 1.000/2021', descricao: 'Condições de acesso — FDG {fdg} documentado (item {secDim}) {fdgIcone}' },
       { norma: 'ABNT NBR 16690:2019', descricao: 'Instalações de arranjos fotovoltaicos — Requisitos' },
       { norma: 'ABNT NBR 5410:2004', descricao: 'Instalações elétricas de baixa tensão' },
       { norma: 'ABNT NBR 16274:2014', descricao: 'Sistemas FV conectados à rede elétrica' },

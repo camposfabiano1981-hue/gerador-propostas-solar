@@ -119,17 +119,41 @@ window.App = window.App || {};
 
   /**
    * Conta mensal média.
-   * c: {p, i, fp} kWh; d: demanda; ex: {cosip, disp (kWh, só grupo B), fioB (R$/mês)}
+   * c: {p, i, fp} kWh faturáveis (já descontada a energia compensada); d: demanda;
+   * ex: {cosip, disp (kWh, só grupo B), compensada (kWh), fioBTarifa (R$/kWh = TUSD Fio B × % do ano), regra}
+   *
+   * Grupo B no SCEE (REN ANEEL 1.000/2021, art. 655-I, § 1º, na redação das REN 1.059/2023 e 1.098/2024):
+   * a parcela de energia é o MAIOR valor entre o custo de disponibilidade (art. 291) e a energia não compensada
+   * somada ao Fio B da energia compensada — os dois não se somam. O autoconsumo simultâneo não passa pelo
+   * medidor, não é compensado e não paga Fio B.
+   * regra 'disponibilidade' (leitura de algumas distribuidoras): os kWh do custo de disponibilidade são faturados
+   * pela tarifa cheia e o Fio B incide só sobre o restante da energia compensada.
    */
   E.conta = function (t, c, d, ex, prem) {
-    let energia = 0, kwh;
-    if (t.modalidade === 'conv') {
-      kwh = Math.max(c.fp, ex.disp || 0);
-      energia = kwh * t.conv;
-    } else {
-      energia = c.p * t.ponta + c.i * t.inter + c.fp * t.fp;
-      kwh = c.p + c.i + c.fp;
-      if (t.grupo === 'B' && kwh < (ex.disp || 0)) { energia += ((ex.disp || 0) - kwh) * t.fp; kwh = ex.disp; }
+    const disp = t.grupo === 'B' ? (ex.disp || 0) : 0;
+    const tDisp = t.modalidade === 'conv' ? t.conv : t.fp;
+    const comp = ex.compensada || 0;
+    const tFioB = ex.fioBTarifa || 0;
+    let energia = t.modalidade === 'conv' ? c.fp * t.conv : c.p * t.ponta + c.i * t.inter + c.fp * t.fp;
+    let kwh = c.p + c.i + c.fp;
+    const energiaNaoComp = energia;
+    const fioBCalc = comp * tFioB;
+    const custoDisp = disp * tDisp;
+    let fioB = fioBCalc, minimo = false;
+    if (disp > 0 && comp > 0 && ex.regra !== 'disponibilidade') {
+      // fioB = acréscimo efetivo do Fio B sobre o maior valor sem ele (zero quando prevalece a disponibilidade)
+      const base = Math.max(custoDisp, energia);
+      minimo = custoDisp > energia + fioBCalc;
+      fioB = Math.max(custoDisp, energia + fioBCalc) - base;
+      energia = base;
+      if (minimo) kwh = Math.max(kwh, disp);
+    } else if (kwh < disp) {
+      // custo de disponibilidade (art. 291): os kWh que faltam saem da energia compensada e não pagam Fio B
+      const falta = disp - kwh;
+      energia += falta * tDisp;
+      fioB = Math.max(0, comp - falta) * tFioB;
+      kwh = disp;
+      minimo = true;
     }
     let demanda = 0, ultrap = 0, faturada = null;
     if (t.modalidade === 'verde' && d) {
@@ -140,11 +164,11 @@ window.App = window.App || {};
       const xf = custoDemanda(d.contrFP, d.medFP, t.demFP, prem);
       demanda = xp.custo + xf.custo; ultrap = xp.ultrapassagem + xf.ultrapassagem; faturada = { p: xp.faturada, fp: xf.faturada };
     }
-    const fioB = ex.fioB || 0;
     const cosip = ex.cosip || 0;
     return {
       energia: energia, kwhFaturado: kwh, demanda: demanda, ultrapassagem: ultrap, demandaFaturada: faturada,
-      fioB: fioB, cosip: cosip, total: energia + demanda + ultrap + fioB + cosip
+      fioB: fioB, fioBCalculado: fioBCalc, energiaNaoCompensada: energiaNaoComp, custoDisponibilidade: custoDisp, minimo: minimo,
+      cosip: cosip, total: energia + demanda + ultrap + fioB + cosip
     };
   };
 
@@ -198,7 +222,7 @@ window.App = window.App || {};
         if (red.fp) { d.medFP = Math.max(0, d.medFP - red.fp); if (arm.readequar) d.contrFP = Math.max(d.medFP, d.contrFP - red.fp); }
       }
     }
-    return { c: c, d: d, injetada: inj, autoconsumo: sc, descarga: descarga, carga: carga, cargaRede: cargaRede, creditoSobra: cred };
+    return { c: c, d: d, injetada: inj, compensada: inj - cred, autoconsumo: sc, descarga: descarga, carga: carga, cargaRede: cargaRede, creditoSobra: cred };
   };
 
   /* ------------------------------------------------------------ indicadores */
@@ -293,8 +317,10 @@ window.App = window.App || {};
         }
       }
       const ap = E.aplicar(t, c0, o.demanda, gm > 0 ? { G: gm, s: o.s } : null, armMes);
-      const fioBMes = ap.injetada * tusd * pct;
-      const com = E.conta(t, ap.c, ap.d, { cosip: cosip, disp: o.disp, fioB: fioBMes }, prem);
+      const com = E.conta(t, ap.c, ap.d, {
+        cosip: cosip, disp: o.disp, compensada: ap.compensada, fioBTarifa: tusd * pct, regra: prem.regraDisponibilidade
+      }, prem);
+      const fioBMes = com.fioB;
       const economiaMes = sem.total - com.total;
       const backup = o.estrategia === 'backup' ? (o.beneficioBackup || 0) : 0;
       const bruta = (sem.total - (com.total - fioBMes)) * 12 + backup;
@@ -302,8 +328,9 @@ window.App = window.App || {};
       if (n === 1) { kwhDesloc1 = ap.descarga * 12; red1 = reducaoKW; }
       acum += liq; somaLiq += liq; somaGer += ger;
       anos.push({
-        n: n, ano: ano, geracao: ger, tarifa: t.referencia, cosip: cosip, pctFioB: pct, injetada: ap.injetada * 12,
-        fioB: fioBMes * 12, fioBMes: fioBMes, faturada: com.kwhFaturado,
+        n: n, ano: ano, geracao: ger, tarifa: t.referencia, cosip: cosip, pctFioB: pct, injetada: ap.injetada * 12, compensada: ap.compensada * 12,
+        fioB: fioBMes * 12, fioBMes: fioBMes, fioBCalcMes: com.fioBCalculado, faturada: com.kwhFaturado,
+        custoDisp: com.custoDisponibilidade, energiaGD: com.energiaNaoCompensada + com.fioBCalculado, minimo: com.minimo,
         contaSem: sem.total, contaMin: com.energia, demandaCom: com.demanda + com.ultrapassagem, demandaSem: sem.demanda + sem.ultrapassagem,
         contaCom: com.total, economiaMes: economiaMes, beneficioBackup: backup, descarga: ap.descarga * 12, reducaoKW: reducaoKW,
         bruta: bruta, extra: extra, liq: liq, acumulado: acum

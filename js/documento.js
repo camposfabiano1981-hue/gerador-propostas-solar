@@ -138,6 +138,7 @@ window.App = window.App || {};
     const tf = r.tarifas;
     const tou = r.modalidade.id !== 'conv';
     const grupoA = r.grupo === 'A';
+    const regraMaior = prem.regraDisponibilidade !== 'disponibilidade';
     let sec = 0;
     const secDimNum = 3;
 
@@ -145,8 +146,9 @@ window.App = window.App || {};
       empresa: emp.razao, empresaCurta: emp.nomeCurto || emp.razao, cidadeEmpresa: [emp.cidade, emp.uf].filter(Boolean).join('/'),
       registroTipo: emp.registroTipo || '', registro: emp.registro || '', concessionaria: conc || 'concessionária',
       inversor: inv ? inv.fabricante : '', modulo: mod ? mod.fabricante : '', bateria: bat ? bat.fabricante : '',
-      fdi: U.fmt(r.fdi, 3), fdiIcone: r.fdiOk ? '✅' : '⚠️', secDim: String(secDimNum), cliente: nomeCliente, cidade: r.cidade || ''
+      fdg: U.fmt(r.fdg, 3), fdgIcone: r.fdgOk ? '✅' : '⚠️', secDim: String(secDimNum), cliente: nomeCliente, cidade: r.cidade || ''
     };
+    vars.fdi = vars.fdg; vars.fdiIcone = vars.fdgIcone; // marcadores antigos em textos personalizados
     const t = function (x) { return substituir(x, vars); };
     const rs = function (v) { return 'R$' + U.fmt(v, Math.max(2, decimais(v))); };
     const nomeArm = r.bessAtivo ? 'BESS' : 'baterias';
@@ -244,7 +246,7 @@ window.App = window.App || {};
       );
       if (temArm) dim.push([r.bessAtivo ? 'Armazenamento (BESS)' : 'Banco de Baterias', linhaArm]);
       dim.push(
-        ['FDI (fator dimensional)', U.fmt(r.fdi, 3) + (r.fdiOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdiMin, 2) + '–' + U.fmt(prem.fdiMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
+        ['FDG — Fator de Dimensionamento Global (Pcc/Pca)', U.fmt(r.fdg, 3) + (r.fdgOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
         ['Estrutura de Fixação', r.estruturaTexto || '—'],
         ['Geração Mensal Estimada', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'],
         ['Geração Anual Estimada (Ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh/ano'],
@@ -267,10 +269,10 @@ window.App = window.App || {};
     }
     b.push(kv([3800, 5560], dim, ['Parâmetro', 'Valor']));
     b.push(vazio());
-    if (temFV && !r.fdiOk && inv) {
-      const msg = '⚠ Alerta técnico: FDI ' + U.fmt(r.fdi, 3) + ' (potência do inversor ÷ potência FV) fora da faixa recomendada (' +
-        U.fmt(prem.fdiMin, 2) + '–' + U.fmt(prem.fdiMax, 2) + '). ' +
-        (r.fdi < prem.fdiMin
+    if (temFV && !r.fdgOk && inv) {
+      const msg = '⚠ Alerta técnico: FDG ' + U.fmt(r.fdg, 3) + ' (potência FV Pcc ÷ potência do inversor Pca) fora da faixa recomendada (' +
+        U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + '). ' +
+        (r.fdg > prem.fdgMax
           ? 'O inversor (' + U.fmtSmart(r.potInversores, 2) + ' kW) é menor que o gerador FV (' + U.kwp(r.kwp) + ' kWp) e poderá limitar a potência nos horários de maior irradiação (clipping); a geração real pode ficar ligeiramente abaixo da estimada.'
           : 'O inversor (' + U.fmtSmart(r.potInversores, 2) + ' kW) está superdimensionado em relação ao gerador FV (' + U.kwp(r.kwp) + ' kWp), elevando o custo sem ganho de geração.');
       b.push(T(msg, { after: 80 }, { color: VERMELHO, sz: 18 }));
@@ -439,6 +441,7 @@ window.App = window.App || {};
     }
     if (r.incluiFV && r.infra > 0) finLin.push(['   ↳ Infraestrutura Elétrica CA (DPS, disjuntores, aterramento)', sub(U.brl(r.infra))]);
     if (r.incluiFV) finLin.push(['   ↳ Mão de Obra + Projeto + Instalação + Homologação', sub(U.brl(r.maoObra))]);
+    if (r.incluiFV && r.outros > 0) finLin.push(['   ↳ ' + r.outrosDescricao, sub(U.brl(r.outros))]);
     finLin.push(
       [{ t: '📅 Economia Mensal Ano 1' + (temFV ? ' (sim. ' + U.fmtSmart(s * 100, 1) + '%)' : ''), b: true }, destaque(U.brl(f.economiaMes1))],
       [{ t: '📅 Economia Anual Ano 1', b: true }, destaque(U.brl(f.economiaAno1))]
@@ -469,8 +472,9 @@ window.App = window.App || {};
       const cron = pct0 < pctFim && ano100
         ? 'O percentual sobe de ' + U.fmtSmart(pct0 * 100, 1) + '% em ' + r.anoBase + ' até ' + pctFinal + ' a partir de ' + ano100 + '.'
         : 'Em ' + r.anoBase + ' o Fio B já é cobrado em ' + U.fmtSmart(pct0 * 100, 1) + '%.';
-      b.push(T('A Lei 14.300/2022 estabelece cronograma gradual de cobrança do Fio B sobre a energia injetada (' + U.fmtSmart((1 - s) * 100, 1) +
-        '% do total gerado, conforme simultaneidade de ' + U.fmtSmart(s * 100, 1) + '%). ' + cron +
+      b.push(T('A Lei 14.300/2022 estabelece cronograma gradual de cobrança do Fio B sobre a energia compensada — a energia injetada na rede (' +
+        U.fmtSmart((1 - s) * 100, 1) + '% do total gerado, conforme simultaneidade de ' + U.fmtSmart(s * 100, 1) +
+        '%) e depois consumida da rede; o autoconsumo simultâneo não paga Fio B. ' + cron +
         (temArm && cen.id === 'ponta' && !tou ? ' Com a ciclagem diária das baterias, parte do excedente é armazenada e consumida no local, reduzindo a energia injetada.' : '') +
         (tou ? ' Os créditos compensam primeiro o consumo fora de ponta; o saldo é aplicado ao consumo de ponta, valorado pela tarifa fora de ponta.' : '') +
         ' A COSIP (Contribuição para Custeio da Iluminação Pública) de ' + U.brl(r.cosip) + '/mês não é compensável por geração própria e permanece em ambos os cenários' +
@@ -490,6 +494,15 @@ window.App = window.App || {};
         return [{ t: String(a.ano), b: true, jc: 'center' }, { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' }, U.brl(a.contaSem), U.brl(a.contaMin),
           U.brl(a.demandaCom), U.brl(a.fioBMes), U.brl(a.contaCom), { t: U.brl(a.economiaMes), b: true, color: VERDE }];
       });
+    } else if (temFV && regraMaior) {
+      // art. 655-I: a conta com sistema é o maior valor (em negrito) entre as duas colunas, mais a COSIP
+      projCols = [{ t: 'Ano', w: 640, jc: 'center' }, { t: '% Fio B', w: 640, jc: 'center' }, { t: 'Conta s/ Sistema', w: 1500, jc: 'right' },
+        { t: 'Custo Disponib.', w: 1080, jc: 'right' }, { t: 'Energia + Fio B', w: 1080, jc: 'right' }, { t: 'COSIP', w: 900, jc: 'right' },
+        { t: 'Conta c/ Sistema', w: 1560, jc: 'right' }, { t: 'Economia/mês', w: 1960, jc: 'right' }];
+      projLin = f.projecao.map(function (a) {
+        return [{ t: String(a.ano), b: true, jc: 'center' }, { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' }, U.brl(a.contaSem),
+          { t: U.brl(a.custoDisp), b: a.minimo }, { t: U.brl(a.energiaGD), b: !a.minimo }, U.brl(a.cosip), U.brl(a.contaCom), { t: U.brl(a.economiaMes), b: true, color: VERDE }];
+      });
     } else {
       projCols = [{ t: 'Ano', w: 640, jc: 'center' }, { t: '% Fio B', w: 640, jc: 'center' }, { t: 'Conta s/ Sistema', w: 1500, jc: 'right' },
         { t: tou ? 'Energia c/ Sist.' : 'Disponib. Mín.', w: 1080, jc: 'right' }, { t: 'Custo Fio B', w: 1080, jc: 'right' }, { t: 'COSIP', w: 900, jc: 'right' },
@@ -506,8 +519,14 @@ window.App = window.App || {};
         'COSIP de ' + U.brl(r.cosip) + '/mês incluída nas contas.' + (temFV ? ' Cronograma Fio B: ' + C.fioBTexto(r.anoBase, prem, ' | ') + '.' : ''),
       { after: 80 }, { color: CINZA, sz: 18 }));
     } else {
-      b.push(T('⚠ Fio B incide sobre a energia injetada (' + U.fmtSmart((1 - s) * 100, 1) + '%). Disponibilidade mínima ' + adj + ': ' +
-        U.fmt(r.disponibilidade, 0) + ' kWh/mês. COSIP de ' + U.brl(r.cosip) + '/mês não compensável (' +
+      const regraTxt = !temFV
+        ? 'Disponibilidade mínima ' + adj + ': ' + U.fmt(r.disponibilidade, 0) + ' kWh/mês. '
+        : (regraMaior
+          ? 'Conta com sistema = maior valor entre o custo de disponibilidade (' + U.fmt(r.disponibilidade, 0) + ' kWh/mês, ligação ' + adj +
+            ') e a energia não compensada + Fio B sobre a energia compensada (REN ANEEL 1.000/2021, art. 655-I) — os dois não se somam; o maior valor está em negrito. '
+          : 'Disponibilidade mínima ' + adj + ': ' + U.fmt(r.disponibilidade, 0) + ' kWh/mês faturados pela tarifa; o Fio B incide sobre o restante da energia compensada. ') +
+          'O Fio B não incide sobre o autoconsumo simultâneo (' + U.fmtSmart(s * 100, 1) + '%). ';
+      b.push(T('⚠ ' + regraTxt + 'COSIP de ' + U.brl(r.cosip) + '/mês não compensável (' +
         (prem.reajusteCosip > 0 ? 'reajuste projetado de ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.' : 'valor nominal, sujeito a reajuste municipal') +
         '). Cronograma Fio B: ' + C.fioBTexto(r.anoBase, prem, ' | ') + '.', { after: 80 }, { color: CINZA, sz: 18 }));
     }
@@ -524,6 +543,10 @@ window.App = window.App || {};
         U.brl(a.bruta), U.brl(a.fioB), U.brl(a.liq), { t: U.brl(a.acumulado), color: a.acumulado < 0 ? VERMELHO : VERDE }];
     });
     b.push(tabelaCabecalhoCentral(fcCols, fcLin, 18));
+    if (temFV && !grupoA && regraMaior && f.anos.some(function (a) { return a.minimo; })) {
+      b.push(T('Custo Fio B = acréscimo efetivo na conta. Nos anos em que o custo de disponibilidade é maior que a energia não compensada + Fio B, ' +
+        'o Fio B fica absorvido por ele (REN ANEEL 1.000/2021, art. 655-I).', { after: 80 }, { color: CINZA, sz: 18 }));
+    }
     if (r.trocaBateria && r.trocaBateria.custo > 0) {
       b.push(T('🔋 A economia líquida do ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ' já desconta a substituição ' + (r.bessAtivo ? 'do BESS' : 'do banco de baterias') + ' (' + U.brl(r.trocaBateria.custo) + ').', { after: 80 }, { color: CINZA, sz: 18 }));
     }
@@ -576,6 +599,7 @@ window.App = window.App || {};
     if (temArm) cond.push(['Armazenamento (' + nomeArm + ') + Instalação', U.brl(r.kitArm + r.instalArm)]);
     if (r.incluiFV && r.infra > 0) cond.push(['Infraestrutura Elétrica CA', U.brl(r.infra)]);
     if (r.incluiFV) cond.push(['Mão de Obra + Projeto + Instalação + Homologação', U.brl(r.maoObra)]);
+    if (r.incluiFV && r.outros > 0) cond.push([r.outrosDescricao, U.brl(r.outros)]);
     cond.push(['Validade da Proposta', (p.validadeDias || emp.validadeDias) + ' dias a partir da data de emissão']);
     if (mod) cond.push(['Garantia Módulos ' + mod.fabricante, C.garantiaModulo(mod)]);
     const garFab = function (e) { return U.num(e.garantia) > 0 ? e.garantia + ' anos (conforme fabricante)' : 'Conforme fabricante'; };

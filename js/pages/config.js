@@ -121,16 +121,20 @@
     cont.appendChild(h('div.card', h('h3', 'Geração e dimensionamento'), UI.grade([
       { k: 'pr', label: 'Performance Ratio (PR)', type: 'number', help: 'Ex.: 0,80' },
       { k: 'degradacao', label: 'Degradação anual dos módulos', type: 'pct' },
-      { k: 'simultaneidade', label: 'Simultaneidade (autoconsumo direto)', type: 'pct', help: 'Parcela da geração consumida na hora; o restante é injetado (paga Fio B).' },
+      { k: 'simultaneidade', label: 'Simultaneidade (autoconsumo direto)', type: 'pct', help: 'Parcela da geração consumida na hora (não paga Fio B); o restante é injetado e paga Fio B quando compensado.' },
       { k: 'areaModulo', label: 'Área por módulo (padrão)', type: 'number', suffix: 'm²' },
-      { k: 'fdiMin', label: 'FDI mínimo', type: 'number', help: 'FDI = potência do inversor ÷ potência FV' },
-      { k: 'fdiMax', label: 'FDI máximo', type: 'number' },
-      { k: 'fdiAlvo', label: 'FDI alvo (seleção automática)', type: 'number' },
+      { k: 'fdgMin', label: 'FDG mínimo', type: 'number', help: 'FDG (fator de dimensionamento global) = potência FV (Pcc) ÷ potência do inversor (Pca)' },
+      { k: 'fdgMax', label: 'FDG máximo', type: 'number', help: 'Acima dele o inversor limita a potência (clipping).' },
+      { k: 'fdgAlvo', label: 'FDG alvo (seleção automática)', type: 'number' },
       { k: 'fatorVocFrio', label: 'Fator de correção Voc (frio)', type: 'number', help: 'Usado na verificação de strings.' },
       { secao: 'Custo de disponibilidade (kWh/mês)' },
       { k: 'disponibilidade.mono', label: 'Monofásica', type: 'number', suffix: 'kWh' },
       { k: 'disponibilidade.bi', label: 'Bifásica', type: 'number', suffix: 'kWh' },
       { k: 'disponibilidade.tri', label: 'Trifásica', type: 'number', suffix: 'kWh' },
+      { k: 'regraDisponibilidade', label: 'Conta mínima com geração (grupo B)', type: 'select', cls: 'span2', options: [
+        { v: 'maior', t: 'Maior valor: disponibilidade ou energia não compensada + Fio B' },
+        { v: 'disponibilidade', t: 'Disponibilidade + Fio B sobre o restante da energia compensada' }
+      ], help: '1ª opção: REN ANEEL 1.000/2021, art. 655-I (os dois não se somam). 2ª: leitura adotada por algumas distribuidoras. A COSIP é somada à parte.' },
       { secao: 'Limite de referência de potência por tipo de ligação (alerta)' },
       { k: 'limiteKwp.mono', label: 'Monofásica', type: 'number', suffix: 'kWp' },
       { k: 'limiteKwp.bi', label: 'Bifásica', type: 'number', suffix: 'kWp' },
@@ -193,7 +197,7 @@
 
     cont.appendChild(UI.cabecalho('Textos padrão da proposta', 'Conteúdo das seções fixas do documento.'));
     cont.appendChild(h('div.card.dica', h('strong', 'Marcadores disponíveis: '),
-      '{empresa}, {empresaCurta}, {cidadeEmpresa}, {registroTipo}, {registro}, {concessionaria}, {inversor}, {modulo}, {bateria}, {cliente}, {cidade}, {fdi}, {fdiIcone}, {secDim}. ',
+      '{empresa}, {empresaCurta}, {cidadeEmpresa}, {registroTipo}, {registro}, {concessionaria}, {inversor}, {modulo}, {bateria}, {cliente}, {cidade}, {fdg}, {fdgIcone}, {secDim}. ',
       'Eles são substituídos pelos dados de cada proposta.'));
 
     cont.appendChild(h('div.card', h('h3', 'Apresentação e encerramento'), UI.grade([

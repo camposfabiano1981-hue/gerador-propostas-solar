@@ -306,7 +306,7 @@
           options: [{ v: '', t: '— selecione —' }].concat(opcoesEquip(ctx, 'modulo', p.moduloId)) },
         { el: infos.placeModulos },
         { k: 'inversorId', label: tipoInv === 'hibrido' ? 'Inversor híbrido' : (micro ? 'Microinversor' : 'Inversor'), type: 'select', cls: 'span2',
-          options: function () { return [{ v: '', t: micro ? 'Automático (compatível com o módulo)' : 'Automático (melhor FDI)' }].concat(opcoesEquip(ctx, tipoInv, p.inversorId)); } },
+          options: function () { return [{ v: '', t: micro ? 'Automático (compatível com o módulo)' : 'Automático (melhor FDG)' }].concat(opcoesEquip(ctx, tipoInv, p.inversorId)); } },
         { el: infos.placeInv }
       ], p, mudou, 3));
       infos.sistema = h('div.info');
@@ -405,8 +405,8 @@
       }
       if (ehArm()) c.appendChild(h('p.ajuda-sec', 'Informe aqui o preço do sistema fotovoltaico. O armazenamento (equipamento + instalação) é somado automaticamente em cada cenário.'));
       const modos = h('div.opcoes-cartao.compacto', [
-        ['composto', 'Valor total', 'Informe o preço final; a mão de obra é calculada (total − kit − infraestrutura).'],
-        ['separado', 'Itens separados', 'Informe a mão de obra; o total é a soma de kit + infraestrutura + mão de obra.']
+        ['composto', 'Valor total', 'Informe o preço final; a mão de obra é calculada (total − kit − infraestrutura − outros valores).'],
+        ['separado', 'Itens separados', 'Informe a mão de obra; o total é a soma de kit + infraestrutura + mão de obra + outros valores.']
       ].map(function (o) {
         return h('button.opcao' + (p.precoModo === o[0] ? '.ativa' : ''), {
           type: 'button', onclick: function () { if (p.precoModo !== o[0]) { p.precoModo = o[0]; mudou('precoModo'); } }
@@ -418,9 +418,12 @@
         p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money' } : null,
         { k: 'infraValor', label: 'Infraestrutura elétrica CA', type: 'money', help: 'DPS, disjuntores, quadro, aterramento.' },
         p.precoModo === 'separado'
-          ? { k: 'maoObraValor', label: 'Mão de obra + projeto + homologação', type: 'money', required: true }
+          ? { k: 'maoObraValor', label: 'Mão de obra + projeto + homologação', type: 'money', required: true, help: 'Inclui a comissão, se houver.' }
           : { k: 'valorTotal', label: ehArm() ? 'Valor do sistema FV (sem armazenamento)' : 'Valor total da proposta', type: 'money', required: true },
-        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (lista de equipamentos)', cls: 'span2' }
+        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (lista de equipamentos)', cls: 'span2' },
+        { k: 'comissaoValor', label: 'Valor da comissão', type: 'money', help: 'Faz parte da mão de obra. Não aparece na proposta — uso gerencial.' },
+        { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço e discriminado na proposta.' },
+        { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…' }
       ], p, mudou, 3));
       infos.preco = h('div.info');
       c.appendChild(infos.preco);
@@ -601,7 +604,7 @@
           linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp'),
           linhaInfo('Potência do sistema', U.kwp(r.kwp) + ' kWp', 'destaque'),
           linhaInfo(r.micro ? 'Microinversores' : 'Inversor', r.inversor ? r.nInversores + ' × ' + C.nomeEquip(r.inversor) : '—'),
-          linhaInfo('FDI (P inv ÷ P FV)', r.kwp ? U.fmt(r.fdi, 3) + (r.fdiOk ? ' ✅' : ' ⚠️') : '—', r.kwp && !r.fdiOk ? 'alerta' : null),
+          linhaInfo('FDG (Pcc ÷ Pca)', r.kwp && r.fdg ? U.fmt(r.fdg, 3) + (r.fdgOk ? ' ✅' : ' ⚠️') : '—', r.kwp && r.fdg && !r.fdgOk ? 'alerta' : null),
           linhaInfo('Geração mensal', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'),
           linhaInfo('Geração anual (ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh'),
           linhaInfo('Cobertura do consumo', U.fmt(r.cobertura * 100, 1) + '%'),
@@ -634,6 +637,11 @@
           linhas.push(linhaInfo('Kit fotovoltaico' + (p.kitManual ? ' (manual)' : ' (soma dos itens)'), U.brl(r.kit)),
             linhaInfo('Infraestrutura CA', U.brl(r.infra)),
             linhaInfo('Mão de obra + projeto + homologação', U.brl(r.maoObra), r.maoObra < 0 ? 'alerta' : null));
+          if (r.comissao) {
+            linhas.push(linhaInfo('↳ Comissão (gerencial — não sai na proposta)', U.brl(r.comissao) + (r.total > 0 ? ' (' + U.fmt(r.comissao / r.total * 100, 1) + '% do total)' : '')),
+              linhaInfo('↳ Mão de obra líquida', U.brl(r.maoObraLiquida), r.maoObraLiquida < 0 ? 'alerta' : null));
+          }
+          if (r.outros) linhas.push(linhaInfo(r.outrosDescricao, U.brl(r.outros)));
         }
         if (r.kitArm || r.instalArm) linhas.push(linhaInfo('Armazenamento (equipamento)', U.brl(r.kitArm)), linhaInfo('Instalação do armazenamento', U.brl(r.instalArm)));
         linhas.push(linhaInfo(ehArm() && r.cen ? 'Investimento — ' + r.cen.nome : 'Valor total', U.brl(r.total), 'destaque'));
@@ -735,7 +743,7 @@
           kpi('Potência', U.kwp(r.kwp) + ' kWp', 'grande'),
           kpi('Módulos', r.modulo ? r.nModulos + ' × ' + r.modulo.potencia + ' Wp' : '—'),
           kpi(r.micro ? 'Microinversores' : 'Inversor', r.inversor ? r.nInversores + ' × ' + U.fmtSmart(r.inversor.potencia, 2) + ' kW' : '—'),
-          kpi('FDI', r.kwp ? U.fmt(r.fdi, 3) : '—', r.kwp && !r.fdiOk ? 'alerta' : null),
+          kpi('FDG (Pcc/Pca)', r.kwp && r.fdg ? U.fmt(r.fdg, 3) : '—', r.kwp && r.fdg && !r.fdgOk ? 'alerta' : null),
           kpi('Geração', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'),
           kpi('Cobertura', U.fmt(r.cobertura * 100, 0) + '%')) : null,
         r.hibrido && r.cen && r.cen.n ? h('div.kpis',

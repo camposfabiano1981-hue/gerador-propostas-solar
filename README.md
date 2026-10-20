@@ -13,11 +13,11 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 ## Funcionalidades
 
 **Propostas**
-- Formulário completo com cálculo ao vivo e painel-resumo (potência, FDI, geração, investimento, economia, payback simples/descontado, TIR, VPL, gráfico e alertas).
-- **On-Grid**: nº de módulos sugerido pelo consumo, seleção automática do inversor pelo melhor FDI (P inversor ÷ P FV), verificação de strings (opcional), alerta de limite por tipo de ligação.
+- Formulário completo com cálculo ao vivo e painel-resumo (potência, FDG, geração, investimento, economia, payback simples/descontado, TIR, VPL, gráfico e alertas).
+- **On-Grid**: nº de módulos sugerido pelo consumo, seleção automática do inversor pelo melhor FDG — fator de dimensionamento global (Pcc ÷ Pca = P FV ÷ P inversor), verificação de strings (opcional), alerta de limite por tipo de ligação.
 - **Híbrido**: cadastro de cargas críticas, autonomia desejada, dimensionamento do banco de baterias (DoD, eficiência, série/paralelo pela tensão do inversor), verificação da potência de backup e modo *backup* ou *backup + ciclagem diária* (reduz a energia injetada e o Fio B).
 - Lista de materiais gerada automaticamente (módulos, inversor, baterias, kits de estrutura combinados, perfis, cabos, conectores), editável, com soma automática do kit.
-- Composição do preço: **valor total** (mão de obra calculada) ou **itens separados** (total calculado); valor do kit pela soma dos itens ou manual (cotação do distribuidor).
+- Composição do preço: **valor total** (mão de obra calculada) ou **itens separados** (total calculado); valor do kit pela soma dos itens ou manual (cotação do distribuidor); **outros valores** com descrição própria (discriminados na proposta) e **valor da comissão**, que faz parte da mão de obra e aparece só no painel interno (uso gerencial), nunca na proposta nem no contrato.
 - Opções de pagamento: à vista, cartão com acréscimo fixo e financiamentos (BV, Solfácil…) por PMT.
 - **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
@@ -105,11 +105,11 @@ e acesse `http://localhost:8765/`.
 | Potência necessária | `kWp = consumo_mensal ÷ (HSP × 30 × PR)` |
 | Nº de módulos | `⌈kWp × 1000 ÷ Wp_módulo⌉` |
 | Geração mensal / anual | `kWp × HSP × 30 × PR` / `kWp × HSP × 365 × PR` |
-| FDI | `P_inversor ÷ P_FV` (faixa padrão 0,75–1,20; alvo 0,90) |
+| FDG (fator de dimensionamento global) | `Pcc ÷ Pca = P_FV ÷ P_inversor` (faixa padrão 0,80–1,35; alvo 1,15) |
 | Capacidade de baterias | `energia_backup ÷ (DoD × eficiência)` |
-| Fio B (ano N) | `energia_injetada × TUSD_FioB × %FioB(ano)`, com `energia_injetada = geração × (1 − simultaneidade)` (− energia armazenada na ciclagem) |
+| Fio B (ano N) | `energia_compensada × TUSD_FioB × %FioB(ano)`, com `energia_compensada = min(energia_injetada, consumo − autoconsumo)` e `energia_injetada = geração × (1 − simultaneidade)` (− energia armazenada na ciclagem); o autoconsumo simultâneo não paga Fio B |
 | Conta sem sistema | `consumo × tarifa_N + COSIP_N` |
-| Conta com sistema | `max(consumo − geração, disponibilidade) × tarifa_N + COSIP_N + Fio B` |
+| Conta com sistema (grupo B) | `max(disponibilidade × tarifa_N, energia_não_compensada × tarifa_N + Fio B) + COSIP_N` — REN ANEEL 1.000/2021, art. 655-I (os dois não se somam). Opção em Premissas para a leitura de algumas distribuidoras: `max(energia_não_compensada, disponibilidade) × tarifa_N + Fio B sobre (energia_compensada − kWh que completam a disponibilidade) + COSIP_N` |
 | Economia real | `conta sem sistema − conta com sistema` |
 | Payback | mês exato por interpolação, exibido como "X anos e Y meses" (simples e descontado pela TMA) |
 | VPL / TIR | fluxo de 25 anos descontado pela TMA / taxa que zera o VPL |
@@ -153,4 +153,4 @@ tools/serve.ps1       Servidor local opcional (Windows/PowerShell)
 
 ## Testes
 
-Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDI, Fio B, contas mensais, parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.
+Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.
