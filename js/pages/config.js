@@ -79,6 +79,7 @@
       { secao: 'Proposta' },
       { k: 'prefixo', label: 'Prefixo do nº da proposta', help: 'Formato: PREFIXO-AAAAMMDD-NNN' },
       { k: 'validadeDias', label: 'Validade padrão', type: 'int', suffix: 'dias' },
+      { k: 'projetosNaProposta', label: 'Projetos realizados por proposta', type: 'int', help: 'Seção após a apresentação (Cadastros › Projetos realizados). 0 = não incluir.' },
       { k: 'papel', label: 'Tamanho do papel', type: 'select', options: [{ v: 'letter', t: 'Carta (igual ao modelo)' }, { v: 'a4', t: 'A4' }] },
       { el: logoBox },
       { secao: 'Contratos (dados ficam apenas neste navegador)' },
@@ -205,6 +206,7 @@
 
     cont.appendChild(h('div.card', h('h3', 'Apresentação e encerramento'), UI.grade([
       { k: 'apresentacao', label: 'Apresentação da empresa (seção 1)', type: 'textarea', rows: 4, cls: 'span2' },
+      { k: 'projetosIntro', label: 'Introdução da seção Projetos realizados', type: 'textarea', rows: 2, cls: 'span2' },
       { k: 'slogan', label: 'Frase final (slogan)', cls: 'span2' },
       { k: 'garantiaInstalacao', label: 'Garantia da instalação' },
       { k: 'infraDescricao', label: 'Descrição padrão da infraestrutura CA' },

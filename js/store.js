@@ -7,8 +7,8 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 5;
-  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos'];
+  const VERSAO = 6;
+  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
 
@@ -87,6 +87,10 @@ window.App = window.App || {};
       eqs.forEach(function (e) { if (D.POT_BATERIA[e.id] && !(U.num(e.potencia) > 0)) e.potencia = D.POT_BATERIA[e.id]; });
       gravar('col.equipamentos', eqs);
     }
+    if (v < 6) {
+      // portfólio de projetos realizados (seção da proposta após a apresentação da empresa)
+      if (ler('col.projetos', null) == null) gravar('col.projetos', []);
+    }
     gravar('v', VERSAO);
   };
 
@@ -101,6 +105,7 @@ window.App = window.App || {};
     gravar('col.servicos', U.clone(D.servicos));
     gravar('col.avulsas', []);
     gravar('col.contratos', []);
+    gravar('col.projetos', []);
     gravar('v', VERSAO);
   };
 

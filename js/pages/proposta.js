@@ -13,11 +13,13 @@
     Object.keys(base).forEach(function (k) {
       if (p[k] === undefined && k !== '_seq' && k !== 'numero') p[k] = U.clone(base[k]);
     });
-    p.premissas = Object.assign(U.clone(ctx.premissas), p.premissas || {});
+    // premissas gravadas por versões anteriores são atualizadas antes de completar com as atuais (mesma regra do cálculo)
+    p.premissas = Object.assign(U.clone(ctx.premissas), S.ajustarPremissas(U.clone(p.premissas || {})));
     p.premissas.hibrido = Object.assign(U.clone(ctx.premissas.hibrido), (p.premissas && p.premissas.hibrido) || {});
     p.premissas.armazenamento = Object.assign(U.clone(ctx.premissas.armazenamento || D.premissas.armazenamento), (p.premissas && p.premissas.armazenamento) || {});
     if (!Array.isArray(p.consumoMensal) || p.consumoMensal.length !== 12) p.consumoMensal = Array(12).fill('');
     if (!Array.isArray(p.cargas)) p.cargas = [];
+    if (p.incluirProjetos === undefined) p.incluirProjetos = true;
     if (!Array.isArray(p.itens)) p.itens = [];
     return p;
   }
@@ -549,6 +551,7 @@
         { k: 'monitoramento', label: 'Monitoramento', placeholder: 'Automático (cadastro do inversor)' },
         { k: 'estruturaTexto', label: 'Estrutura de fixação (tabela de dimensionamento)', placeholder: 'Automático (a partir da lista de materiais)', cls: 'span2' },
         { k: 'condicoesObs', label: 'Observações nas condições comerciais (aparece na proposta)', type: 'textarea', cls: 'span2' },
+        { k: 'incluirProjetos', label: 'Incluir a seção Projetos realizados (Cadastros › Projetos realizados)', type: 'checkbox', cls: 'span2' },
         { k: 'observacoes', label: 'Anotações internas (não aparecem na proposta)', type: 'textarea', cls: 'span2' }
       ], p, mudou, 2));
     });

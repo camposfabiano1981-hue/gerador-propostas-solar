@@ -463,6 +463,114 @@
 
   /* ------------------------------------------------------------ pagamentos */
 
+  /* ------------------------------------------------------------ projetos realizados (portfólio) */
+
+  /**
+   * Foto de projeto: recorte central em 4:3 e JPEG comprimido (até ~300 kB), para que as fotos de vários projetos
+   * caibam no armazenamento do navegador e saiam com o mesmo formato na proposta.
+   */
+  async function prepararFoto(arquivo) {
+    const img = await U.loadImage(await U.readFileAsDataURL(arquivo));
+    const w0 = img.naturalWidth, h0 = img.naturalHeight, prop = 4 / 3;
+    let sw = w0, sh = h0, sx = 0, sy = 0;
+    if (w0 / h0 > prop) { sw = h0 * prop; sx = (w0 - sw) / 2; } else { sh = w0 / prop; sy = (h0 - sh) / 2; }
+    const W = Math.min(1200, Math.round(sw)), H = Math.round(W / prop);
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#FFFFFF';
+    g.fillRect(0, 0, W, H);
+    g.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+    let q = 0.82, url = cv.toDataURL('image/jpeg', q);
+    while (url.length > 400000 && q > 0.5) { q -= 0.08; url = cv.toDataURL('image/jpeg', q); }
+    return { dataURL: url, w: W, h: H };
+  }
+
+  function campoFoto(estado, k, rotulo) {
+    const prev = h('img.foto-projeto', { alt: rotulo });
+    const semFoto = h('div.foto-vazia', 'Sem foto');
+    const mostrar = function () {
+      const f = estado[k];
+      prev.hidden = !f; semFoto.hidden = !!f;
+      if (f) prev.src = f.dataURL;
+    };
+    const arquivo = h('input', {
+      type: 'file', accept: 'image/jpeg,image/png,image/webp', onchange: async function () {
+        const f = arquivo.files[0];
+        if (!f) return;
+        try { estado[k] = await prepararFoto(f); mostrar(); }
+        catch (e) { UI.toast('Não foi possível ler a imagem. Use JPG ou PNG.', 'erro'); }
+        finally { arquivo.value = ''; }
+      }
+    });
+    mostrar();
+    return h('div.campo', h('label', rotulo), h('div.foto-box', prev, semFoto), h('div.foto-acoes', arquivo,
+      h('button.btn.pequeno', { type: 'button', onclick: function () { estado[k] = null; mostrar(); } }, 'Remover foto')));
+  }
+
+  const ROT_SEGMENTO = {}, ROT_TIPO_PROJ = {};
+  D.SEGMENTOS.forEach(function (x) { ROT_SEGMENTO[x.id] = x.label; });
+  D.TIPOS_PROJETO.forEach(function (x) { ROT_TIPO_PROJ[x.id] = x.label; });
+
+  UI.rota('/projetos', function (cont) {
+    const emp = S.config().empresa;
+    UI.crud(cont, {
+      colecao: 'projetos',
+      titulo: 'Projetos realizados',
+      subtitulo: 'Portfólio exibido nas propostas logo após a apresentação da empresa: 2 fotos e a ficha técnica de cada obra concluída. ' +
+        'Cada proposta mostra ' + (U.numOr(emp.projetosNaProposta, 4) || 'nenhum') + ' projeto(s), priorizando o mesmo tipo de sistema, segmento e cidade do cliente.',
+      rotuloNovo: '+ Novo projeto',
+      vazio: 'Nenhum projeto cadastrado. Cadastre pelo menos 4 obras concluídas, com 2 fotos cada.',
+      largo: true,
+      novo: function () {
+        return {
+          titulo: '', segmento: 'residencial', tipoSistema: 'ongrid', cidade: emp.cidade || '', uf: emp.uf || '', conclusao: '',
+          potenciaKwp: '', modulos: '', inversor: '', armazenamento: '', estrutura: '', geracaoMes: '', economiaMes: '', reducaoPct: '',
+          descricao: '', foto1: null, foto2: null, exibir: true
+        };
+      },
+      ordenar: function (a, b) { return C.periodoProjeto(b) - C.periodoProjeto(a); },
+      busca: function (x) { return [x.titulo, x.cidade, x.uf, x.modulos, x.inversor, ROT_SEGMENTO[x.segmento], ROT_TIPO_PROJ[x.tipoSistema]].join(' '); },
+      colunas: [
+        { t: 'Projeto', v: function (x) { return h('strong', x.titulo); } },
+        { t: 'Tipo', v: function (x) { return [ROT_SEGMENTO[x.segmento], ROT_TIPO_PROJ[x.tipoSistema]].filter(Boolean).join(' · '); } },
+        { t: 'Local', v: function (x) { return [x.cidade, x.uf].filter(Boolean).join('/'); } },
+        { t: 'Potência', cls: 'num', v: function (x) { return U.num(x.potenciaKwp) > 0 ? U.kwp(U.num(x.potenciaKwp)) + ' kWp' : '—'; } },
+        { t: 'Conclusão', v: function (x) { return x.conclusao || '—'; } },
+        { t: 'Nas propostas', v: function (x) {
+          if (x.exibir === false) return UI.badge('Oculto', 'cinza');
+          return C.projetoPronto(x) ? UI.badge('Pronto', 'ok') : UI.badge('Faltam fotos', 'ambar');
+        } }
+      ],
+      validar: function (x) { return String(x.titulo || '').trim() ? null : 'Informe o título do projeto.'; },
+      campos: function (x) {
+        return [
+          { k: 'titulo', label: 'Título do projeto', required: true, cls: 'span2', placeholder: 'Ex.: Residência — Bairro Centro',
+            help: 'Use o nome do cliente apenas com autorização dele (LGPD).' },
+          { k: 'segmento', label: 'Segmento', type: 'select', options: D.SEGMENTOS.map(function (o) { return { v: o.id, t: o.label }; }) },
+          { k: 'tipoSistema', label: 'Tipo de sistema', type: 'select', options: D.TIPOS_PROJETO.map(function (o) { return { v: o.id, t: o.label }; }) },
+          { k: 'cidade', label: 'Cidade' },
+          { k: 'uf', label: 'UF', type: 'select', options: UF_OPTS },
+          { k: 'conclusao', label: 'Conclusão (mês/ano)', placeholder: 'Ex.: 10/2025' },
+          { k: 'potenciaKwp', label: 'Potência instalada', type: 'number', suffix: 'kWp' },
+          { secao: 'Ficha técnica' },
+          { k: 'modulos', label: 'Módulos', placeholder: 'Ex.: 12 × Trina 600 W' },
+          { k: 'inversor', label: 'Inversor', placeholder: 'Ex.: Deye 5 kW híbrido' },
+          { k: 'armazenamento', label: 'Armazenamento (opcional)', placeholder: 'Ex.: BYD HVS 5.1 — 5,12 kWh' },
+          { k: 'estrutura', label: 'Estrutura / telhado', placeholder: 'Ex.: Telhado cerâmico' },
+          { k: 'geracaoMes', label: 'Geração média', type: 'number', suffix: 'kWh/mês', help: 'Medida no monitoramento ou estimada no projeto.' },
+          { k: 'economiaMes', label: 'Economia média', type: 'money', help: 'Por mês.' },
+          { k: 'reducaoPct', label: 'Redução da conta', type: 'number', suffix: '%' },
+          { k: 'descricao', label: 'Destaque (opcional)', type: 'textarea', rows: 2, cls: 'span2', placeholder: 'Ex.: Backup da geladeira e da iluminação; homologado em 30 dias.' },
+          { secao: 'Fotos (2 por projeto — recortadas em 4:3)' },
+          { el: campoFoto(x, 'foto1', 'Foto 1 — visão geral da instalação') },
+          { el: campoFoto(x, 'foto2', 'Foto 2 — detalhe (inversor, baterias, quadro…)') },
+          { k: 'exibir', label: 'Exibir nas propostas', type: 'checkbox', cls: 'span2' }
+        ];
+      }
+    });
+  });
+
   UI.rota('/pagamentos', function (cont) {
     UI.crud(cont, {
       colecao: 'pagamentos',

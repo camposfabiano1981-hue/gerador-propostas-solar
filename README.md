@@ -35,11 +35,15 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - Cláusulas numeradas automaticamente, com referências cruzadas (`{cl:pagamento}`); modelo padrão editável em **Configurações › Modelo de contrato**.
 - Numeração própria `CT-AAAAMMDD-NNN` e emissão em PDF e Word.
 
+**Projetos realizados (portfólio)**
+- Cadastro de obras concluídas (Cadastros › Projetos realizados) com **2 fotos** (recortadas em 4:3 e comprimidas no navegador) e ficha técnica: segmento, tipo de sistema, cidade, conclusão, potência, módulos, inversor, armazenamento, estrutura, geração média, economia e redução da conta.
+- Seção **Projetos realizados** logo após a apresentação da empresa: cada proposta mostra **4 projetos** (ajustável em Configurações › Empresa; 0 = sem a seção), priorizando o mesmo tipo de sistema, segmento e cidade do cliente e os mais recentes; fotos lado a lado, ficha técnica com CO₂ evitado e cada projeto inteiro na mesma página (PDF e Word). Pode ser desligada em cada proposta.
+
 **Propostas avulsas (serviços complementares)**
 - Catálogo de serviços (Cadastros › Serviços) com categoria, unidade, preço e escopo.
 - Proposta com itens do catálogo ou avulsos, desconto, prazo, garantia, opções de pagamento e textos próprios, na mesma identidade visual da proposta solar (PDF e Word). Usa a mesma numeração das propostas solares.
 
-**Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, **microinversores**, inversores híbridos, baterias, BESS, estruturas e materiais com regras de quantidade), serviços, concessionárias e tarifas (B1/B2/B3, branca, verde, azul e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal) e condições de pagamento.
+**Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, **microinversores**, inversores híbridos, baterias, BESS, estruturas e materiais com regras de quantidade), serviços, concessionárias e tarifas (B1/B2/B3, branca, verde, azul e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal), condições de pagamento e projetos realizados (portfólio com fotos).
 
 **Catálogo inicial de equipamentos** (preços em branco — informe os do seu distribuidor):
 - Módulos: Trina Solar, Astronergy, TCL Solar, OSDA, Honor Solar, ERA Solar (e DMEGC), com Voc/Vmp/Isc quando disponíveis na ficha.

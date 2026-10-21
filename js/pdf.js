@@ -347,7 +347,7 @@ window.App = window.App || {};
       if (fluxo && y + hh > this.limite()) { this.novaPagina(); y = this.y; }
       let ix = x;
       if (po.jc === 'center') ix = x + (larg - w) / 2; else if (po.jc === 'right') ix = x + larg - w;
-      const rec = med.img.ref === 'logo' ? this.rec.logo : this.rec.grafico;
+      const rec = this.rec[med.img.ref];
       doc.addImage(rec.url, rec.formato, ix, y, w, hh, med.img.ref);
       y += hh;
     } else if (!med.linhas.length || (med.linhas.length === 1 && !med.linhas[0].itens.length)) {
@@ -481,7 +481,8 @@ window.App = window.App || {};
 
   Render.prototype.tabela = function (no, fluxo, x0, y0) {
     const cols = this.colunas(no);
-    const x = x0 == null ? this.ml : x0;
+    let x = x0 == null ? this.ml : x0;
+    if (x0 == null && no.jc === 'center') x = this.ml + Math.max(0, (this.cw - cols.reduce(function (a, c) { return a + c; }, 0)) / 2);
     let y = y0 == null ? this.y : y0;
     const cab = [];
     for (const tr of no.linhas) { if (tr.cabecalho) cab.push(tr); else break; }
@@ -548,7 +549,7 @@ window.App = window.App || {};
     if (no.tipo === 'tbl') {
       const cols = this.colunas(no);
       const self = this;
-      return no.linhas.slice(0, 2).reduce(function (a, tr) { return a + self.medirLinha(tr, cols).h; }, 0);
+      return (no.manterJunto ? no.linhas : no.linhas.slice(0, 2)).reduce(function (a, tr) { return a + self.medirLinha(tr, cols).h; }, 0);
     }
     const med = this.medirParagrafo(no, this.cw);
     if (med.img) return med.h;
@@ -568,15 +569,26 @@ window.App = window.App || {};
           while (corpo[j] && corpo[j].tipo === 'p' && !corpo[j].filhos.length && j < corpo.length - 1) j++;
           if (this.y + hTab + this.alturaInicial(corpo[j]) > this.limite() && this.y > this.topoConteudo() + 1) this.novaPagina();
         }
+        if (no.manterJunto) {
+          // tabela inteira na mesma página (ex.: cartão de projeto com fotos e ficha técnica)
+          const hTab = this.alturaInicial(no);
+          if (this.y + hTab > this.limite() && this.y > this.topoConteudo() + 1 && hTab <= this.limite() - this.topoConteudo()) this.novaPagina();
+        }
         this.y = this.tabela(no, true);
         continue;
       }
       const med = this.medirParagrafo(no, this.cw);
       if (no.po.keepNext) {
-        let prox = corpo[i + 1];
-        let j = i + 1;
-        while (prox && prox.tipo === 'p' && !prox.filhos.length && j < corpo.length - 1) { prox = corpo[++j]; }
-        if (this.y + med.h + this.alturaInicial(prox) > this.limite() && this.y > this.topoConteudo() + 1) this.novaPagina();
+        // soma a sequência de parágrafos "manter com o próximo" (ex.: título + subtítulo) e o início do bloco seguinte
+        let total = med.h, j = i + 1;
+        while (corpo[j]) {
+          const prox = corpo[j];
+          if (prox.tipo === 'p' && !prox.filhos.length && j < corpo.length - 1) { j++; continue; }
+          if (prox.tipo === 'p' && prox.po && prox.po.keepNext) { total += this.medirParagrafo(prox, this.cw).h; j++; continue; }
+          total += this.alturaInicial(prox);
+          break;
+        }
+        if (this.y + total > this.limite() && this.y > this.topoConteudo() + 1) this.novaPagina();
       } else if (!med.linhas.length && !med.img && this.y + med.h > this.limite()) {
         // parágrafo vazio no fim da página: não abre página nova só por ele
         continue;
@@ -622,6 +634,11 @@ window.App = window.App || {};
       logo: { url: rec.logo.dataURL, formato: rec.logo.ext === 'png' ? 'PNG' : 'JPEG' },
       grafico: rec.grafico ? { url: rec.grafico, formato: 'PNG' } : null
     };
+    // imagens adicionais do modelo (ex.: fotos de projetos realizados)
+    Object.keys(modelo.imagens || {}).forEach(function (ref) {
+      const url = modelo.imagens[ref];
+      recursos[ref] = { url: url, formato: /^data:image\/png/.test(url) ? 'PNG' : 'JPEG' };
+    });
     new Render(doc, modelo, recursos, fonteOk).render();
     return { blob: doc.output('blob'), fonteOk: fonteOk };
   }

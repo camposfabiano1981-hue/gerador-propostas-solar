@@ -15,6 +15,17 @@ window.App = window.App || {};
 
   const RID_IMAGEM = { logo: 'rIdLogo', grafico: 'rIdGrafico' };
 
+  /** Imagens adicionais do modelo (ex.: fotos de projetos): ref → {rid, arquivo, dataURL}. */
+  function imagensExtras(modelo) {
+    const out = {};
+    Object.keys(modelo.imagens || {}).sort().forEach(function (ref, i) {
+      const url = modelo.imagens[ref];
+      const ext = /^data:image\/png/.test(url) ? 'png' : 'jpg';
+      out[ref] = { rid: 'rIdImg' + (i + 1), arquivo: 'media/img' + (i + 1) + '.' + ext, dataURL: url };
+    });
+    return out;
+  }
+
   function x(s) {
     return String(s == null ? '' : s)
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
@@ -83,6 +94,9 @@ window.App = window.App || {};
     this.k = modelo.k;
     this.margensCapa = modelo.margensCapa;
     this.idImg = 10;
+    const extras = imagensExtras(modelo);
+    this.rids = Object.assign({}, RID_IMAGEM);
+    Object.keys(extras).forEach(function (ref) { this.rids[ref] = extras[ref].rid; }, this);
   }
 
   Serializador.prototype.w = function (v) { return Math.round(v * this.k); };
@@ -115,7 +129,7 @@ window.App = window.App || {};
 
   Serializador.prototype.imagem = function (n) {
     const id = this.idImg++;
-    const rId = RID_IMAGEM[n.ref];
+    const rId = this.rids[n.ref];
     return '<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
       '<wp:extent cx="' + n.cx + '" cy="' + n.cy + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/>' +
       '<wp:docPr id="' + id + '" name="' + x(n.nome) + '"/>' +
@@ -151,11 +165,15 @@ window.App = window.App || {};
       case 'r': return this.run(n);
       case 'img': return this.imagem(n);
       case 'tc': return this.tc(n);
-      case 'tr': return '<w:tr>' + TBL_PREX + (n.cabecalho ? '<w:trPr><w:tblHeader/></w:trPr>' : '') + this.lista(n.celulas) + '</w:tr>';
+      case 'tr': {
+        const trPr = (n.naoQuebrar ? '<w:cantSplit/>' : '') + (n.cabecalho ? '<w:tblHeader/>' : '');
+        return '<w:tr>' + TBL_PREX + (trPr ? '<w:trPr>' + trPr + '</w:trPr>' : '') + this.lista(n.celulas) + '</w:tr>';
+      }
       case 'tbl': {
         const ws = n.larguras.map(function (v) { return self.w(v); });
         const total = ws.reduce(function (s, v) { return s + v; }, 0);
-        return '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/>' + TBL_BORDERS + TBL_CELLMAR + TBL_LOOK + '</w:tblPr>' +
+        return '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/>' + (n.jc ? '<w:jc w:val="' + n.jc + '"/>' : '') +
+          TBL_BORDERS + TBL_CELLMAR + TBL_LOOK + '</w:tblPr>' +
           '<w:tblGrid>' + ws.map(function (v) { return '<w:gridCol w:w="' + v + '"/>'; }).join('') + '</w:tblGrid>' + this.lista(n.linhas) + '</w:tbl>';
       }
       default: return '';
@@ -218,6 +236,7 @@ window.App = window.App || {};
   /**
    * Monta o pacote .docx a partir de um modelo de documento.
    * rec: {logo: {bytes, ext}, grafico: dataURL (opcional)}; meta: {titulo, autor}
+   * Imagens adicionais vêm do próprio modelo (modelo.imagens: ref → dataURL JPEG/PNG).
    */
   async function pacote(modelo, rec, meta) {
     const partes = serializar(modelo);
@@ -257,10 +276,13 @@ window.App = window.App || {};
       ['rIdLogo', RT + 'image', 'media/logo.' + logo.ext]
     ];
     if (rec.grafico) relsDoc.push(['rIdGrafico', RT + 'image', 'media/grafico.png']);
+    const extras = imagensExtras(modelo);
+    Object.keys(extras).forEach(function (ref) { relsDoc.push([extras[ref].rid, RT + 'image', extras[ref].arquivo]); });
     zip.add('word/_rels/document.xml.rels', rels(relsDoc));
     zip.add('word/_rels/header1.xml.rels', rels([['rIdLogo', RT + 'image', 'media/logo.' + logo.ext]]));
     zip.add('word/media/logo.' + logo.ext, logo.bytes);
     if (rec.grafico) zip.add('word/media/grafico.png', App.U.dataURLtoBytes(rec.grafico));
+    Object.keys(extras).forEach(function (ref) { zip.add('word/' + extras[ref].arquivo, App.U.dataURLtoBytes(extras[ref].dataURL)); });
     return zip.gerar('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   }
 

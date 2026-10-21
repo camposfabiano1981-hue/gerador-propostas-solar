@@ -22,6 +22,15 @@ window.App = window.App || {};
 
   D.TENSOES = ['127 V', '220 V', '127/220 V', '220/380 V', '380 V'];
 
+  /** Segmentos e tipos de sistema do portfólio de projetos realizados. */
+  D.SEGMENTOS = [
+    { id: 'residencial', label: 'Residencial' }, { id: 'comercial', label: 'Comercial' }, { id: 'industrial', label: 'Industrial' },
+    { id: 'rural', label: 'Rural' }, { id: 'publico', label: 'Poder público' }
+  ];
+  D.TIPOS_PROJETO = [
+    { id: 'ongrid', label: 'On-Grid' }, { id: 'hibrido', label: 'Híbrido' }, { id: 'bess', label: 'BESS' }, { id: 'offgrid', label: 'Off-Grid' }
+  ];
+
   D.TELHADOS = ['Cerâmico', 'Fibrocimento', 'Metálico', 'Laje', 'Solo', 'Shingle', 'Carport', 'Outro'];
 
   D.TIPOS_EQUIP = [
@@ -91,6 +100,8 @@ window.App = window.App || {};
     horarioAtendimento: 'Segunda a Sexta, das 08h às 17h30',
     sloganContrato: '"Sua empresa ganha em competitividade, seu imóvel valoriza e o planeta agradece."',
     prefixoContrato: 'CT',
+    // projetos realizados exibidos em cada proposta (0 = não incluir a seção)
+    projetosNaProposta: 4,
     banco: { banco: '', agencia: '', conta: '', titular: '', documento: '', pix: '' }
   };
 
@@ -151,6 +162,7 @@ window.App = window.App || {};
   };
 
   D.textos = {
+    projetosIntro: 'Alguns projetos executados pela {empresaCurta}, com a ficha técnica de cada instalação.',
     apresentacao: 'A {empresa} é especializada em energia solar fotovoltaica, automação e engenharia elétrica em {cidadeEmpresa}. Executamos o ciclo completo: dimensionamento técnico, fornecimento, instalação certificada, homologação {concessionaria} e suporte pós-venda. Equipe registrada no {registroTipo}.',
     slogan: '"Sua conta de luz vira investimento, seu imóvel valoriza e o planeta agradece."',
     inclusos: [

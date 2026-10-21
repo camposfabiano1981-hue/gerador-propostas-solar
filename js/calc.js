@@ -27,8 +27,40 @@ window.App = window.App || {};
       concessionarias: S.list('concessionarias'),
       localidades: S.list('localidades'),
       pagamentos: S.list('pagamentos'),
-      clientes: S.list('clientes')
+      clientes: S.list('clientes'),
+      projetos: S.list('projetos')
     };
+  };
+
+  /** Mês de conclusão de um projeto ("10/2025" → nº de meses) para ordenar do mais recente ao mais antigo. */
+  C.periodoProjeto = function (pr) {
+    const m = String((pr && pr.conclusao) || '').match(/(\d{1,2})\s*\/\s*(\d{4})/);
+    if (m) return Number(m[2]) * 12 + Number(m[1]);
+    const a = String((pr && pr.conclusao) || '').match(/(\d{4})/);
+    return a ? Number(a[1]) * 12 : 0;
+  };
+
+  /** Projeto pronto para a proposta: marcado para exibição e com as 2 fotos. */
+  C.projetoPronto = function (pr) {
+    return !!(pr && pr.exibir !== false && pr.foto1 && pr.foto1.dataURL && pr.foto2 && pr.foto2.dataURL);
+  };
+
+  /**
+   * Projetos realizados da proposta: os prontos, priorizando o mesmo tipo de sistema, o mesmo segmento do cliente
+   * e a mesma cidade, depois os mais recentes. Quantidade em Configurações › Empresa (padrão 4).
+   */
+  C.projetosProposta = function (p, r, ctx) {
+    const n = Math.max(0, parseInt(U.numOr(ctx.empresa && ctx.empresa.projetosNaProposta, 4), 10) || 0);
+    if (!n || p.incluirProjetos === false) return [];
+    const norm = function (x) { return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); };
+    const segmento = r.grupo === 'A' ? 'industrial' : norm((r.classe || '').split(' ')[0]).replace('poder', 'publico');
+    const cidade = norm(r.cidade);
+    const prontos = (ctx.projetos || []).filter(C.projetoPronto).map(function (pr, i) {
+      const pontos = (pr.tipoSistema === r.tipoSistema ? 4 : 0) + (pr.segmento === segmento ? 2 : 0) + (cidade && norm(pr.cidade) === cidade ? 1 : 0);
+      return { pr: pr, pontos: pontos, periodo: C.periodoProjeto(pr), i: i };
+    });
+    prontos.sort(function (a, b) { return (b.pontos - a.pontos) || (b.periodo - a.periodo) || (a.i - b.i); });
+    return prontos.slice(0, n).map(function (x) { return x.pr; });
   };
 
   function porId(lista, id) {
@@ -934,6 +966,14 @@ window.App = window.App || {};
       }
     }
 
+    // portfólio: projetos realizados exibidos após a apresentação da empresa
+    r.projetos = C.projetosProposta(p, r, ctx);
+    const nProj = Math.max(0, parseInt(U.numOr(ctx.empresa && ctx.empresa.projetosNaProposta, 4), 10) || 0);
+    if (nProj && p.incluirProjetos !== false && r.projetos.length < nProj) {
+      alerta('info', (r.projetos.length ? 'A proposta mostra ' + r.projetos.length + ' projeto(s) realizado(s); recomendado: ' + nProj + '. '
+        : 'A seção de projetos realizados ficará fora da proposta. ') + 'Cadastre obras concluídas com 2 fotos em Cadastros › Projetos realizados.');
+    }
+
     r.pagamentos = C.pagamentos(r.total, (ctx.pagamentos || []).filter(function (pg) {
       return !Array.isArray(p.pagamentosIds) || p.pagamentosIds.indexOf(pg.id) >= 0;
     }));
@@ -1119,6 +1159,7 @@ window.App = window.App || {};
       estruturaTexto: '',
       monitoramento: '',
       observacoes: '',
+      incluirProjetos: true,
       _seq: num
     };
   };

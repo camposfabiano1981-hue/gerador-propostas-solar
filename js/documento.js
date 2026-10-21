@@ -29,8 +29,12 @@ window.App = window.App || {};
   function vazio() { return P([], { after: 100 }); }
   function IMG(ref, cx, cy, nome) { return { tipo: 'img', ref: ref, cx: cx, cy: cy, nome: nome }; }
   function TC(filhos, o) { return { tipo: 'tc', o: o || {}, filhos: lista(filhos) }; }
-  function TR(celulas, cabecalho) { return { tipo: 'tr', cabecalho: !!cabecalho, celulas: celulas }; }
-  function TBL(larguras, linhas) { return { tipo: 'tbl', larguras: larguras, linhas: linhas }; }
+  function TR(celulas, cabecalho, o) { return { tipo: 'tr', cabecalho: !!cabecalho, celulas: celulas, naoQuebrar: !!(o && o.naoQuebrar) }; }
+  /** o: {jc: 'center' (tabela centralizada na página), manterJunto (a tabela inteira na mesma página)} */
+  function TBL(larguras, linhas, o) {
+    o = o || {};
+    return { tipo: 'tbl', larguras: larguras, linhas: linhas, jc: o.jc || null, manterJunto: !!o.manterJunto };
+  }
 
   function alinhar(jc) { return jc && jc !== 'left' ? { jc: jc } : null; }
 
@@ -140,7 +144,10 @@ window.App = window.App || {};
     const grupoA = r.grupo === 'A';
     const regraMaior = prem.regraDisponibilidade !== 'disponibilidade';
     let sec = 0;
-    const secDimNum = 3;
+    const projetos = r.projetos || [];
+    // a seção de projetos realizados (quando houver) desloca o dimensionamento para o item 4
+    const secDimNum = projetos.length ? 4 : 3;
+    const imagens = {};
 
     const vars = {
       empresa: emp.razao, empresaCurta: emp.nomeCurto || emp.razao, cidadeEmpresa: [emp.cidade, emp.uf].filter(Boolean).join('/'),
@@ -178,7 +185,7 @@ window.App = window.App || {};
       TR([capaCel(p.numero, false, true), capaCel(U.dataBR(p.data))]),
       TR([capaCel('Validade', true), capaCel('Tecnologia', true)]),
       TR([capaCel((p.validadeDias || emp.validadeDias) + ' dias'), capaCel(r.tecnologia)])
-    ]));
+    ], { jc: 'center' }));
     b.push(vazio(), vazio(), vazio(), vazio(), vazio(), vazio());
     b.push(T(emp.razao, { top: { sz: 6, space: 2, color: DOURADO }, after: 40, jc: 'center' }, { b: true, color: AZUL, sz: 22 }));
     const idEmp = ['CNPJ: ' + emp.cnpj, emp.registro ? emp.registroTipo + ' ' + emp.registro : ''].filter(Boolean).join(' │ ');
@@ -190,6 +197,58 @@ window.App = window.App || {};
     b.push(titulo((++sec) + '. APRESENTAÇÃO DA EMPRESA'));
     b.push(T(t(textos.apresentacao), { after: 80 }));
     b.push(vazio());
+
+    /* ---------- PROJETOS REALIZADOS (portfólio: 2 fotos + ficha técnica por obra) */
+    if (projetos.length) {
+      b.push(titulo((++sec) + '. PROJETOS REALIZADOS'));
+      if (textos.projetosIntro) b.push(T(t(textos.projetosIntro), { after: 60 }, { color: GRAFITE }));
+      const rotSeg = {}, rotTipo = {};
+      App.DEFAULTS.SEGMENTOS.forEach(function (x) { rotSeg[x.id] = x.label; });
+      App.DEFAULTS.TIPOS_PROJETO.forEach(function (x) { rotTipo[x.id] = x.label; });
+      const wFoto = Math.round(4500 * k * 635); // EMU (1 twip = 635 EMU), dentro da célula de 4.680
+      projetos.forEach(function (pr, i) {
+        const refs = ['proj' + (i + 1) + 'a', 'proj' + (i + 1) + 'b'];
+        imagens[refs[0]] = pr.foto1.dataURL;
+        imagens[refs[1]] = pr.foto2.dataURL;
+        const local = [pr.cidade, pr.uf].filter(Boolean).join('/');
+        const sub = [rotSeg[pr.segmento], rotTipo[pr.tipoSistema] ? 'Sistema ' + rotTipo[pr.tipoSistema] : '', pr.conclusao ? 'concluído em ' + pr.conclusao : '']
+          .filter(Boolean).join(' · ');
+        b.push(T(pr.titulo + (local ? ' — ' + local : ''), { keepNext: true, before: i ? 280 : 120, after: 20 }, { b: true, color: AZUL, sz: 22 }));
+        if (sub) b.push(T(sub, { keepNext: true, after: 60 }, { color: CINZA, sz: 18 }));
+        const foto = function (ref, f) {
+          const cy = Math.round(wFoto * (f.w && f.h ? f.h / f.w : 0.75));
+          return TC(P(IMG(ref, wFoto, cy, 'Foto do projeto ' + (i + 1)), { jc: 'center', keepNext: true }),
+            { w: 4680, span: 2, semBorda: true, mar: { t: 40, b: 40, l: 60, r: 60 } });
+        };
+        const kwpP = U.num(pr.potenciaKwp), ger = U.num(pr.geracaoMes), eco = U.num(pr.economiaMes), red = U.num(pr.reducaoPct);
+        const ficha = [];
+        if (kwpP > 0) ficha.push(['Potência instalada', U.kwp(kwpP) + ' kWp']);
+        if (ger > 0) ficha.push(['Geração média', U.fmt(ger, 0) + ' kWh/mês']);
+        if (pr.modulos) ficha.push(['Módulos', pr.modulos]);
+        if (pr.inversor) ficha.push(['Inversor', pr.inversor]);
+        if (pr.armazenamento) ficha.push(['Armazenamento', pr.armazenamento]);
+        if (pr.estrutura) ficha.push(['Estrutura', pr.estrutura]);
+        if (eco > 0) ficha.push(['Economia média', U.brl(eco) + '/mês']);
+        if (red > 0) ficha.push(['Redução da conta', U.fmtSmart(red, 1) + '%']);
+        if (ger > 0) ficha.push(['CO₂ evitado', U.fmtSmart(ger * 12 * prem.fatorCO2 / 1000, 1) + ' t/ano']);
+        const linhasP = [TR([foto(refs[0], pr.foto1), foto(refs[1], pr.foto2)], false, { naoQuebrar: true })];
+        const nLin = Math.ceil(ficha.length / 2);
+        for (let j = 0; j < nLin; j++) {
+          // keepNext nas linhas que não são a última: o Word mantém o cartão inteiro na mesma página
+          const po = j < nLin - 1 ? { keepNext: true } : null;
+          const fill = j % 2 === 0 ? ZEBRA : BRANCO;
+          const cel = [];
+          [ficha[2 * j], ficha[2 * j + 1]].forEach(function (d) {
+            cel.push(TC(d ? T(d[0], po, { b: true, sz: 18 }) : P([], po), { w: 2100, fill: fill }),
+              TC(d ? T(d[1], po, { sz: 18 }) : P([], po), { w: 2580, fill: fill }));
+          });
+          linhasP.push(TR(cel, false, { naoQuebrar: true }));
+        }
+        b.push(TBL([2100, 2580, 2100, 2580], linhasP, { manterJunto: true }));
+        if (pr.descricao) b.push(T(pr.descricao, { before: 40, after: 40 }, { i: true, color: GRAFITE, sz: 18 }));
+      });
+      b.push(vazio());
+    }
 
     /* ---------- 2. DADOS DO CLIENTE */
     b.push(titulo((++sec) + '. DADOS DO CLIENTE E DO PROJETO'));
@@ -686,7 +745,7 @@ window.App = window.App || {};
       .filter(Boolean).join('  │  ');
     const rodape = [T(rodTexto, { top: { sz: 6, space: 2, color: AZUL }, before: 80, jc: 'center' }, { color: CINZA, sz: 16 })];
 
-    return { papel: papel, k: k, corpo: b, cabecalho: cabecalho, rodape: rodape };
+    return { papel: papel, k: k, corpo: b, cabecalho: cabecalho, rodape: rodape, imagens: imagens };
   }
 
   /* ------------------------------------------------------------ recursos compartilhados */

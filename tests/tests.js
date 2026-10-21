@@ -451,6 +451,55 @@
   ok('avulsa: XML válido', !new DOMParser().parseFromString(App.Docx.serializar(mAv).documento, 'application/xml').querySelector('parsererror'));
   ok('avulsa: linha de total', textoModelo(mAv).indexOf('VALOR TOTAL') >= 0 && textoModelo(mAv).indexOf('R$ 2.375,00') >= 0);
 
+  // ---------------------------------------------------------------- projetos realizados (portfólio) — fotos sintéticas de teste
+  function fotoTeste(cor, rotulo) {
+    const cv = document.createElement('canvas');
+    cv.width = 400; cv.height = 300;
+    const g = cv.getContext('2d');
+    g.fillStyle = cor; g.fillRect(0, 0, 400, 300);
+    g.fillStyle = '#FFFFFF'; g.font = 'bold 28px sans-serif'; g.fillText(rotulo, 20, 160);
+    return { dataURL: cv.toDataURL('image/jpeg', 0.8), w: 400, h: 300 };
+  }
+  function projTeste(id, tipo, seg, cidade, conclusao, comFotos) {
+    return {
+      id: id, titulo: 'Projeto de teste ' + id, segmento: seg, tipoSistema: tipo, cidade: cidade, uf: 'MS', conclusao: conclusao,
+      potenciaKwp: 5.4, modulos: '9 × Módulo de teste 600 W', inversor: 'Inversor de teste 5 kW', geracaoMes: 690, economiaMes: 520, reducaoPct: 85,
+      descricao: 'Destaque de teste.', foto1: comFotos ? fotoTeste('#1E3A8A', 'FOTO DE TESTE A') : null, foto2: comFotos ? fotoTeste('#166534', 'FOTO DE TESTE B') : null, exibir: true
+    };
+  }
+  const ctxP = U.clone(ctx);
+  ctxP.projetos = [
+    projTeste('p1', 'ongrid', 'residencial', 'Corumbá', '03/2024', true),
+    projTeste('p2', 'hibrido', 'comercial', 'Ladário', '08/2025', true),
+    projTeste('p3', 'ongrid', 'comercial', 'Campo Grande', '10/2025', true),
+    projTeste('p4', 'ongrid', 'residencial', 'Corumbá', '09/2025', true),
+    projTeste('p5', 'ongrid', 'residencial', 'Corumbá', '12/2025', false),
+    projTeste('p6', 'ongrid', 'rural', 'Miranda', '01/2023', true)
+  ];
+  const rP = C.calcular(p, ctxP);
+  igual('projetos: 4 prontos — mesmo tipo, segmento e cidade primeiro, depois os mais recentes', rP.projetos.map(function (x) { return x.id; }).join(','), 'p4,p1,p3,p6');
+  const alertaProj = function (rr) { return rr.alertas.some(function (x) { return /Projetos realizados/.test(x.msg); }); };
+  ok('projetos: sem alerta com 4 projetos prontos', !alertaProj(rP));
+  ok('projetos: alerta quando não há projetos cadastrados', alertaProj(r));
+  igual('projetos: seção desligada na proposta', C.calcular(Object.assign(U.clone(p), { incluirProjetos: false }), ctxP).projetos.length, 0);
+  const ctxP0 = U.clone(ctxP);
+  ctxP0.empresa.projetosNaProposta = 0;
+  const rP0 = C.calcular(p, ctxP0);
+  ok('projetos: 0 na configuração = sem seção e sem alerta', rP0.projetos.length === 0 && !alertaProj(rP0));
+  const mP = App.Documento.montar(p, rP, ctxP, ctxP.clientes[0], { w: 1400, h: 752 });
+  const txP = textoModelo(mP);
+  igual('projetos: seção 2, após a apresentação (dimensionamento passa ao item 4)',
+    txP.filter(function (x) { return /^\d+\. [A-ZÇÃÕÉÍÓÚÊÂ ]+$/.test(x); }).slice(0, 4).join(' | '),
+    '1. APRESENTAÇÃO DA EMPRESA | 2. PROJETOS REALIZADOS | 3. DADOS DO CLIENTE E DO PROJETO | 4. DIMENSIONAMENTO TÉCNICO');
+  ok('projetos: conformidade cita o item 4', txP.some(function (x) { return /documentado \(item 4\)/.test(x); }));
+  ok('sem projetos: conformidade cita o item 3', textoModelo(App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 })).some(function (x) { return /documentado \(item 3\)/.test(x); }));
+  igual('projetos: 2 fotos por projeto no documento', Object.keys(mP.imagens).length, 8);
+  ok('projetos: ficha técnica com CO₂ evitado', txP.indexOf('Potência instalada') >= 0 && txP.indexOf('Geração média') >= 0 && txP.some(function (x) { return /^\d+(,\d)? t\/ano$/.test(x); }));
+  const xmlP = App.Docx.serializar(mP);
+  ok('projetos: fotos referenciadas no Word', /r:embed="rIdImg1"/.test(xmlP.documento) && /r:embed="rIdImg8"/.test(xmlP.documento));
+  ok('projetos: XML do Word válido', !new DOMParser().parseFromString(xmlP.documento, 'application/xml').querySelector('parsererror'));
+  ok('capa: quadro de identificação centralizado', /<w:tblW w:w="6084" w:type="dxa"\/><w:jc w:val="center"\/>/.test(xmlP.documento));
+
   // ---------------------------------------------------------------- docx
   async function testarDocx() {
     const out = { ref: null, hib: null };
@@ -479,6 +528,15 @@
       out.hib = gh;
     } catch (e) {
       ok('docx gerado', false, e && e.stack || String(e));
+    }
+    try {
+      const gP = await App.Docx.gerar(p, ctxP);
+      const pdfP = await App.Pdf.gerar(p, ctxP);
+      ok('projetos: Word e PDF gerados com as fotos', gP.blob.size > 30000 && new TextDecoder().decode(await pdfP.blob.slice(0, 5).arrayBuffer()) === '%PDF-',
+        gP.blob.size + ' / ' + pdfP.blob.size + ' bytes');
+      out.pdfProjetos = pdfP;
+    } catch (e) {
+      ok('projetos: Word e PDF gerados', false, e && e.stack || String(e));
     }
     try {
       const pdf = await App.Pdf.gerar(p, ctx);
