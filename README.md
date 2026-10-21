@@ -15,7 +15,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 **Propostas**
 - Formulário completo com cálculo ao vivo e painel-resumo (potência, FDG, geração, investimento, economia, payback simples/descontado, TIR, VPL, gráfico e alertas).
 - **On-Grid**: nº de módulos sugerido pelo consumo, seleção automática do inversor pelo melhor FDG — fator de dimensionamento global (Pcc ÷ Pca = P FV ÷ P inversor), verificação de strings (opcional), alerta de limite por tipo de ligação.
-- **Híbrido**: cadastro de cargas críticas, autonomia desejada, dimensionamento do banco de baterias pelas cargas críticas (DoD, eficiência, série/paralelo pela tensão do inversor; capacidade máxima por inversor das baterias modulares de alta tensão), verificação da potência de backup e modo *backup* ou *backup + ciclagem diária* — na tarifa convencional a ciclagem usa o mesmo banco do backup e mantém a reserva para falta de energia.
+- **Híbrido**: cadastro de cargas críticas (com marcação de motores), autonomia desejada, dimensionamento do banco de baterias pela energia **e pela potência** das cargas críticas (DoD, eficiência de ciclo, potência contínua das baterias, série/paralelo pela tensão do inversor; capacidade máxima das baterias modulares de alta tensão), módulos dimensionados com o **consumo próprio do inversor** e as **perdas do ciclo** da bateria, **balanço diário** no mês de menor geração com **fator de utilização** do banco, limites do inversor híbrido (entrada FV, potência e capacidade de bateria, surto × pico de partida dos motores) e modo *backup* ou *backup + ciclagem diária* — na tarifa convencional a ciclagem usa o mesmo banco do backup e mantém a reserva para falta de energia.
 - Lista de materiais gerada automaticamente (módulos, inversor, baterias, kits de estrutura combinados, perfis, cabos, conectores), editável, com soma automática do kit.
 - Composição do preço: **valor total** (mão de obra calculada) ou **itens separados** (total calculado); valor do kit pela soma dos itens ou manual (cotação do distribuidor); **outros valores** com descrição própria (discriminados na proposta) e **valor da comissão**, que faz parte da mão de obra e aparece só no painel interno (uso gerencial), nunca na proposta nem no contrato.
 - Opções de pagamento: à vista, cartão com acréscimo fixo e financiamentos (BV, Solfácil…) por PMT.
@@ -106,12 +106,17 @@ e acesse `http://localhost:8765/`.
 | Nº de módulos | `⌈kWp × 1000 ÷ Wp_módulo⌉` |
 | Geração mensal / anual | `kWp × HSP × 30 × PR` / `kWp × HSP × 365 × PR` |
 | FDG (fator de dimensionamento global) | `Pcc ÷ Pca = P_FV ÷ P_inversor` (faixa padrão 0,80–1,35; alvo 1,15) |
-| Capacidade de baterias (backup) | `energia_backup ÷ (DoD × eficiência)`, com `energia_backup = Σ qtd × potência × min(horas de uso, autonomia)` (horas em branco = autonomia) |
+| Capacidade de baterias (backup) | `energia_backup ÷ (DoD × eficiência)`, com `energia_backup = Σ qtd × potência × min(horas de uso, autonomia)` (horas em branco = autonomia); eficiência de ciclo padrão 92% (híbrido com bateria no barramento CC) |
+| Potência do banco (backup) | `nº de baterias ≥ fator de segurança × potência das cargas ÷ potência contínua por bateria` (datasheet; sem dado, 0,5C); limitada pela potência de bateria do inversor |
+| Pico de partida | `Σ cargas + maior motor × (fator de partida − 1)` (padrão 5×), comparado ao surto do inversor |
+| Consumo do dimensionamento (híbrido) | `consumo + consumo próprio do inversor (W × 24 h; padrão 40 W) + perdas do ciclo (energia ciclada × (1/η − 1))` |
+| Balanço diário / utilização | no mês de menor geração: `energia ciclada = min(capacidade acima da reserva × η, excedente solar × η, consumo noturno)`; `utilização = energia ciclada ÷ (capacidade acima da reserva × η)` (mínimo recomendado 70%); sugere módulos ou menos baterias |
 | Ciclagem / redução de picos | a reserva `energia_backup ÷ eficiência` fica fora da ciclagem; na tarifa convencional não há arbitragem (o ganho é só o Fio B evitado − perdas), então a ciclagem usa o mesmo banco do backup em vez de um banco para todo o excedente solar |
 | Fio B (ano N) | `energia_compensada × TUSD_FioB × %FioB(ano)`, com `energia_compensada = min(energia_injetada, consumo − autoconsumo)` e `energia_injetada = geração × (1 − simultaneidade)` (− energia armazenada na ciclagem); o autoconsumo simultâneo não paga Fio B |
 | Conta sem sistema | `consumo × tarifa_N + COSIP_N` |
 | Conta com sistema (grupo B) | `max(disponibilidade × tarifa_N, energia_não_compensada × tarifa_N + Fio B) + COSIP_N` — REN ANEEL 1.000/2021, art. 655-I (os dois não se somam). Opção em Premissas para a leitura de algumas distribuidoras: `max(energia_não_compensada, disponibilidade) × tarifa_N + Fio B sobre (energia_compensada − kWh que completam a disponibilidade) + COSIP_N` |
-| Economia real | `conta sem sistema − conta com sistema` |
+| Economia real | `conta sem sistema − conta com sistema` (a conta com sistema inclui o consumo próprio do inversor híbrido) |
+| Faixa mensal da conta | ano 1 simulado mês a mês (fatores mensais de geração, perfil mensal de consumo, créditos transportados) — mostra a menor e a maior conta |
 | Payback | mês exato por interpolação, exibido como "X anos e Y meses" (simples e descontado pela TMA) |
 | VPL / TIR | fluxo de 25 anos descontado pela TMA / taxa que zera o VPL |
 | CO₂ evitado | `geração média × fator (kg/kWh) × 25 anos` |

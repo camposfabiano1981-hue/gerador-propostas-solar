@@ -249,7 +249,14 @@ window.App = window.App || {};
         ['FDG — Fator de Dimensionamento Global (Pcc/Pca)', U.fmt(r.fdg, 3) + (r.fdgOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
         ['Estrutura de Fixação', r.estruturaTexto || '—'],
         ['Geração Mensal Estimada', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'],
-        ['Geração Anual Estimada (Ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh/ano'],
+        ['Geração Anual Estimada (Ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh/ano']
+      );
+      const dx = r.dimensionamento;
+      if (dx && (dx.proprio || dx.perdas)) {
+        dim.push(['Consumo Considerado no Dimensionamento', U.fmt(dx.consumo, 0) + ' kWh/mês do cliente + ' + U.fmt(dx.proprio, 0) + ' kWh de consumo próprio do inversor' +
+          (dx.perdas ? ' + ' + U.fmt(dx.perdas, 0) + ' kWh de perdas da bateria' : '') + ' = ' + U.fmt(r.consumoDimensionamento, 0) + ' kWh/mês']);
+      }
+      dim.push(
         ['Cobertura do Consumo', U.fmt(r.cobertura * 100, 1) + '% do consumo médio (' + U.fmt(r.consumoMedio, 0) + ' kWh/mês) ' + (r.cobertura >= 0.95 ? '✅' : '⚠️')],
         ['Área Ocupada Aproximada', '~' + U.fmt(r.area, 0) + ' m² (' + r.nModulos + ' mód × ' + U.fmtSmart(r.areaModulo, 2) + ' m²)'],
         ['HSP ' + [r.cidade, r.uf].filter(Boolean).join('/') + (r.localidade && r.localidade.fonte ? ' (' + r.localidade.fonte + ')' : ''), U.fmtSmart(r.hsp, 2) + ' kWh/m²/dia'],
@@ -299,14 +306,15 @@ window.App = window.App || {};
         txt = 'O armazenamento corta os picos de demanda em até ' + U.fmtSmart(kw, 1) + ' kW, reduzindo a demanda faturada' +
           (r.cenariosConfig.picos.readequar !== false ? ' e permitindo readequar a demanda contratada' : '') + ', além de evitar multas de ultrapassagem.';
       }
-      if (!backupCen && arm.cargas.length) txt += ' Em caso de falta de energia, o sistema também pode alimentar as cargas críticas listadas.';
+      // a ciclagem na tarifa convencional já menciona a reserva para as cargas críticas
+      if (!backupCen && arm.cargas.length && !(cen.id === 'ponta' && !tou)) txt += ' Em caso de falta de energia, o sistema também pode alimentar as cargas críticas listadas.';
       b.push(T(txt, { after: 80 }, { color: GRAFITE }));
       b.push(vazio());
       if (arm.cargas.length) {
         const cargasCols = [{ t: 'Carga crítica', w: 3560 }, { t: 'Qtd.', w: 800, jc: 'center' }, { t: 'Potência (W)', w: 1500, jc: 'right' },
           { t: 'Uso no backup (h)', w: 1500, jc: 'center' }, { t: 'Energia (Wh)', w: 2000, jc: 'right' }];
         const cargasLin = arm.cargas.map(function (c) {
-          return [c.descricao, U.fmtSmart(c.qtd, 2), U.fmt(c.potTotal, 0), U.fmtSmart(c.horas, 1), U.fmt(c.energia, 0)];
+          return [c.descricao + (c.motor ? ' (motor)' : ''), U.fmtSmart(c.qtd, 2), U.fmt(c.potTotal, 0), U.fmtSmart(c.horas, 1), U.fmt(c.energia, 0)];
         });
         const tot = [{ t: 'Total', b: true }, '', { t: U.fmt(arm.potCargas, 0), b: true }, '', { t: U.fmt(arm.energiaBackup, 0), b: true }];
         tot.fundo = DESTAQUE;
@@ -330,7 +338,25 @@ window.App = window.App || {};
         ['Capacidade Útil', U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)']
       );
       if (!backupCen && arm.cargas.length) linhas.push(['Reserva para Backup', U.fmtSmart(arm.reservaUtil, 2) + ' kWh úteis (fora da ' + (cen.id === 'picos' ? 'redução de picos' : 'ciclagem diária') + ')']);
-      if (arm.potenciaArm && isFinite(arm.potenciaArm)) linhas.push(['Potência de Descarga', U.fmtSmart(arm.potenciaArm, 2) + ' kW']);
+      if (arm.potenciaArm && isFinite(arm.potenciaArm)) {
+        const potOk = !arm.cargas.length || arm.potenciaArm * 1000 + 1e-6 >= arm.potCargas * fs;
+        linhas.push(['Potência Contínua de Descarga', U.fmtSmart(arm.potenciaArm, 2) + ' kW' + (arm.cargas.length ? (potOk ? ' ✅ (≥ ' : ' ⚠️ (abaixo de ') + U.fmtSmart(fs, 2) + ' × cargas críticas)' : '')]);
+      }
+      if (arm.picoPartida > arm.potCargas) {
+        const surto = inv && U.num(inv.surtoKW) > 0 ? inv.surtoKW * Math.max(1, r.nInversores) : null;
+        linhas.push(['Pico de Partida (motores)', U.fmtSmart(arm.picoPartida / 1000, 2) + ' kW com o maior motor partindo a ' + U.fmtSmart(prem.hibrido.fatorPartida, 1) + '×' +
+          (surto ? ' — surto do inversor ' + U.fmtSmart(surto, 2) + ' kW ' + (surto * 1000 >= arm.picoPartida ? '✅' : '⚠️') : '')]);
+      }
+      if (hib && r.consumoProprio) linhas.push(['Consumo Próprio do Inversor', U.fmtSmart(r.consumoProprioW, 0) + ' W (≈ ' + U.fmt(r.consumoProprio, 0) + ' kWh/mês, incluído na conta com sistema)']);
+      const bl = r.balanco;
+      if (bl) {
+        if (bl.mes != null) {
+          linhas.push(['Balanço Diário (' + C.MESES_CURTOS[bl.mes] + ', mês de menor geração)', 'Excedente solar ' + U.fmtSmart(bl.excedenteDia, 1) + ' kWh | carga do banco ' +
+            U.fmtSmart(bl.capCiclo / arm.eficiencia, 1) + ' kWh | consumo noturno ' + U.fmtSmart(bl.noturnoDia, 1) + ' kWh']);
+        }
+        linhas.push(['Utilização do Banco na Ciclagem', U.fmt(bl.utilizacao * 100, 0) + '% ' + (bl.utilizacao + 1e-9 >= prem.hibrido.utilizacaoMin ? '✅' : '⚠️') +
+          ' (mínimo recomendado ' + U.fmt(prem.hibrido.utilizacaoMin * 100, 0) + '%)']);
+      }
       if (arm.cargas.length) {
         linhas.push(['Autonomia Estimada', arm.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(arm.autonomiaEstimada, 1) + ' h com as cargas listadas ' + (arm.autonomiaEstimada + 1e-9 >= arm.autonomiaHoras ? '✅' : '⚠️') : '—']);
         linhas.push([hib ? 'Potência de Backup do Inversor' : 'Potência de Backup', U.fmtSmart(arm.potBackup, 2) + ' kW ' + (arm.backupOk ? '✅ (≥ ' + U.fmtSmart(fs, 2) + ' × cargas críticas)' : '⚠️ (abaixo de ' + U.fmtSmart(fs, 2) + ' × cargas críticas)')]);
@@ -515,6 +541,11 @@ window.App = window.App || {};
       });
     }
     b.push(tabelaCabecalhoCentral(projCols, projLin, 19));
+    const cmes = r.contasMes;
+    if (cmes && cmes.max - cmes.min > 0.5) {
+      b.push(T('📆 A tabela mostra a média mensal. No ano ' + r.anoBase + ', conforme a geração de cada mês (créditos transportados entre os meses), a conta com sistema varia de ' +
+        U.brl(cmes.min) + ' (' + C.MESES_CURTOS[cmes.mesMin] + ') a ' + U.brl(cmes.max) + ' (' + C.MESES_CURTOS[cmes.mesMax] + ').', { after: 60 }, { color: GRAFITE, sz: 18 }));
+    }
     if (grupoA) {
       b.push(T('⚠ Valores mensais médios com impostos. Demanda faturada = maior valor entre contratada e medida; ultrapassagem acima de ' +
         U.fmtSmart(prem.armazenamento.toleranciaUltrapassagem * 100, 1) + '% cobrada em ' + U.fmtSmart(prem.armazenamento.fatorUltrapassagem, 1) + '×. ' +

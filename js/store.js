@@ -7,7 +7,7 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 4;
+  const VERSAO = 5;
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
@@ -81,6 +81,12 @@ window.App = window.App || {};
       eqs.forEach(function (e) { if (D.CAP_MAX_SISTEMA[e.id] && e.capMaxSistema === undefined) e.capMaxSistema = D.CAP_MAX_SISTEMA[e.id]; });
       gravar('col.equipamentos', eqs);
     }
+    if (v < 5) {
+      // baterias do catálogo: potência contínua de descarga confirmada no datasheet
+      const eqs = Store.list('equipamentos');
+      eqs.forEach(function (e) { if (D.POT_BATERIA[e.id] && !(U.num(e.potencia) > 0)) e.potencia = D.POT_BATERIA[e.id]; });
+      gravar('col.equipamentos', eqs);
+    }
     gravar('v', VERSAO);
   };
 
@@ -99,11 +105,14 @@ window.App = window.App || {};
   };
 
   /**
-   * Premissas gravadas antes da troca do FDI (P inversor ÷ P FV) pelo FDG (P FV ÷ P inversor):
-   * a faixa padrão antiga passa a usar a nova; uma faixa personalizada é convertida (valores invertidos).
+   * Premissas gravadas por versões anteriores: a eficiência de ciclo padrão do híbrido passa de 90% para 92%;
+   * a faixa do FDI (P inversor ÷ P FV) vira FDG (P FV ÷ P inversor) — a padrão antiga usa a nova e uma personalizada é invertida.
    */
   Store.ajustarPremissas = function (prem) {
-    if (!prem || prem.fdiMin === undefined) return prem;
+    if (!prem) return prem;
+    // híbrido: premissas anteriores ao consumo próprio do inversor usavam 90% de eficiência de ciclo como padrão
+    if (prem.hibrido && prem.hibrido.consumoProprioW === undefined && prem.hibrido.eficiencia === 0.9) prem.hibrido.eficiencia = D.premissas.hibrido.eficiencia;
+    if (prem.fdiMin === undefined) return prem;
     const padraoAntigo = prem.fdiMin === 0.75 && prem.fdiMax === 1.2 && prem.fdiAlvo === 0.9;
     const inverso = function (x) { const n = U.num(x); return n > 0 ? U.round(1 / n, 2) : undefined; };
     if (prem.fdgMin === undefined && !padraoAntigo) {

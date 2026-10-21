@@ -327,13 +327,15 @@
           help: 'Em branco = ' + U.fmtSmart((p.premissas.armazenamento || D.premissas.armazenamento).instalPct * 100, 1) + '% do valor do equipamento.' }
       ], p, mudou, 4));
       c.appendChild(h('h4.secao-form', 'Cargas críticas (usadas no cenário de backup)'));
-      c.appendChild(h('p.ajuda-sec', 'Liste os equipamentos que devem funcionar durante a falta de energia e por quantas horas cada um será usado nesse período.'));
+      c.appendChild(h('p.ajuda-sec', 'Liste os equipamentos que devem funcionar durante a falta de energia e por quantas horas cada um será usado nesse período. ' +
+        'Marque "Motor" em geladeira, freezer, bomba e ar-condicionado sem inverter (partida direta) para conferir o pico de partida.'));
       const ed = UI.editorLinhas(p.cargas, [
         { k: 'descricao', label: 'Carga crítica', placeholder: 'Ex.: Geladeira' },
         { k: 'qtd', label: 'Qtd.', type: 'number', w: '80px' },
         { k: 'potencia', label: 'Potência (W)', type: 'number', w: '120px' },
-        { k: 'horas', label: 'Uso no backup (h)', type: 'number', w: '140px' }
-      ], function () { mudou('cargas'); }, '+ Adicionar carga', function () { return { descricao: '', qtd: 1, potencia: '', horas: '' }; });
+        { k: 'horas', label: 'Uso no backup (h)', type: 'number', w: '140px' },
+        { k: 'motor', label: 'Motor', type: 'checkbox', w: '70px' }
+      ], function () { mudou('cargas'); }, '+ Adicionar carga', function () { return { descricao: '', qtd: 1, potencia: '', horas: '', motor: false }; });
       c.appendChild(ed);
       c.appendChild(h('button.btn.pequeno.link', {
         type: 'button', onclick: function () { p.cargas.splice(0, p.cargas.length); D.cargasExemplo.forEach(function (x) { p.cargas.push(U.clone(x)); }); ed.redesenhar(); mudou('cargas'); }
@@ -604,6 +606,9 @@
         const sug = r.inversorSugerido;
         const itensInfo = [
           linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp'),
+          r.dimensionamento && (r.dimensionamento.proprio || r.dimensionamento.perdas)
+            ? linhaInfo('Consumo do dimensionamento', U.fmt(r.dimensionamento.consumo, 0) + ' + ' + U.fmt(r.dimensionamento.proprio, 0) + ' inversor' +
+              (r.dimensionamento.perdas ? ' + ' + U.fmt(r.dimensionamento.perdas, 0) + ' perdas da bateria' : '') + ' = ' + U.fmt(r.consumoDimensionamento, 0) + ' kWh/mês') : null,
           linhaInfo('Potência do sistema', U.kwp(r.kwp) + ' kWp', 'destaque'),
           linhaInfo(r.micro ? 'Microinversores' : 'Inversor', r.inversor ? r.nInversores + ' × ' + C.nomeEquip(r.inversor) : '—'),
           linhaInfo('FDG (Pcc ÷ Pca)', r.kwp && r.fdg ? U.fmt(r.fdg, 3) + (r.fdgOk ? ' ✅' : ' ⚠️') : '—', r.kwp && r.fdg && !r.fdgOk ? 'alerta' : null),
@@ -614,7 +619,7 @@
         ];
         if (r.strings) itensInfo.push(linhaInfo('Arranjo sugerido', r.strings.nStrings + ' string(s) de até ' + r.strings.porString + ' módulos (máx. ' + r.strings.maxSerie + '/string)'));
         if (!p.inversorId && sug) itensInfo.push(linhaInfo('Sugestão automática', sug.n + ' × ' + C.nomeEquip(sug.inv)));
-        infos.sistema.replaceChildren.apply(infos.sistema, itensInfo);
+        infos.sistema.replaceChildren.apply(infos.sistema, itensInfo.filter(Boolean));
       }
       if (infos.hibrido && r.hibrido) {
         const hb = r.hibrido;
@@ -630,6 +635,28 @@
           linhaInfo('Configuração', r.cen && r.cen.n ? hb.configuracao : '—'),
           linhaInfo('Autonomia estimada', hb.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(hb.autonomiaEstimada, 1) + ' h' : '—', hb.autonomiaEstimada != null && hb.autonomiaEstimada < hb.autonomiaHoras ? 'alerta' : null),
           linhaInfo('Potência de backup', U.fmtSmart(hb.potBackup || 0, 2) + ' kW' + (hb.potCargas ? (hb.backupOk ? ' ✅' : ' ⚠️') : ''), hb.potCargas && !hb.backupOk ? 'alerta' : null));
+        const fsH = r.premissas.hibrido.fatorSegurancaInversor;
+        const extrasH = [];
+        if (r.cen && r.cen.n && hb.potCargas > 0) {
+          const potOk = hb.potenciaArm * 1000 + 1e-6 >= hb.potCargas * fsH;
+          extrasH.push(linhaInfo('Potência contínua do banco', U.fmtSmart(hb.potenciaArm, 2) + ' kW' + (potOk ? ' ✅' : ' ⚠️') + (u && !u.potenciaInformada ? ' (0,5C)' : ''), potOk ? null : 'alerta'));
+        }
+        if (hb.picoPartida > hb.potCargas) {
+          const surto = r.inversor && U.num(r.inversor.surtoKW) > 0 ? r.inversor.surtoKW * Math.max(1, r.nInversores) : null;
+          extrasH.push(linhaInfo('Pico de partida (motores)', U.fmtSmart(hb.picoPartida / 1000, 2) + ' kW' + (surto ? ' / surto ' + U.fmtSmart(surto, 2) + ' kW' + (surto * 1000 >= hb.picoPartida ? ' ✅' : ' ⚠️') : ' — confira o surto do inversor'),
+            surto && surto * 1000 < hb.picoPartida ? 'alerta' : null));
+        }
+        if (r.hibridoAtivo && r.consumoProprio) extrasH.push(linhaInfo('Consumo próprio do inversor', U.fmtSmart(r.consumoProprioW, 0) + ' W ≈ ' + U.fmt(r.consumoProprio, 0) + ' kWh/mês'));
+        const bl = r.balanco;
+        if (bl) {
+          const baixo = bl.utilizacao + 1e-9 < r.premissas.hibrido.utilizacaoMin;
+          if (bl.mes != null) {
+            extrasH.push(linhaInfo('Balanço diário (' + C.MESES_CURTOS[bl.mes] + ', menor geração)', 'excedente solar ' + U.fmtSmart(bl.excedenteDia, 1) + ' | carga do banco ' +
+              U.fmtSmart(bl.capCiclo / hb.eficiencia, 1) + ' | consumo noturno ' + U.fmtSmart(bl.noturnoDia, 1) + ' kWh'));
+          }
+          extrasH.push(linhaInfo('Utilização do banco na ciclagem', U.fmt(bl.utilizacao * 100, 0) + '%' + (baixo ? ' ⚠️' : ' ✅') + ' (reserva de backup ' + U.fmtSmart(bl.reservaUtil, 2) + ' kWh)', baixo ? 'alerta' : null));
+        }
+        extrasH.forEach(function (l) { infos.hibrido.appendChild(l); });
       }
       if (infos.cenarios) desenharComparativo();
       if (infos.preco) {
@@ -648,6 +675,9 @@
         if (r.kitArm || r.instalArm) linhas.push(linhaInfo('Armazenamento (equipamento)', U.brl(r.kitArm)), linhaInfo('Instalação do armazenamento', U.brl(r.instalArm)));
         linhas.push(linhaInfo(ehArm() && r.cen ? 'Investimento — ' + r.cen.nome : 'Valor total', U.brl(r.total), 'destaque'));
         if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
+        if (r.contasMes && r.contasMes.max - r.contasMes.min > 0.5) {
+          linhas.push(linhaInfo('Conta c/ sistema no ano 1', U.brl(r.contasMes.min) + ' (' + C.MESES_CURTOS[r.contasMes.mesMin] + ') a ' + U.brl(r.contasMes.max) + ' (' + C.MESES_CURTOS[r.contasMes.mesMax] + ')'));
+        }
         infos.preco.replaceChildren.apply(infos.preco, linhas);
       }
       const totItens = corpoItens && corpoItens.querySelector('[data-total-itens]');

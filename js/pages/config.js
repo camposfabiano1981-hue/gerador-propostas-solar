@@ -163,8 +163,11 @@
 
     cont.appendChild(h('div.card', h('h3', 'Sistemas híbridos (baterias)'), UI.grade([
       { k: 'hibrido.dod', label: 'DoD padrão (se a bateria não informar)', type: 'pct' },
-      { k: 'hibrido.eficiencia', label: 'Eficiência bateria + inversor', type: 'pct' },
-      { k: 'hibrido.fatorSegurancaInversor', label: 'Fator de segurança da potência de backup', type: 'number', help: 'Potência de backup ≥ fator × cargas críticas.' },
+      { k: 'hibrido.eficiencia', label: 'Eficiência do ciclo bateria + inversor', type: 'pct', help: 'Usada quando a bateria não informa a sua. Híbrido com bateria no barramento CC: 92–97%.' },
+      { k: 'hibrido.fatorSegurancaInversor', label: 'Fator de segurança da potência de backup', type: 'number', help: 'Inversor e baterias ≥ fator × potência das cargas críticas.' },
+      { k: 'hibrido.consumoProprioW', label: 'Consumo próprio do inversor híbrido', type: 'number', suffix: 'W', help: 'Ligado 24 h; entra no dimensionamento e na conta. Usado quando o inversor não informa o seu.' },
+      { k: 'hibrido.utilizacaoMin', label: 'Utilização mínima do banco na ciclagem', type: 'pct', help: 'Energia ciclada por dia ÷ capacidade disponível, no mês de menor geração.' },
+      { k: 'hibrido.fatorPartida', label: 'Pico de partida de motores', type: 'number', suffix: '× potência', help: 'Partida direta de compressores e bombas: 5–8×. Comparado ao surto do inversor.' },
       { k: 'hibrido.autonomiaHoras', label: 'Autonomia padrão', type: 'number', suffix: 'h' },
       { k: 'hibrido.trocaBateriaAno', label: 'Substituir baterias no ano', type: 'int', help: '0 = não considerar substituição no fluxo de caixa.' },
       { k: 'hibrido.trocaBateriaPct', label: 'Custo da substituição', type: 'pct', suffix: '% do preço atual' }

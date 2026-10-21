@@ -64,6 +64,13 @@ window.App = window.App || {};
     return partes.join(sep || ', ');
   };
 
+  /** Consumo contínuo de W watts em kWh por mês médio. */
+  C.kwhMes = function (w) {
+    return U.numOr(w, 0) * 24 * 365 / 12 / 1000;
+  };
+
+  C.MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
   C.pmt = function (pv, i, n) {
     if (!n) return pv;
     if (!i) return pv / n;
@@ -485,10 +492,13 @@ window.App = window.App || {};
       const h = { autonomiaHoras: aut, cargas: (p.cargas || []).map(function (c) {
         const qtd = U.numOr(c.qtd, 0), pot = U.numOr(c.potencia, 0);
         const horas = aut > 0 ? Math.min(pos(c.horas) || aut, aut) : U.numOr(c.horas, 0);
-        return { descricao: c.descricao || '', qtd: qtd, potencia: pot, horas: horas, potTotal: qtd * pot, energia: qtd * pot * horas };
+        return { descricao: c.descricao || '', qtd: qtd, potencia: pot, horas: horas, potTotal: qtd * pot, energia: qtd * pot * horas, motor: !!c.motor };
       }) };
       h.potCargas = h.cargas.reduce(function (s, c) { return s + c.potTotal; }, 0);
       h.energiaBackup = h.cargas.reduce(function (s, c) { return s + c.energia; }, 0);
+      // pico de partida (W): todas as cargas ligadas + o maior motor partindo (partida direta, um motor por vez)
+      const maiorMotor = h.cargas.reduce(function (m, c) { return c.motor && c.qtd > 0 ? Math.max(m, c.potencia) : m; }, 0);
+      h.picoPartida = h.potCargas + maiorMotor * (prem.hibrido.fatorPartida - 1);
       const tipoEq = r.bessAtivo ? 'bess' : 'bateria';
       const idEq = r.bessAtivo ? p.bessId : p.bateriaId;
       h.tipoEquip = tipoEq;
@@ -514,7 +524,11 @@ window.App = window.App || {};
     r.modulo = modulo;
     if (r.permiteFV && !modulo) alerta('erro', 'Selecione o módulo fotovoltaico.');
     const wp = modulo ? U.numOr(modulo.potencia, 0) : 0;
-    r.consumoDimensionamento = r.consumoMedio;
+    // Consumo do dimensionamento: no híbrido soma o consumo próprio do inversor (24 h) e, se o cenário detalhado cicla
+    // a bateria, as perdas do ciclo. Na 1ª passada usa a premissa; a 2ª (p._dimExtra) usa o inversor e as perdas calculadas.
+    const dimExtra = p._dimExtra || { proprio: r.hibridoAtivo && r.permiteFV ? C.kwhMes(prem.hibrido.consumoProprioW) : 0, perdas: 0 };
+    r.dimensionamento = { consumo: r.consumoMedio, proprio: dimExtra.proprio, perdas: dimExtra.perdas };
+    r.consumoDimensionamento = r.consumoMedio + dimExtra.proprio + dimExtra.perdas;
     r.kwpNecessario = r.permiteFV && r.hsp > 0 ? r.consumoDimensionamento / (r.hsp * 30 * prem.pr) : 0;
     r.nModulosSugerido = wp > 0 ? Math.ceil((r.kwpNecessario * 1000) / wp - 1e-9) : 0;
     r.nModulos = !r.permiteFV ? 0 : (pos(p.nModulos) ? Math.round(U.num(p.nModulos)) : r.nModulosSugerido);
@@ -558,6 +572,12 @@ window.App = window.App || {};
     else nInv = potInv > 0 && r.kwp > 0 ? Math.max(1, Math.round(r.kwp / (prem.fdgAlvo * potInv))) : 1;
     r.nInversores = nInv;
     r.potInversores = potInv * nInv;
+    // consumo próprio do inversor híbrido (kWh/mês): o do cadastro do inversor ou o das premissas
+    r.consumoProprioW = r.hibridoAtivo && inv ? U.numOr(inv.consumoProprioW, prem.hibrido.consumoProprioW) * Math.max(1, nInv) : 0;
+    r.consumoProprio = C.kwhMes(r.consumoProprioW);
+    if (inv && pos(inv.pFVMax) && r.kwp > inv.pFVMax * Math.max(1, nInv) + 1e-9) {
+      alerta('aviso', 'Potência FV de ' + U.kwp(r.kwp) + ' kWp acima da entrada FV máxima do inversor (' + U.fmtSmart(inv.pFVMax * Math.max(1, nInv), 2) + ' kWp).');
+    }
     // FDG — fator de dimensionamento global: potência FV (Pcc) ÷ potência dos inversores (Pca)
     r.fdg = r.kwp > 0 && r.potInversores > 0 ? r.kwp / r.potInversores : 0;
     r.fdgOk = r.fdg >= prem.fdgMin && r.fdg <= prem.fdgMax;
@@ -642,8 +662,15 @@ window.App = window.App || {};
       };
       h.serie = 1;
       if (r.hibridoAtivo && inv && pos(eq.tensao) && pos(inv.tensaoBateria)) h.serie = Math.max(1, Math.round(inv.tensaoBateria / eq.tensao));
-      unid.limitePotencia = r.hibridoAtivo && inv ? (pos(inv.potenciaBackup) || potInv) * Math.max(1, nInv) : Infinity;
+      // o banco não entrega mais que o inversor híbrido permite (potência de backup e potência máxima de bateria)
+      unid.limitePotencia = r.hibridoAtivo && inv
+        ? Math.min(pos(inv.potenciaBackup) || potInv, pos(inv.pBateriaMax) || Infinity) * Math.max(1, nInv) : Infinity;
+      unid.potenciaInformada = !!pos(eq.potencia);
       if (!unid.energia) { alerta('erro', 'Equipamento de armazenamento sem energia (kWh) cadastrada.'); unid = null; }
+      else if (r.hibridoAtivo && !unid.potenciaInformada && h.potCargas > 0) {
+        alerta('info', 'Potência de descarga da bateria ' + [eq.fabricante, eq.modelo].filter(Boolean).join(' ') + ' não cadastrada: considerado 0,5C (' +
+          U.fmtSmart(unid.potencia, 2) + ' kW por unidade). Confira o datasheet.');
+      }
     }
     r.unidadeArm = unid;
     const potenciaArm = function (n) { return unid ? Math.min(n * (unid.potencia || unid.energia * 0.5), unid.limitePotencia) : 0; };
@@ -668,7 +695,8 @@ window.App = window.App || {};
       let n = 0;
       if (id === 'backup') {
         const nE = h.energiaBackup > 0 ? Math.ceil(util(h.energiaBackup / 1000) / eU - 1e-9) : 1;
-        const nP = r.bessAtivo && h.potCargas > 0 ? Math.ceil((h.potCargas / 1000) * prem.hibrido.fatorSegurancaInversor / pU - 1e-9) : 0;
+        // potência contínua das baterias ≥ fator de segurança × cargas críticas
+        const nP = h.potCargas > 0 ? Math.ceil((h.potCargas / 1000) * prem.hibrido.fatorSegurancaInversor / pU - 1e-9) : 0;
         n = Math.max(1, nE, nP);
       } else if (id === 'ponta') {
         if (r.modalidade.id === 'conv') {
@@ -732,7 +760,9 @@ window.App = window.App || {};
           reducaoKW: C.reducaoAlvo(r, c, prem), duracao: pos(c.duracaoH) || ar.duracaoPonta,
           posto: c.posto || '', readequar: c.readequar !== false, reserva: h.reservaUtil
         } : null,
-        beneficioBackup: def.id === 'backup' ? custoHora * horasFalta : 0
+        beneficioBackup: def.id === 'backup' ? custoHora * horasFalta : 0,
+        consumoProprio: r.consumoProprio,
+        fatores: r.fatores, consumoFatores: r.consumoMedio > 0 ? r.consumoMeses.map(function (x) { return x / r.consumoMedio; }) : null
       });
       cen.metricas = {
         autonomiaH: h && h.energiaBackup > 0 && cen.n > 0 ? (cen.capUtil * h.eficiencia) / (h.energiaBackup / 1000) * h.autonomiaHoras : null,
@@ -801,6 +831,41 @@ window.App = window.App || {};
           ' (' + U.fmtSmart(capMax, 2) + ' kWh por inversor, conforme o fabricante). Reduza as baterias ou use outro modelo.');
       }
       if (escolhido && escolhido.id === 'backup' && !h.cargas.length) alerta('aviso', 'Informe as cargas críticas que devem funcionar durante a falta de energia.');
+      const fs = prem.hibrido.fatorSegurancaInversor;
+      // potência contínua do banco (baterias e, no híbrido, o limite de bateria do inversor) × cargas críticas
+      if (temArm && h.potCargas > 0 && h.potenciaArm * 1000 + 1e-6 < h.potCargas * fs) {
+        const pelasBaterias = unid && h.nBaterias * unid.potencia <= unid.limitePotencia;
+        alerta('aviso', 'Potência contínua do banco (' + U.fmtSmart(h.potenciaArm, 2) + ' kW) abaixo de ' + U.fmtSmart(fs, 2) + ' × cargas críticas (' +
+          U.fmtSmart(h.potCargas * fs / 1000, 2) + ' kW)' + (pelasBaterias ? '. Aumente as baterias.' : ', limitada pelo inversor.'));
+      }
+      if (r.hibridoAtivo && inv && temArm) {
+        const nI = Math.max(1, nInv);
+        if (pos(inv.capBateriaMax) && h.capInstalada > inv.capBateriaMax * nI + 1e-9) {
+          alerta('aviso', 'Banco de ' + U.fmtSmart(h.capInstalada, 2) + ' kWh acima da capacidade máxima de bateria do inversor (' + U.fmtSmart(inv.capBateriaMax * nI, 2) + ' kWh).');
+        }
+        if (pos(inv.surtoKW) && h.picoPartida > inv.surtoKW * nI * 1000 + 1e-6) {
+          alerta('aviso', 'Pico de partida estimado (' + U.fmtSmart(h.picoPartida / 1000, 2) + ' kW, motor partindo a ' + U.fmtSmart(prem.hibrido.fatorPartida, 1) +
+            '× com as demais cargas ligadas) acima do surto do inversor (' + U.fmtSmart(inv.surtoKW * nI, 2) + ' kW).');
+        }
+      }
+      h.nBackupAuto = unid ? dimensionar('backup', {}) : 0;
+      r.balanco = temArm && (escolhido.id === 'ponta' || escolhido.id === 'picos') ? C.balancoBanco(r, escolhido, prem) : null;
+      const b = r.balanco;
+      if (b && b.utilizacao + 1e-9 < prem.hibrido.utilizacaoMin) {
+        const excedeBackup = h.nBaterias > h.nBackupAuto;
+        let msg = 'Na ciclagem o banco usa ' + U.fmt(b.utilizacao * 100, 0) + '% da capacidade disponível' + (b.mes != null ? ' no mês de menor geração (' + C.MESES_CURTOS[b.mes] + ')' : '') +
+          ' — mínimo recomendado ' + U.fmt(prem.hibrido.utilizacaoMin * 100, 0) + '%. ';
+        msg += b.motivo || 'Banco maior que a energia ciclada';
+        if (b.modulosParaEncher) msg += ': seriam ' + b.modulosParaEncher + ' módulos para enchê-lo.';
+        else if (excedeBackup && b.bateriasIdeais && b.bateriasIdeais < h.nBaterias) msg += ': bastam ' + b.bateriasIdeais + ' bateria(s).';
+        else msg += '.';
+        if (!excedeBackup) msg += ' O banco é definido pelo backup; mais baterias não aumentam a economia.';
+        alerta(excedeBackup ? 'aviso' : 'info', msg);
+      }
+      if (b && b.potenciaCargaKW && r.hibridoAtivo && inv && pos(inv.pBateriaMax) && b.potenciaCargaKW > inv.pBateriaMax * Math.max(1, nInv) + 1e-9) {
+        alerta('aviso', 'Recarregar ' + U.fmtSmart(b.cargaDia, 1) + ' kWh por dia exige cerca de ' + U.fmtSmart(b.potenciaCargaKW, 2) + ' kW de carga, acima da potência de bateria do inversor (' +
+          U.fmtSmart(inv.pBateriaMax * Math.max(1, nInv), 2) + ' kW).');
+      }
     }
 
     // Itens do cenário escolhido
@@ -850,6 +915,25 @@ window.App = window.App || {};
       if (r.fin.paybackSimples == null) alerta('aviso', 'O investimento não se paga dentro do horizonte de análise.');
     }
 
+    // faixa da conta com sistema no ano 1 (sazonalidade da geração e do consumo, créditos transportados)
+    r.contasMes = null;
+    const cm = escolhido && escolhido.fin && escolhido.fin.contasMes1;
+    if (cm) {
+      let iMin = 0, iMax = 0;
+      cm.forEach(function (v, i) { if (v < cm[iMin]) iMin = i; if (v > cm[iMax]) iMax = i; });
+      r.contasMes = { valores: cm, min: cm[iMin], mesMin: iMin, max: cm[iMax], mesMax: iMax, media: cm.reduce(function (s, x) { return s + x; }, 0) / 12 };
+    }
+
+    // 2ª passada do dimensionamento: consumo próprio do inversor escolhido e perdas do ciclo do cenário detalhado
+    if (!p._dimExtra && r.hibridoAtivo && r.permiteFV) {
+      const a1 = escolhido && escolhido.fin ? escolhido.fin.anos[0] : null;
+      const cicla = escolhido && (escolhido.id === 'ponta' || escolhido.id === 'picos') && escolhido.n > 0;
+      const perdas = cicla && a1 && h ? a1.descarga / 12 * (1 / h.eficiencia - 1) : 0;
+      if (Math.abs(r.consumoProprio - dimExtra.proprio) > 0.01 || perdas > 0.01) {
+        return C.calcular(Object.assign({}, p, { _dimExtra: { proprio: r.consumoProprio, perdas: perdas } }), ctx);
+      }
+    }
+
     r.pagamentos = C.pagamentos(r.total, (ctx.pagamentos || []).filter(function (pg) {
       return !Array.isArray(p.pagamentosIds) || p.pagamentosIds.indexOf(pg.id) >= 0;
     }));
@@ -866,6 +950,84 @@ window.App = window.App || {};
     r.monitoramento = p.monitoramento || (inv && inv.monitoramento) || 'Aplicativo do fabricante do inversor (Wi-Fi)';
     r.erros = alertas.filter(function (a) { return a.nivel === 'erro'; }).length;
     return r;
+  };
+
+  C.DIAS_MES = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  /**
+   * Balanço diário do banco num cenário que cicla a bateria (energia entregue por dia ÷ capacidade disponível acima da
+   * reserva de backup = fator de utilização).
+   * Tarifa convencional (recarga só pelo excedente solar): no mês de menor geração, compara excedente solar, carga do
+   * banco e consumo noturno, e indica os módulos que encheriam o banco (até o limite do consumo noturno).
+   * Tarifas horárias e grupo A (recarga também pela rede): usa a energia ciclada no ano 1 por dia útil.
+   */
+  C.balancoBanco = function (r, cen, prem) {
+    const h = r.hibrido, u = r.unidadeArm;
+    const eta = h.eficiencia;
+    const capCiclo = Math.max(0, cen.capUtil - h.reservaUtil);
+    const entregaMax = capCiclo * eta;
+    const b = { mes: null, capCiclo: capCiclo, entregaMaxDia: entregaMax, reservaUtil: h.reservaUtil };
+    const bateriasPara = function (entregaDia) {
+      const serie = h.serie || 1;
+      const n = Math.ceil(((h.reservaUtil + entregaDia / eta) / h.dod) / u.energia - 1e-9);
+      return Math.max(h.nBackupAuto || 1, Math.ceil(Math.max(1, n) / serie - 1e-9) * serie);
+    };
+    if (!(entregaMax > 0)) {
+      return Object.assign(b, { entregueDia: 0, cargaDia: 0, utilizacao: 0, limitante: 'reserva', motivo: 'Toda a capacidade útil está reservada para o backup.' });
+    }
+    if (r.modalidade.id === 'conv') {
+      const f = r.fatores;
+      const somaF = f.reduce(function (x, y) { return x + y; }, 0);
+      let iMin = 0;
+      f.forEach(function (x, i) { if (x < f[iMin]) iMin = i; });
+      const dias = C.DIAS_MES[iMin];
+      const gerDia = cen.incluirFV ? r.geracaoAnual * f[iMin] / somaF / dias : 0;
+      const consDia = (r.consumoMeses[iMin] + r.consumoProprio) / dias;
+      const instDia = Math.min(r.simultaneidade * gerDia, consDia);
+      const excedente = gerDia - instDia, noturno = consDia - instDia;
+      const entregue = Math.max(0, Math.min(entregaMax, excedente * eta, noturno));
+      const limitante = entregue >= entregaMax - 1e-9 ? 'banco' : (excedente * eta <= noturno ? 'excedente' : 'consumo');
+      Object.assign(b, {
+        mes: iMin, geracaoDia: gerDia, consumoDia: consDia, excedenteDia: excedente, noturnoDia: noturno,
+        entregueDia: entregue, cargaDia: entregue / eta, utilizacao: entregue / entregaMax, limitante: limitante,
+        // potência média de carga para recarregar o banco nas horas de sol pleno equivalentes do mês (HSP do mês)
+        potenciaCargaKW: r.hsp > 0 ? (entregue / eta) / (r.hsp * f[iMin] / (somaF / 12)) : null
+      });
+      if (limitante === 'excedente') {
+        b.motivo = 'Falta excedente solar para recarregá-lo';
+        // energia ciclável com G kWh/dia de geração: E = (1 − s)·η·G, limitada pelo consumo noturno (cons − s·G);
+        // o máximo, com o FV ideal, é a·cons ÷ (a + s), com a = (1 − s)·η
+        const a = (1 - r.simultaneidade) * eta;
+        if (a > 0 && r.modulo && r.kwp > 0 && gerDia > 0) {
+          const maxCiclavel = a * consDia / (a + r.simultaneidade);
+          b.maxCiclavelDia = maxCiclavel;
+          if (maxCiclavel >= entregaMax * prem.hibrido.utilizacaoMin) {
+            const nMod = Math.ceil((Math.min(entregaMax, maxCiclavel) / a) / (gerDia / r.kwp) * 1000 / r.modulo.potencia - 1e-9);
+            if (nMod > r.nModulos) b.modulosParaEncher = nMod;
+          } else {
+            // nem com mais módulos o consumo noturno absorve o banco: o problema é o tamanho do banco
+            b.motivo = 'Mesmo com mais módulos, o consumo noturno só absorve ' + U.fmtSmart(maxCiclavel, 1) + ' kWh/dia';
+            b.bateriasIdeais = bateriasPara(maxCiclavel);
+          }
+        }
+      } else if (limitante === 'consumo') {
+        b.motivo = 'O consumo noturno não absorve mais energia';
+        b.bateriasIdeais = bateriasPara(entregue);
+      }
+      return b;
+    }
+    const diasCiclo = prem.armazenamento.diasUteis;
+    const entregue = cen.fin.kwhDeslocadosAno1 / diasCiclo;
+    Object.assign(b, { entregueDia: entregue, cargaDia: entregue / eta, utilizacao: entregue / entregaMax });
+    if (entregue >= entregaMax - 1e-9) b.limitante = 'banco';
+    else if (cen.id === 'picos') { b.limitante = 'demanda'; b.motivo = 'A redução de demanda pedida usa só parte do banco'; b.bateriasIdeais = bateriasPara(entregue); }
+    else {
+      const consPontaDia = r.consumoPostos.p * 12 / diasCiclo;
+      const pot = cen.potencia * prem.armazenamento.duracaoPonta;
+      if (pot + 1e-9 < Math.min(entregaMax, consPontaDia)) { b.limitante = 'potencia'; b.motivo = 'Limitado pela potência de descarga na ponta'; }
+      else { b.limitante = 'consumo'; b.motivo = 'O consumo na ponta não absorve mais energia'; b.bateriasIdeais = bateriasPara(entregue); }
+    }
+    return b;
   };
 
   /** Redução de demanda alvo (kW) para o cenário de picos. */

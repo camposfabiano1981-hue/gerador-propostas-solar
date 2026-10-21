@@ -126,7 +126,12 @@
         c.push(
           { k: 'potenciaBackup', label: 'Potência de backup (off-grid)', type: 'number', suffix: 'kW', help: 'Em branco = potência nominal.' },
           { k: 'tipoBateria', label: 'Bateria compatível', type: 'select', options: CLASSE_BAT },
-          { k: 'tensaoBateria', label: 'Tensão nominal da bateria', type: 'number', suffix: 'V', help: 'Ex.: 48 (baixa tensão). Em branco para alta tensão (associação definida pelo fabricante).' }
+          { k: 'tensaoBateria', label: 'Tensão nominal da bateria', type: 'number', suffix: 'V', help: 'Ex.: 48 (baixa tensão). Em branco para alta tensão (associação definida pelo fabricante).' },
+          { secao: 'Limites do datasheet (opcional — gera alertas na proposta)' },
+          { k: 'pBateriaMax', label: 'Potência máx. de carga/descarga da bateria', type: 'number', suffix: 'kW', help: 'Ex.: 135 A × 48 V ≈ 6,5 kW.' },
+          { k: 'capBateriaMax', label: 'Capacidade máx. de bateria', type: 'number', suffix: 'kWh' },
+          { k: 'surtoKW', label: 'Potência de surto (pico) em backup', type: 'number', suffix: 'kW', help: 'Comparada ao pico de partida dos motores marcados nas cargas críticas.' },
+          { k: 'consumoProprioW', label: 'Consumo próprio (ligado 24 h)', type: 'number', suffix: 'W', help: 'Em branco = premissa (Configurações › Premissas).' }
         );
       }
       c.push(
@@ -137,6 +142,7 @@
         { k: 'vmaxCC', label: 'Tensão máx. CC', type: 'number', suffix: 'V' },
         { k: 'mpptMin', label: 'Faixa MPPT mín.', type: 'number', suffix: 'V' },
         { k: 'mpptMax', label: 'Faixa MPPT máx.', type: 'number', suffix: 'V' },
+        { k: 'pFVMax', label: 'Potência FV máx. de entrada', type: 'number', suffix: 'kWp', help: 'Do datasheet do modelo exato (varia entre versões).' },
         { secao: 'Proposta' },
         { k: 'descricaoProposta', label: 'Descrição na lista de equipamentos', cls: 'span2', help: function (e) { return 'Em branco = automática: ' + C.descInversor(Object.assign({}, e, { descricaoProposta: '' })); } },
         { k: 'obs', label: 'Observações internas', cls: 'span2' },
@@ -154,6 +160,7 @@
         { k: 'tensao', label: 'Tensão nominal', type: 'number', suffix: 'V' },
         { k: 'capacidadeAh', label: 'Capacidade', type: 'number', suffix: 'Ah' },
         { k: 'capMaxSistema', label: 'Capacidade máxima do sistema', type: 'number', suffix: 'kWh', help: 'Por inversor, conforme o fabricante (módulos por torre × torres em paralelo). Em branco = sem limite.' },
+        { k: 'potencia', label: 'Potência contínua de descarga', type: 'number', suffix: 'kW', help: 'Corrente contínua recomendada × tensão (datasheet). Em branco = 0,5C.' },
         { k: 'dod', label: 'Profundidade de descarga (DoD)', type: 'number', suffix: '%' },
         { k: 'ciclos', label: 'Vida útil', type: 'int', suffix: 'ciclos' },
         { k: 'garantia', label: 'Garantia', type: 'number', suffix: 'anos' },

@@ -150,7 +150,8 @@
   const rH = C.calcular(pH, ctxH);
   ok('híbrido: inversor híbrido escolhido', rH.inversor && rH.inversor.tipo === 'hibrido', rH.inversor && rH.inversor.modelo);
   perto('híbrido: energia de backup (Wh)', rH.hibrido.energiaBackup, 150 * 6 + 8 * 10 * 4 + 12 * 6 + 100 * 3 + 2 * 80 * 4, 1e-9);
-  perto('híbrido: capacidade necessária', rH.hibrido.capNecessaria, (rH.hibrido.energiaBackup / 1000) / (0.9 * 0.9), 1e-9);
+  perto('híbrido: eficiência de ciclo padrão 92%', rH.hibrido.eficiencia, 0.92, 1e-12);
+  perto('híbrido: capacidade necessária', rH.hibrido.capNecessaria, (rH.hibrido.energiaBackup / 1000) / (rH.hibrido.dod * 0.92), 1e-9);
   ok('híbrido: baterias suficientes', rH.hibrido.capInstalada >= rH.hibrido.capNecessaria, rH.hibrido.nBaterias + ' un');
   ok('híbrido: ciclagem reduz a energia compensada (base do Fio B)', rH.fin.anos[0].compensada < C.calcular(Object.assign(U.clone(pH), { usoBateria: 'backup' }), ctxH).fin.anos[0].compensada);
   ok('híbrido: itens incluem bateria', rH.itens.some(function (i) { return i.categoria === 'bateria'; }));
@@ -169,20 +170,72 @@
   const rG = C.calcular(pG, ctxG);
   const cenG = function (id) { return rG.cenarios.find(function (c) { return c.id === id; }); };
   perto('híbrido geladeira: energia de backup 150 W × 4 h', rG.hibrido.energiaBackup, 600, 1e-9);
-  perto('híbrido geladeira: capacidade necessária = 0,6 ÷ (DoD 100% × 90%)', rG.hibrido.capNecessaria, 0.6 / 0.9, 1e-9);
+  perto('híbrido geladeira: capacidade necessária = 0,6 ÷ (DoD 100% × 92%)', rG.hibrido.capNecessaria, 0.6 / 0.92, 1e-9);
   igual('híbrido geladeira: backup com 1 bateria', cenG('backup').n, 1);
   igual('híbrido geladeira: ciclagem (tarifa convencional) usa o mesmo banco do backup', cenG('ponta').n, cenG('backup').n);
   igual('híbrido geladeira: cenário renomeado na tarifa convencional', cenG('ponta').nome, 'Backup + ciclagem diária');
-  perto('híbrido geladeira: ciclagem só acima da reserva de backup', cenG('ponta').fin.kwhDeslocadosAno1, (5.12 - 0.6 / 0.9) * 0.9 * 365, 1e-6);
+  perto('híbrido geladeira: ciclagem só acima da reserva de backup', cenG('ponta').fin.kwhDeslocadosAno1, (5.12 - 0.6 / 0.92) * 0.92 * 365, 1e-6);
   ok('híbrido geladeira: proposta detalha um cenário com baterias', rG.cen.n > 0 && rG.cen.id !== 'solar', rG.cen.id);
   ok('híbrido geladeira: recomendação informa o VPL sem baterias', rG.recomendacao.motivos.some(function (m) { return /Sem armazenamento/.test(m); }));
-  perto('híbrido geladeira: autonomia estimada (5,12 × 0,9 ÷ 0,6 kWh × 5 h)', rG.hibrido.autonomiaEstimada, 5.12 * 0.9 / 0.6 * 5, 1e-9);
+  perto('híbrido geladeira: autonomia estimada (5,12 × 0,92 ÷ 0,6 kWh × 5 h)', rG.hibrido.autonomiaEstimada, 5.12 * 0.92 / 0.6 * 5, 1e-9);
   const rGaut = C.calcular(Object.assign(U.clone(pG), { cargas: [{ descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 8 }, { descricao: 'Roteador', qtd: 1, potencia: 12, horas: '' }] }), ctxG);
   perto('híbrido: horas limitadas à autonomia e em branco = autonomia', rGaut.hibrido.energiaBackup, 150 * 5 + 12 * 5, 1e-9);
   const rG9 = C.calcular(Object.assign(U.clone(pG), { cenarios: { backup: { n: 9 } } }), ctxG);
   ok('híbrido: alerta de capacidade acima do máximo da BYD HVS (38,4 kWh)', rG9.alertas.some(function (a) { return /acima do máximo do sistema/.test(a.msg); }));
   ok('híbrido: configuração de alta tensão sem "em paralelo"', /alta tensão/.test(rG9.hibrido.configuracao) && !/paralelo/.test(rG9.hibrido.configuracao), rG9.hibrido.configuracao);
   ok('catálogo: capacidade máxima das baterias HV', D.equipamentos.find(function (e) { return e.id === 'bat-byd-hvs51'; }).capMaxSistema === 38.4);
+
+  // ---------------------------------------------------------------- híbrido: consumo próprio, perdas, balanço, potências e limites
+  const kwh40 = 40 * 24 * 365 / 12 / 1000;
+  perto('premissa: consumo próprio padrão 40 W ≈ 29,2 kWh/mês', C.kwhMes(D.premissas.hibrido.consumoProprioW), kwh40, 1e-9);
+  perto('premissas antigas: eficiência 90% → 92%', App.Store.ajustarPremissas({ hibrido: { eficiencia: 0.9 } }).hibrido.eficiencia, 0.92, 1e-12);
+  perto('premissas novas: 90% escolhido pelo usuário é mantido', App.Store.ajustarPremissas({ hibrido: { eficiencia: 0.9, consumoProprioW: 40 } }).hibrido.eficiencia, 0.9, 1e-12);
+  perto('híbrido: consumo próprio do inversor (padrão)', rG.consumoProprio, kwh40, 1e-9);
+  perto('híbrido: dimensionamento = consumo + consumo próprio', rG.consumoDimensionamento, 650 + kwh40 + rG.dimensionamento.perdas, 1e-9);
+  ok('on-grid: sem consumo próprio no dimensionamento', r.consumoDimensionamento === 650 && r.consumoProprio === 0);
+  const rGc = C.calcular(Object.assign(U.clone(pG), { cenarioEscolhido: 'ponta' }), ctxG);
+  const a1Gc = rGc.cen.fin.anos[0];
+  perto('ciclagem: perdas do ciclo entram no dimensionamento (2ª passada)', rGc.dimensionamento.perdas, a1Gc.descarga / 12 * (1 / 0.92 - 1), 0.05);
+  perto('ciclagem 1 bateria: banco totalmente utilizado', rGc.balanco.utilizacao, 1, 1e-9);
+  igual('ciclagem: balanço no mês de menor geração (jun)', rGc.balanco.mes, 5);
+  ok('ciclagem 1 bateria: sem alerta de utilização', !rGc.alertas.some(function (x) { return /Na ciclagem o banco usa/.test(x.msg); }));
+  const rG4 = C.calcular(Object.assign(U.clone(pG), { cenarioEscolhido: 'ponta', cenarios: { ponta: { n: 4 } } }), ctxG);
+  ok('ciclagem 4 baterias: utilização abaixo de 70% e sugestão de 3 baterias', rG4.balanco.utilizacao < 0.7 &&
+    rG4.alertas.some(function (x) { return x.nivel === 'aviso' && /bastam 3 bateria/.test(x.msg); }), rG4.alertas.map(function (x) { return x.msg; }).join(' | '));
+  ok('ciclagem 4 baterias: mais perdas → mais módulos sugeridos', rG4.nModulosSugerido > rGc.nModulosSugerido, rG4.nModulosSugerido + ' × ' + rGc.nModulosSugerido);
+  const ctxG0 = U.clone(ctxG);
+  ctxG0.premissas.hibrido.consumoProprioW = 0;
+  const pBig = Object.assign(U.clone(pG), { consumoMedio: 1000, nModulos: 9, cenarioEscolhido: 'backup' });
+  const c40 = C.calcular(pBig, ctxG).fin.anos[0].contaCom, c0b = C.calcular(Object.assign(U.clone(pBig), { premissas: ctxG0.premissas }), ctxG0).fin.anos[0].contaCom;
+  perto('consumo próprio: soma 29,2 kWh × tarifa à conta com sistema', c40 - c0b, kwh40 * 0.9762, 0.01);
+  const rPot = C.calcular(Object.assign(U.clone(pG), { bateriaId: 'bat-pylon-us3000c', inversorId: 'hib-deye-6-lp1', cenarioEscolhido: 'backup',
+    cargas: [{ descricao: 'Bomba', qtd: 1, potencia: 3000, horas: 0.25, motor: true }] }), ctxG);
+  igual('backup: baterias pela potência (3 kW × 1,25 ÷ 1,78 kW)', rPot.cen.n, 3);
+  perto('pico de partida: cargas + motor × (5 − 1)', rPot.hibrido.picoPartida, 3000 + 3000 * 4, 1e-9);
+  const rLvs = C.calcular(Object.assign(U.clone(pG), { bateriaId: 'bat-byd-lvs4', inversorId: 'hib-deye-6-lp1' }), ctxG);
+  ok('bateria sem potência cadastrada: aviso de 0,5C', rLvs.alertas.some(function (x) { return /não cadastrada: considerado 0,5C/.test(x.msg); }));
+  const ctxLim = U.clone(ctxG);
+  Object.assign(ctxLim.equipamentos.find(function (e) { return e.id === 'hib-huawei-6-l1'; }), { pFVMax: 5, capBateriaMax: 4, surtoKW: 0.5, pBateriaMax: 0.5 });
+  const rLim = C.calcular(Object.assign(U.clone(pG), { cenarioEscolhido: 'ponta', cargas: [{ descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 4, motor: true }] }), ctxLim);
+  const msgsLim = rLim.alertas.map(function (x) { return x.msg; }).join(' | ');
+  ok('inversor: entrada FV máxima', /acima da entrada FV máxima/.test(msgsLim), msgsLim);
+  ok('inversor: capacidade máxima de bateria', /acima da capacidade máxima de bateria do inversor/.test(msgsLim), msgsLim);
+  ok('inversor: surto × pico de partida (150 W × 5)', /Pico de partida estimado \(0,75 kW/.test(msgsLim), msgsLim);
+  ok('inversor: potência de carga para a ciclagem', /exige cerca de/.test(msgsLim), msgsLim);
+  perto('inversor: potência do banco limitada pela potência de bateria do inversor', rLim.hibrido.potenciaArm, 0.5, 1e-9);
+  const rMes = C.calcular(Object.assign(U.clone(p), { consumoMedio: 1000, nModulos: 9 }), ctx);
+  igual('faixa mensal: menor conta em dez e maior em jun', rMes.contasMes.mesMin + ',' + rMes.contasMes.mesMax, '11,5');
+  perto('faixa mensal: média dos 12 meses = mês médio do fluxo', rMes.contasMes.media, rMes.fin.anos[0].contaCom, rMes.fin.anos[0].contaCom * 0.005);
+  const prT = U.clone(D.premissas);
+  perto('rateio do consumo 24 h: ponta na verde (3 h × dias úteis)', App.Energia.ratear(100, 'verde', prT).p, 100 * 3 / 24 * 252 / 365, 1e-9);
+  perto('rateio do consumo 24 h: intermediário na branca (2 h)', App.Energia.ratear(100, 'branca', prT).i, 100 * 2 / 24 * 252 / 365, 1e-9);
+  const txLim = textoModelo(App.Documento.montar(Object.assign(U.clone(pG), { cenarioEscolhido: 'ponta', cargas: [{ descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 4, motor: true }] }),
+    rLim, ctxLim, ctxLim.clientes[0], { w: 1400, h: 752 })).join('\n');
+  ok('documento híbrido: consumo do dimensionamento, motor, pico, utilização e consumo próprio',
+    ['Consumo Considerado no Dimensionamento', 'Geladeira (motor)', 'Pico de Partida (motores)', 'Utilização do Banco na Ciclagem', 'Consumo Próprio do Inversor', 'Balanço Diário (jun']
+      .every(function (t) { return txLim.indexOf(t) >= 0; }));
+  const txMes = textoModelo(App.Documento.montar(Object.assign(U.clone(p), { consumoMedio: 1000, nModulos: 9 }), rMes, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
+  ok('documento: faixa da conta do ano 1', /a conta com sistema varia de R\$ [\d.,]+ \(dez\) a R\$ [\d.,]+ \(jun\)/.test(txMes));
 
   // ---------------------------------------------------------------- tarifas grupo A / branca
   const E = App.Energia;

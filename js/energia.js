@@ -182,6 +182,66 @@ window.App = window.App || {};
   };
 
   /**
+   * Compensação: os créditos (kWh fora de ponta) abatem primeiro o fora de ponta; o saldo, valorado pela tarifa
+   * fora de ponta, abate intermediário e ponta. Altera `c` e devolve os créditos que sobram.
+   */
+  function compensar(t, c, cred) {
+    const cf = Math.min(cred, c.fp);
+    c.fp -= cf; cred -= cf;
+    if (cred > 0 && t.modalidade !== 'conv') {
+      let valor = cred * t.fp;
+      const ci = Math.min(c.i, valor / t.inter);
+      c.i -= ci; valor -= ci * t.inter;
+      const cp = Math.min(c.p, valor / t.ponta);
+      c.p -= cp; valor -= cp * t.ponta;
+      cred = valor / t.fp;
+    }
+    return cred;
+  }
+
+  /** Consumo contínuo de 24 h (ex.: consumo próprio do inversor híbrido) rateado pelos postos horários. */
+  E.ratear = function (kwh, modalidadeId, prem) {
+    if (!(kwh > 0)) return { p: 0, i: 0, fp: 0 };
+    if ((modalidadeId || 'conv') === 'conv') return { p: 0, i: 0, fp: kwh };
+    const ar = prem.armazenamento;
+    const util = ar.diasUteis / 365;
+    const p = kwh * ar.duracaoPonta / 24 * util;
+    const i = modalidadeId === 'branca' ? kwh * 2 / 24 * util : 0; // intermediário: 1 h antes e 1 h depois da ponta
+    return { p: p, i: i, fp: kwh - p - i };
+  };
+
+  const DIAS_MES = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  /**
+   * Contas do ano 1 mês a mês: geração pelos fatores mensais da localidade, consumo pelo perfil mensal do cliente
+   * e créditos transportados entre os meses (a 1ª volta forma o saldo de regime; devolve a 2ª).
+   */
+  function contasMensais(t, o, cCliente, cExtra, armMes, ger, ex, prem) {
+    const f = o.fatores;
+    const somaF = f.reduce(function (s, x) { return s + x; }, 0);
+    let banco = 0, contas = [];
+    for (let volta = 0; volta < 2; volta++) {
+      contas = [];
+      for (let m = 0; m < 12; m++) {
+        const k = o.consumoFatores ? o.consumoFatores[m] : 1;
+        const c = { p: cCliente.p * k + cExtra.p, i: cCliente.i * k + cExtra.i, fp: cCliente.fp * k + cExtra.fp };
+        const esc = DIAS_MES[m] / (365 / 12);
+        const arm = armMes ? Object.assign({}, armMes, {
+          descNoite: (armMes.descNoite || 0) * esc, descPonta: (armMes.descPonta || 0) * esc, descForaPonta: (armMes.descForaPonta || 0) * esc
+        }) : null;
+        const G = ger * f[m] / somaF;
+        const ap = E.aplicar(t, c, o.demanda, G > 0 ? { G: G, s: o.s } : null, arm);
+        const antes = banco;
+        banco = compensar(t, ap.c, banco);
+        const usado = antes - banco;
+        banco += ap.creditoSobra;
+        contas.push(E.conta(t, ap.c, ap.d, Object.assign({}, ex, { compensada: ap.compensada + usado }), prem).total);
+      }
+    }
+    return contas;
+  }
+
+  /**
    * Aplica geração solar e armazenamento sobre o consumo do mês.
    * sol: {G kWh/mês, s simultaneidade}
    * arm: {descPonta, descNoite (kWh entregues/mês), eta, reducao: {unica|p|fp kW}, readequar}
@@ -208,18 +268,7 @@ window.App = window.App || {};
       cargaRede = carga - cs;
       c.fp += cargaRede;
     }
-    // compensação: créditos abatem primeiro o fora de ponta; o saldo, valorado pela tarifa fora de ponta, abate intermediário e ponta
-    let cred = inj;
-    const cf = Math.min(cred, c.fp);
-    c.fp -= cf; cred -= cf;
-    if (cred > 0 && t.modalidade !== 'conv') {
-      let valor = cred * t.fp;
-      const ci = Math.min(c.i, valor / t.inter);
-      c.i -= ci; valor -= ci * t.inter;
-      const cp = Math.min(c.p, valor / t.ponta);
-      c.p -= cp; valor -= cp * t.ponta;
-      cred = valor / t.fp;
-    }
+    const cred = compensar(t, c, inj);
     let d = d0 ? Object.assign({}, d0) : null;
     if (d && arm && arm.reducao) {
       const red = arm.reducao;
@@ -277,7 +326,9 @@ window.App = window.App || {};
    * Fluxo de caixa anual de um cenário.
    * o: {prem, anoBase, investimento, tarifas, consumo {p,i,fp}, demanda, disp, cosip, tusd, s, geracaoAnual1,
    *     estrategia: null|'backup'|'ponta'|'picos', arm: {capUtil, potencia, eta, degradacao, vida, custoTroca,
-   *     reducaoKW, duracao, posto, readequar, reserva (kWh úteis guardados para o backup)}, beneficioBackup (R$/ano)}
+   *     reducaoKW, duracao, posto, readequar, reserva (kWh úteis guardados para o backup)}, beneficioBackup (R$/ano),
+   *     consumoProprio (kWh/mês do inversor híbrido, só na conta com sistema),
+   *     fatores (12 fatores mensais de geração) e consumoFatores (consumo do mês ÷ média) para as contas mensais do ano 1}
    */
   E.fluxo = function (o) {
     const prem = o.prem;
@@ -287,7 +338,10 @@ window.App = window.App || {};
     const anos = [];
     let acum = -o.investimento, somaLiq = 0, somaGer = 0, kwhDesloc1 = 0, red1 = 0;
     const c0 = o.consumo;
-    let idade = 0;
+    // com sistema: o consumo próprio do inversor híbrido (24 h) soma-se ao consumo do cliente
+    const cExtra = E.ratear(o.consumoProprio || 0, t0.modalidade, prem);
+    const cCom = { p: c0.p + cExtra.p, i: c0.i + cExtra.i, fp: c0.fp + cExtra.fp };
+    let idade = 0, contasMes1 = null;
     for (let n = 1; n <= H; n++) {
       const ano = o.anoBase + n - 1;
       const fT = Math.pow(1 + prem.inflacaoTarifa, n - 1);
@@ -327,10 +381,10 @@ window.App = window.App || {};
           if (posto === 'ponta') armMes.descPonta = energia; else armMes.descForaPonta = energia;
         }
       }
-      const ap = E.aplicar(t, c0, o.demanda, gm > 0 ? { G: gm, s: o.s } : null, armMes);
-      const com = E.conta(t, ap.c, ap.d, {
-        cosip: cosip, disp: o.disp, compensada: ap.compensada, fioBTarifa: tusd * pct, regra: prem.regraDisponibilidade
-      }, prem);
+      const ap = E.aplicar(t, cCom, o.demanda, gm > 0 ? { G: gm, s: o.s } : null, armMes);
+      const exCom = { cosip: cosip, disp: o.disp, fioBTarifa: tusd * pct, regra: prem.regraDisponibilidade };
+      const com = E.conta(t, ap.c, ap.d, Object.assign({ compensada: ap.compensada }, exCom), prem);
+      if (n === 1 && Array.isArray(o.fatores) && o.fatores.length === 12) contasMes1 = contasMensais(t, o, c0, cExtra, armMes, ger, exCom, prem);
       const fioBMes = com.fioB;
       const economiaMes = sem.total - com.total;
       const backup = o.estrategia === 'backup' ? (o.beneficioBackup || 0) : 0;
@@ -364,6 +418,7 @@ window.App = window.App || {};
       economiaTotal: somaLiq,
       kwhDeslocadosAno1: kwhDesloc1,
       reducaoKW1: red1,
+      contasMes1: contasMes1,
       projecao: anos.filter(function (a) { return a.n <= 6 || a.n % 5 === 0; })
     };
   };

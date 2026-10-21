@@ -123,11 +123,18 @@ window.App = window.App || {};
     fioBDepois: 1.0,
     hibrido: {
       dod: 0.90,
-      eficiencia: 0.90,
+      // eficiência do ciclo bateria + inversor (híbrido com bateria no barramento CC: 92–97%)
+      eficiencia: 0.92,
       fatorSegurancaInversor: 1.25,
       autonomiaHoras: 6,
       trocaBateriaAno: 0,
-      trocaBateriaPct: 0.70
+      trocaBateriaPct: 0.70,
+      // consumo próprio do inversor híbrido ligado 24 h (W) — usado quando o inversor não informa o seu
+      consumoProprioW: 40,
+      // fator de utilização mínimo do banco na ciclagem diária (energia ciclada ÷ capacidade disponível)
+      utilizacaoMin: 0.70,
+      // pico de partida de motores com partida direta (× potência nominal; compressores/bombas: 5–8×)
+      fatorPartida: 5
     },
     armazenamento: {
       degradacao: 0.02,
@@ -692,9 +699,20 @@ window.App = window.App || {};
   };
   D.equipamentos.forEach(function (e) { if (D.CAP_MAX_SISTEMA[e.id]) e.capMaxSistema = D.CAP_MAX_SISTEMA[e.id]; });
 
+  /**
+   * Potência contínua de descarga por unidade (kW), conforme os datasheets: BYD HVS 25 A (5.1 = 204,8 V) e HVM 50 A
+   * (8.3 = 153,6 V); Huawei LUNA2000-S0 2,5 kW (5 kWh) e 5 kW (10/15 kWh); Sungrow SBR 30 A contínuos × tensão nominal;
+   * Pylontech US3000C 37 A recomendados × 48 V. Sem dado confirmado, o cálculo usa 0,5C e avisa.
+   */
+  D.POT_BATERIA = {
+    'bat-byd-hvs51': 5.12, 'bat-byd-hvm83': 7.68, 'bat-huawei-luna5': 2.5, 'bat-huawei-luna10': 5, 'bat-huawei-luna15': 5,
+    'bat-sungrow-sbr096': 5.76, 'bat-sungrow-sbr128': 7.68, 'bat-pylon-us3000c': 1.78
+  };
+  D.equipamentos.forEach(function (e) { if (D.POT_BATERIA[e.id]) e.potencia = D.POT_BATERIA[e.id]; });
+
   /** Cargas críticas de exemplo para novos sistemas híbridos. */
   D.cargasExemplo = [
-    { descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 6 },
+    { descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 6, motor: true },
     { descricao: 'Iluminação LED', qtd: 8, potencia: 10, horas: 4 },
     { descricao: 'Roteador Wi-Fi', qtd: 1, potencia: 12, horas: 6 },
     { descricao: 'Televisor', qtd: 1, potencia: 100, horas: 3 },
