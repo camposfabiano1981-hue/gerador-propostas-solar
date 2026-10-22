@@ -619,6 +619,20 @@
     })(m.corpo);
     return partes;
   }
+  // contrato com baterias: linha de garantia das baterias logo após a dos inversores
+  const ctxKH = U.clone(ctxH);
+  const ctKH = K.deProposta(Object.assign(U.clone(pH), { id: 'p-hib' }), ctxKH);
+  ctKH.modelo = U.clone(D.contrato);
+  const txKH = textoModelo(K.montar(ctKH, ctxKH, { w: 1400, h: 752 }, ctxKH.clientes[0]));
+  const iInvK = txKH.indexOf('Inversores'), iBatK = txKH.indexOf('Baterias'), iEstK = txKH.indexOf('Estruturas de Fixação');
+  ok('contrato com baterias: garantia das baterias após os inversores', iInvK >= 0 && iBatK > iInvK && iEstK > iBatK, [iInvK, iBatK, iEstK].join(','));
+  ok('contrato com baterias: prazo e cobertura conforme o fabricante', txKH[iBatK + 1] === '10 anos' && /retenção de capacidade/.test(txKH[iBatK + 2]), txKH.slice(iBatK, iBatK + 3).join(' | '));
+  ok('contrato sem baterias: sem linha de baterias na garantia', textoModelo(K.montar(ctK, ctxK, { w: 1400, h: 752 }, ctxK.clientes[0])).indexOf('Baterias') < 0);
+  // gráfico da proposta = gráfico do contrato (mesma produção mês a mês, título e descrição)
+  const dgP = App.Documento.dadosGrafico(r, ctx);
+  igual('gráfico da proposta: mesma produção mês a mês do contrato', dgP.meses.join(','), ctK.producao.meses.join(','));
+  ok('gráfico da proposta: título, descrição do sistema e rodapé do contrato', /ESTIMATIVA DE PRODUÇÃO MENSAL.*5,625 kWp/.test(dgP.titulo) && dgP.subtitulo === ctK.producao.subtitulo && /HSP mensal/.test(dgP.rodape), dgP.titulo + ' | ' + dgP.subtitulo);
+  perto('gráfico da proposta: total anual = geração anual', dgP.meses.reduce(function (a, b) { return a + b; }, 0), r.geracaoAnual, 6);
   const mK = K.montar(ctK, ctxK, { w: 1400, h: 752 }, ctxK.clientes[0]);
   const txK = textoModelo(mK);
   const clausulas = txK.filter(function (s) { return /^Cláusula \d+ª/.test(s); });

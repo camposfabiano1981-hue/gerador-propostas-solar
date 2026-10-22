@@ -234,6 +234,24 @@ window.App = window.App || {};
     return e.descricao || [e.fabricante, e.modelo].filter(Boolean).join(' ');
   };
 
+  /** Geração mês a mês (kWh, inteiros) com o perfil da localidade, ajustada para somar a geração anual da proposta. */
+  C.producaoMensal = function (r) {
+    const soma = r.geracaoMeses.reduce(function (a, b) { return a + b; }, 0);
+    const ajuste = soma > 0 ? r.geracaoAnual / soma : 1;
+    return r.geracaoMeses.map(function (v) { return U.round(v * ajuste, 0); });
+  };
+
+  /** Descrição do sistema no subtítulo do gráfico de produção: módulos | inversores | perdas | cidade. */
+  C.descricaoSistema = function (r, prem) {
+    const mod = r.modulo, inv = r.inversor;
+    return [
+      mod ? r.nModulos + ' Módulos ' + mod.fabricante + ' ' + U.fmt(mod.potencia, 0) + 'W' : '',
+      inv ? r.nInversores + (r.nInversores > 1 ? (r.micro ? ' Microinversores ' : ' Inversores ') : (r.micro ? ' Microinversor ' : ' Inversor ')) + inv.fabricante + ' ' + U.fmtSmart(inv.potencia, 2) + 'kW' : '',
+      'Perdas: ' + U.fmtSmart((1 - prem.pr) * 100, 1) + '%',
+      [r.cidade, r.uf].filter(Boolean).join('–')
+    ].filter(Boolean).join('  |  ');
+  };
+
   /** Classe de tensão da bateria: 'LV' (48 V) ou 'HV' (alta tensão). */
   C.classeBateria = function (b) {
     if (!b) return null;

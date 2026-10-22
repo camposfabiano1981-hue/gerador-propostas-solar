@@ -493,7 +493,7 @@ window.App = window.App || {};
     /* ---------- CONSUMO × GERAÇÃO */
     if (temFV) {
       b.push(titulo((++sec) + '. CONSUMO × GERAÇÃO MENSAL ESTIMADA'));
-      b.push(P(IMG('grafico', Math.round(5524500 * k), Math.round(2301875 * k), 'Grafico'), { after: 120, jc: 'center' }));
+      b.push(P(IMG('grafico', Math.round(5524500 * k), Math.round(5524500 * 772 / 1800 * k), 'Grafico'), { after: 120, jc: 'center' }));
       b.push(vazio());
     }
 
@@ -780,16 +780,22 @@ window.App = window.App || {};
     return { dataURL: url, bytes: U.dataURLtoBytes(url), ext: ext, w: img.naturalWidth || 1400, h: img.naturalHeight || 752 };
   }
 
+  /** Gráfico de produção da proposta: o mesmo do contrato, com o consumo médio (ou mês a mês, quando varia). */
+  function dadosGrafico(r, ctx) {
+    const prem = r.premissas || ctx.premissas;
+    return App.Chart.dadosProducao({
+      kwp: r.kwp, meses: C.producaoMensal(r), consumo: r.consumoMeses, rotuloConsumo: 'Consumo Médio',
+      subtitulo: C.descricaoSistema(r, prem), pr: prem.pr * 100
+    });
+  }
+
   /** Calcula a proposta e reúne tudo o que os geradores precisam. */
   async function preparar(p, ctx) {
     ctx = ctx || C.contexto();
     const r = C.calcular(p, ctx);
     const cliente = (ctx.clientes || []).find(function (c) { return c.id === p.clienteId; }) || p.clienteSnapshot || null;
     const logo = await prepararLogo(ctx.empresa.logo);
-    const grafico = App.Chart.dataURL({
-      consumo: r.consumoMeses, geracao: r.geracaoMeses,
-      titulo: 'Consumo × Geração Mensal Estimada — ' + U.kwp(r.kwp) + ' kWp'
-    });
+    const grafico = r.permiteFV && r.kwp > 0 ? App.Chart.producaoDataURL(dadosGrafico(r, ctx)) : null;
     const modelo = montar(p, r, ctx, cliente, logo);
     const nomeCliente = (cliente && cliente.nome) || 'Cliente';
     const nomeBase = 'Proposta_Solar_' + U.slug(nomeCliente) + '_' + String(p.data || U.todayISO()).replace(/-/g, '');
@@ -797,7 +803,7 @@ window.App = window.App || {};
   }
 
   App.Documento = {
-    montar: montar, preparar: preparar, prepararLogo: prepararLogo, COR: COR,
+    montar: montar, preparar: preparar, prepararLogo: prepararLogo, dadosGrafico: dadosGrafico, COR: COR,
     // construtores de nós reaproveitados pelos demais documentos (contrato e proposta avulsa)
     nos: {
       R: R, P: P, T: T, IMG: IMG, TC: TC, TR: TR, TBL: TBL, encaixar: encaixar, substituir: substituir, decimais: decimais,

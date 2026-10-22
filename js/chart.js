@@ -1,4 +1,4 @@
-/* Gráfico de barras "Consumo × Geração Mensal Estimada" desenhado em canvas (mesmo estilo do modelo de proposta). */
+/* Gráfico "Estimativa de produção mensal" (proposta e contrato) desenhado em canvas. */
 window.App = window.App || {};
 
 (function (App) {
@@ -16,156 +16,45 @@ window.App = window.App || {};
   }
 
   /**
-   * Desenha o gráfico no canvas informado.
+   * Gráfico "Estimativa de produção mensal" da proposta e do contrato: barras de geração com rótulos, linha tracejada do
+   * consumo (reta com o consumo médio/contratado ou mês a mês quando varia) e quadro-resumo (total, média, melhor e pior mês).
    * @param {HTMLCanvasElement} cv
-   * @param {{consumo:number[], geracao:number[], titulo:string}} d
-   */
-  function desenhar(cv, d) {
-    const W = cv.width, H = cv.height;
-    const k = W / 1800; // escala relativa ao tamanho de referência 1800×750
-    const g = cv.getContext('2d');
-    g.save();
-    g.fillStyle = '#F8FAFC';
-    g.fillRect(0, 0, W, H);
-
-    const m = { l: 100 * k, r: 18 * k, t: 62 * k, b: 82 * k };
-    const pw = W - m.l - m.r, ph = H - m.t - m.b;
-
-    // Título
-    g.fillStyle = '#1E3A8A';
-    g.font = 'bold ' + Math.round(26 * k) + 'px ' + FONTE;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(d.titulo || 'Consumo × Geração Mensal Estimada', m.l + pw / 2, 28 * k);
-
-    const vals = d.consumo.concat(d.geracao).filter(function (v) { return isFinite(v); });
-    const vmax = Math.max.apply(null, vals.concat([1]));
-    const passo = passoBonito(vmax * 1.05, 8);
-    const topo = Math.ceil((vmax * 1.05) / passo) * passo;
-    const y = function (v) { return m.t + ph - (v / topo) * ph; };
-
-    // Grade e rótulos do eixo Y
-    g.font = Math.round(19 * k) + 'px ' + FONTE;
-    g.textAlign = 'right';
-    g.textBaseline = 'middle';
-    for (let v = 0; v <= topo + 1e-9; v += passo) {
-      const yy = Math.round(y(v)) + 0.5;
-      if (v > 0) {
-        g.strokeStyle = '#E5E7EB';
-        g.lineWidth = 1.5 * k;
-        g.beginPath(); g.moveTo(m.l, yy); g.lineTo(m.l + pw, yy); g.stroke();
-      }
-      g.fillStyle = '#374151';
-      g.fillText(U.fmtSmart(v, 1), m.l - 12 * k, yy);
-    }
-
-    // Barras
-    const grupos = 12;
-    const gw = pw / (grupos + 0.6);
-    const bw = gw * 0.35;
-    const x0 = m.l + gw * 0.8;
-    for (let i = 0; i < grupos; i++) {
-      const cx = x0 + i * gw;
-      const c = d.consumo[i] || 0, ge = d.geracao[i] || 0;
-      g.fillStyle = '#6B7280';
-      g.fillRect(cx - bw, y(c), bw, y(0) - y(c));
-      g.fillStyle = '#3B82F6';
-      g.fillRect(cx, y(ge), bw, y(0) - y(ge));
-      g.fillStyle = '#374151';
-      g.textAlign = 'center';
-      g.textBaseline = 'top';
-      g.font = Math.round(19 * k) + 'px ' + FONTE;
-      g.fillText(U.MESES[i], cx, y(0) + 12 * k);
-    }
-
-    // Eixos (sem bordas superior e direita)
-    g.strokeStyle = '#1F2937';
-    g.lineWidth = 2 * k;
-    g.beginPath();
-    g.moveTo(m.l, m.t - 4 * k); g.lineTo(m.l, y(0)); g.lineTo(m.l + pw, y(0));
-    g.stroke();
-
-    // Títulos dos eixos
-    g.fillStyle = '#374151';
-    g.font = Math.round(21 * k) + 'px ' + FONTE;
-    g.textAlign = 'center';
-    g.textBaseline = 'bottom';
-    g.fillText('Mês', m.l + pw / 2, H - 10 * k);
-    g.save();
-    g.translate(28 * k, m.t + ph / 2);
-    g.rotate(-Math.PI / 2);
-    g.textBaseline = 'middle';
-    g.fillText('Energia (kWh)', 0, 0);
-    g.restore();
-
-    // Legenda
-    const itens = [['#6B7280', 'Consumo (kWh)'], ['#3B82F6', 'Geração Estimada (kWh)']];
-    g.font = Math.round(19 * k) + 'px ' + FONTE;
-    const lw = Math.max.apply(null, itens.map(function (it) { return g.measureText(it[1]).width; })) + 70 * k;
-    const lh = 30 * k;
-    const lx = m.l + pw / 2 - lw / 2, ly = m.t + 6 * k;
-    g.fillStyle = 'rgba(255,255,255,0.85)';
-    g.strokeStyle = '#D1D5DB';
-    g.lineWidth = 1.5 * k;
-    g.beginPath();
-    g.rect(lx, ly, lw, lh * itens.length + 14 * k);
-    g.fill(); g.stroke();
-    itens.forEach(function (it, i) {
-      const yy = ly + 7 * k + lh * i + lh / 2;
-      g.fillStyle = it[0];
-      g.fillRect(lx + 12 * k, yy - 8 * k, 36 * k, 16 * k);
-      g.fillStyle = '#111827';
-      g.textAlign = 'left';
-      g.textBaseline = 'middle';
-      g.fillText(it[1], lx + 58 * k, yy);
-    });
-    g.restore();
-  }
-
-  /** Gera o gráfico como PNG (data URL) com 1800×750 px — usado no .docx e no PDF. */
-  function dataURL(d) {
-    const cv = document.createElement('canvas');
-    cv.width = 1800;
-    cv.height = 750;
-    desenhar(cv, d);
-    return cv.toDataURL('image/png');
-  }
-
-  /**
-   * Gráfico "Estimativa de produção mensal" do contrato: barras de geração com rótulos, linha tracejada do consumo
-   * contratado e quadro-resumo (total, média, melhor e pior mês).
-   * @param {HTMLCanvasElement} cv
-   * @param {{meses:number[], consumo:number, titulo:string, subtitulo:string, rodape:string}} d
+   * @param {{meses:number[], consumo:(number|number[]), rotuloConsumo:string, titulo:string, subtitulo:string, rodape:string, compacto:boolean}} d
+   *   compacto: miniatura da tela (letras maiores, sem subtítulo, quadro-resumo e rodapé)
    */
   function desenharProducao(cv, d) {
     const W = cv.width, H = cv.height;
     const k = W / 1800;
     const AZUL = '#0D5B8F', LARANJA = '#E8A020';
     const g = cv.getContext('2d');
-    const px = function (v) { return Math.round(v * k * 1.2) + 'px '; }; // textos legíveis com a imagem em ~14,7 cm
+    const fk = d.compacto ? 2.1 : 1.2; // textos legíveis com a imagem em ~14,7 cm (ou na miniatura da tela)
+    const px = function (v) { return Math.round(v * k * fk) + 'px '; };
     g.save();
     g.fillStyle = '#F5F9FD';
     g.fillRect(0, 0, W, H);
 
-    const m = { l: 92 * k, r: 20 * k, t: 74 * k, b: 74 * k };
+    const m = d.compacto ? { l: 150 * k, r: 20 * k, t: 150 * k, b: 80 * k } : { l: 92 * k, r: 20 * k, t: 74 * k, b: 74 * k };
     const pw = W - m.l - m.r, ph = H - m.t - m.b;
 
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = AZUL;
     g.font = 'bold ' + px(25) + FONTE;
-    g.fillText(d.titulo || 'ESTIMATIVA DE PRODUÇÃO MENSAL', W / 2, 24 * k);
-    if (d.subtitulo) {
+    g.fillText(d.titulo || 'ESTIMATIVA DE PRODUÇÃO MENSAL', W / 2, (d.compacto ? 38 : 24) * k);
+    if (d.subtitulo && !d.compacto) {
       g.fillStyle = '#6B7280';
       g.font = px(16) + FONTE;
       g.fillText(d.subtitulo, W / 2, 50 * k);
     }
 
     const meses = d.meses.map(function (v) { return isFinite(v) ? v : 0; });
-    const consumo = isFinite(d.consumo) && d.consumo > 0 ? d.consumo : 0;
-    const vmax = Math.max.apply(null, meses.concat([consumo, 1]));
-    const passo = passoBonito(vmax * 1.35, 7);
-    const topo = Math.ceil((vmax * 1.35) / passo) * passo; // folga no topo para o quadro-resumo e a legenda
+    const consMes = Array.isArray(d.consumo) ? d.consumo.map(function (v) { return isFinite(v) && v > 0 ? v : 0; }) : null;
+    const variaMes = !!(consMes && Math.max.apply(null, consMes) - Math.min.apply(null, consMes) >= 0.5);
+    const consumo = consMes ? (variaMes ? 0 : consMes[0]) : (isFinite(d.consumo) && d.consumo > 0 ? d.consumo : 0);
+    const vmax = Math.max.apply(null, meses.concat([consumo, 1], variaMes ? consMes : []));
+    const folga = d.compacto ? 1.12 : 1.35; // folga no topo para o quadro-resumo e a legenda
+    const passo = passoBonito(vmax * folga, d.compacto ? 4 : 7);
+    const topo = Math.ceil((vmax * folga) / passo) * passo;
     const y = function (v) { return m.t + ph - (v / topo) * ph; };
 
     g.font = px(17) + FONTE;
@@ -196,21 +85,44 @@ window.App = window.App || {};
       g.fillText(U.MESES[i], cx(i), y(0) + 10 * k);
     });
 
-    if (consumo) {
+    if (consumo || variaMes) {
+      const yc = function (i) { return y(variaMes ? consMes[i] : consumo); };
       g.strokeStyle = LARANJA;
       g.lineWidth = 4 * k;
       g.setLineDash([14 * k, 8 * k]);
-      g.beginPath(); g.moveTo(cx(0), y(consumo)); g.lineTo(cx(11), y(consumo)); g.stroke();
+      g.beginPath();
+      meses.forEach(function (v, i) { if (i) g.lineTo(cx(i), yc(i)); else g.moveTo(cx(i), yc(i)); });
+      g.stroke();
       g.setLineDash([]);
       g.fillStyle = LARANJA;
-      meses.forEach(function (v, i) { g.beginPath(); g.arc(cx(i), y(consumo), 6 * k, 0, Math.PI * 2); g.fill(); });
+      meses.forEach(function (v, i) { g.beginPath(); g.arc(cx(i), yc(i), 6 * k, 0, Math.PI * 2); g.fill(); });
     }
 
     // legenda (canto superior direito)
     const itens = [];
-    if (consumo) itens.push({ cor: LARANJA, linha: true, t: 'Consumo Contratado: ' + U.fmt(consumo, 0) + ' kWh/mês' });
+    const rotC = d.rotuloConsumo || 'Consumo Contratado';
+    if (variaMes) itens.push({ cor: LARANJA, linha: true, t: 'Consumo Mensal (kWh)' });
+    else if (consumo) itens.push({ cor: LARANJA, linha: true, t: rotC + ': ' + U.fmt(consumo, 0) + ' kWh/mês' });
     itens.push({ cor: AZUL, t: 'Geração Estimada (kWh)' });
     g.font = px(17) + FONTE;
+    if (d.compacto) {
+      // miniatura: legenda numa linha, abaixo do título
+      const larg = itens.map(function (it) { return g.measureText(it.t).width + 90 * k; });
+      let x = (W - larg.reduce(function (a, b) { return a + b; }, 0)) / 2;
+      const yy = 98 * k;
+      itens.forEach(function (it, i) {
+        g.fillStyle = it.cor; g.strokeStyle = it.cor;
+        if (it.linha) {
+          g.lineWidth = 6 * k; g.setLineDash([14 * k, 8 * k]);
+          g.beginPath(); g.moveTo(x, yy); g.lineTo(x + 60 * k, yy); g.stroke(); g.setLineDash([]);
+        } else g.fillRect(x + 6 * k, yy - 12 * k, 48 * k, 24 * k);
+        g.fillStyle = '#111827'; g.textAlign = 'left'; g.textBaseline = 'middle';
+        g.fillText(it.t, x + 72 * k, yy);
+        x += larg[i];
+      });
+      g.restore();
+      return;
+    }
     const lw = Math.max.apply(null, itens.map(function (it) { return g.measureText(it.t).width; })) + 72 * k;
     const lh = 32 * k;
     const lx = m.l + pw - lw - 4 * k, ly = m.t - 8 * k;
@@ -275,7 +187,21 @@ window.App = window.App || {};
     g.restore();
   }
 
-  /** Gráfico de produção do contrato como PNG (1800×772 px, mesma proporção da imagem do modelo). */
+  /**
+   * Título e rodapé do gráfico de produção (os mesmos na proposta e no contrato).
+   * o: {kwp, meses, consumo, rotuloConsumo, subtitulo, pr (% de eficiência)}
+   */
+  function dadosProducao(o) {
+    const kwp = U.num(o.kwp) > 0 ? U.kwp(U.num(o.kwp)) : '';
+    return {
+      meses: o.meses, consumo: o.consumo, rotuloConsumo: o.rotuloConsumo, subtitulo: o.subtitulo || '',
+      titulo: 'ESTIMATIVA DE PRODUÇÃO MENSAL  –  SISTEMA FOTOVOLTAICO' + (kwp ? '  ' + kwp + ' kWp' : ''),
+      rodape: 'Fonte: Atlas Brasileiro de Energia Solar – INPE/LABREN, 2ª Ed. (2017) | CRESESB/SunData  •  Cálculo: ' + (kwp ? kwp + ' kWp × ' : '') +
+        'HSP mensal × eficiência ' + U.fmtSmart(U.numOr(o.pr, 80), 1) + '%'
+    };
+  }
+
+  /** Gráfico de produção como PNG (1800×772 px, mesma proporção da imagem do modelo de contrato). */
   function producaoDataURL(d) {
     const cv = document.createElement('canvas');
     cv.width = 1800;
@@ -284,5 +210,5 @@ window.App = window.App || {};
     return cv.toDataURL('image/png');
   }
 
-  App.Chart = { desenhar: desenhar, dataURL: dataURL, desenharProducao: desenharProducao, producaoDataURL: producaoDataURL };
+  App.Chart = { desenharProducao: desenharProducao, producaoDataURL: producaoDataURL, dadosProducao: dadosProducao };
 })(window.App);

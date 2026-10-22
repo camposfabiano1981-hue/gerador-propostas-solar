@@ -285,23 +285,15 @@ window.App = window.App || {};
     ct.uf = emp.uf || r.uf || '';
     if (temFV) {
       const prem = r.premissas || ctx.premissas;
-      const mod = r.modulo, inv = r.inversor;
       // perfil mensal da localidade ajustado para que o total anual prometido seja a geração anual da proposta
-      const somaMeses = r.geracaoMeses.reduce(function (a, b) { return a + b; }, 0);
-      const ajuste = somaMeses > 0 ? r.geracaoAnual / somaMeses : 1;
       ct.producao = {
         incluir: true,
-        meses: r.geracaoMeses.map(function (v) { return U.round(v * ajuste, 0); }),
+        meses: App.Calc.producaoMensal(r),
         consumo: r.consumoMedio > 0 ? U.round(r.consumoMedio, 0) : '',
         perdas: U.round((1 - prem.pr) * 100, 1),
         pr: U.round(prem.pr * 100, 1),
         local: [r.cidade, r.uf].filter(Boolean).join(' – '),
-        subtitulo: [
-          mod ? r.nModulos + ' Módulos ' + mod.fabricante + ' ' + U.fmt(mod.potencia, 0) + 'W' : '',
-          inv ? r.nInversores + (r.nInversores > 1 ? ' Inversores ' : ' Inversor ') + inv.fabricante + ' ' + U.fmtSmart(inv.potencia, 2) + 'kW' : '',
-          'Perdas: ' + U.fmtSmart((1 - prem.pr) * 100, 1) + '%',
-          [r.cidade, r.uf].filter(Boolean).join('–')
-        ].filter(Boolean).join('  |  ')
+        subtitulo: App.Calc.descricaoSistema(r, prem)
       };
     } else {
       ct.producao.incluir = false;
@@ -410,7 +402,7 @@ window.App = window.App || {};
     secoes.forEach(function (s) {
       const n = numSec[s.id];
       if (s.tipo === 'garantias') {
-        b.push.apply(b, secaoGarantias(n, s, mod.garantias || {}, emp, sub));
+        b.push.apply(b, secaoGarantias(n, s, mod.garantias || {}, emp, sub, linhaGarantiaArmazenamento(ct)));
         return;
       }
       b.push(faixa(n + '. ' + s.titulo));
@@ -501,7 +493,25 @@ window.App = window.App || {};
     return { papel: PAPEL, k: 1, margens: MARGENS, corpo: b, cabecalho: cabecalho, rodape: rodape };
   }
 
-  function secaoGarantias(n, s, g, emp, sub) {
+  /**
+   * Linha da tabela de garantias para baterias/BESS, quando o contrato tem armazenamento (grupo de equipamentos
+   * "Baterias" ou "Sistema de Armazenamento (BESS)"): prazo e vida útil conforme o fabricante.
+   */
+  function linhaGarantiaArmazenamento(ct) {
+    const gr = (ct.equipamentos || []).find(function (x) { return /bateria|armazenamento|bess/i.test(x.titulo || ''); });
+    if (!gr) return null;
+    const val = function (rot) { const l = (gr.linhas || []).find(function (x) { return x[0] === rot; }); return l ? String(l[1] || '') : ''; };
+    const garantia = val('Garantia');
+    const tecnologia = val('Tecnologia');
+    return {
+      item: /bess/i.test(gr.titulo) ? 'Sistema de Armazenamento (BESS)' : 'Baterias',
+      prazo: garantia && !/conforme/i.test(garantia) ? garantia.replace(/\bAnos\b/, 'anos') : 'Conforme fabricante',
+      cobertura: 'Defeitos de fabricação e retenção de capacidade conforme o fabricante' + (tecnologia ? ' (' + tecnologia + ')' : '') +
+        '. Suporte ao acionamento prestado pela CONTRATADA.'
+    };
+  }
+
+  function secaoGarantias(n, s, g, emp, sub, linhaArm) {
     const out = [];
     let k = 0;
     const subt = function (titulo) { return n + '.' + (++k) + '. ' + titulo; };
@@ -513,9 +523,15 @@ window.App = window.App || {};
     out.push(faixa(subt('PRAZOS E COBERTURA DE GARANTIA')));
     out.push(espaco(80));
     out.push(t(sub(g.prazosIntro), { before: 120, after: 80, keepNext: true }));
+    const tabela = (g.tabela || []).slice();
+    // armazenamento: linha das baterias logo após a dos inversores (se o modelo ainda não tiver uma)
+    if (linhaArm && !tabela.some(function (l) { return /bateria|armazenamento|bess/i.test(l.item || ''); })) {
+      const iInv = tabela.findIndex(function (l) { return /inversor/i.test(l.item || ''); });
+      tabela.splice(iInv >= 0 ? iInv + 1 : tabela.length, 0, linhaArm);
+    }
     out.push(tabelaLista([
       { t: 'ITEM', w: 2800, b: true }, { t: 'PRAZO', w: 1400, jc: 'center' }, { t: 'COBERTURA', w: 5160 }
-    ], (g.tabela || []).map(function (l) { return [sub(l.item), sub(l.prazo), sub(l.cobertura)]; }), { primeiraClara: true }));
+    ], tabela.map(function (l) { return [sub(l.item), sub(l.prazo), sub(l.cobertura)]; }), { primeiraClara: true }));
     out.push(espaco(120));
     if (g.suporte) out.push(t(sub(g.suporte), { before: 80, after: 160 }));
 
@@ -620,15 +636,9 @@ window.App = window.App || {};
     const cli = clienteDe(ct, ctx);
     const logo = await App.Documento.prepararLogo(ctx.empresa.logo);
     const prod = ct.producao || {};
-    const kwp = U.num(ct.kwp) > 0 ? U.kwp(U.num(ct.kwp)) : '';
-    const grafico = prod.incluir ? App.Chart.producaoDataURL({
-      meses: (prod.meses || []).map(function (v) { return U.numOr(v, 0); }),
-      consumo: U.num(prod.consumo),
-      titulo: 'ESTIMATIVA DE PRODUÇÃO MENSAL  –  SISTEMA FOTOVOLTAICO' + (kwp ? '  ' + kwp + ' kWp' : ''),
-      subtitulo: prod.subtitulo || '',
-      rodape: 'Fonte: Atlas Brasileiro de Energia Solar – INPE/LABREN, 2ª Ed. (2017) | CRESESB/SunData  •  Cálculo: ' + (kwp ? kwp + ' kWp × ' : '') +
-        'HSP mensal × eficiência ' + U.fmtSmart(U.numOr(prod.pr, 80), 1) + '%'
-    }) : null;
+    const grafico = prod.incluir ? App.Chart.producaoDataURL(App.Chart.dadosProducao({
+      kwp: ct.kwp, meses: (prod.meses || []).map(function (v) { return U.numOr(v, 0); }), consumo: U.num(prod.consumo), subtitulo: prod.subtitulo, pr: prod.pr
+    })) : null;
     const modelo = montar(ct, ctx, logo, cli);
     return { ctx: ctx, cliente: cli, logo: logo, grafico: grafico, modelo: modelo, nomeBase: nomeArquivo(ct, cli) };
   }

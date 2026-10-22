@@ -30,7 +30,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - **Recomendação automática** da alternativa que faz mais sentido para o cliente, conforme o objetivo informado (maior retorno, segurança no fornecimento ou controle de demanda), com as razões; a proposta pode usar a recomendação ou outro cenário escolhido.
 
 **Contratos**
-- Contrato de prestação de serviços no layout do modelo: identificação das partes (CAMPO/DADOS), objeto, **produção média prometida com gráfico**, obrigações, prazo, **equipamentos contratados**, **termo de garantia**, preço com **valor por extenso** e tabela de parcelas, dados bancários, rescisão, disposições gerais, local/data e assinaturas.
+- Contrato de prestação de serviços no layout do modelo: identificação das partes (CAMPO/DADOS), objeto, **produção média prometida com gráfico** (o mesmo da proposta), obrigações, prazo, **equipamentos contratados**, **termo de garantia** (com a linha das baterias/BESS quando há armazenamento), preço com **valor por extenso** e tabela de parcelas, dados bancários, rescisão, disposições gerais, local/data e assinaturas.
 - Criado a partir de uma proposta (botão ✍ na lista de propostas) com cliente, objeto, produção mensal, equipamentos e parcelas preenchidos (equipamentos na assinatura + 50% / 50% dos serviços); tudo editável, inclusive as cláusulas de cada contrato.
 - Cláusulas numeradas automaticamente, com referências cruzadas (`{cl:pagamento}`); modelo padrão editável em **Configurações › Modelo de contrato**.
 - Numeração própria `CT-AAAAMMDD-NNN` e emissão em PDF e Word.
@@ -162,7 +162,7 @@ js/ia.js              Leitura e pesquisa de datasheets com a API do Claude (SDK 
 js/store.js           Persistência local, numeração e backup
 js/energia.js         Tarifas (convencional, branca, verde, azul), contas, compensação, cenários e recomendação
 js/calc.js            Dimensionamento On-Grid/Híbrido/BESS, materiais, cenários, financeiro e pagamentos
-js/chart.js           Gráficos Consumo × Geração e Produção mensal do contrato (canvas → PNG)
+js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato (canvas → PNG)
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)

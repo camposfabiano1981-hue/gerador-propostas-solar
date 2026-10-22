@@ -720,7 +720,14 @@
       });
     }
 
-    const mini = h('canvas.mini-grafico', { width: 720, height: 300 });
+    const mini = h('canvas.mini-grafico', { width: 1800, height: 1100, title: 'Clique para ampliar' });
+    let dadosMini = null;
+    mini.addEventListener('click', function () {
+      if (!dadosMini) return;
+      const grande = h('canvas.mini-grafico', { width: 1800, height: 772 });
+      App.Chart.desenharProducao(grande, dadosMini);
+      UI.modal({ titulo: 'Estimativa de produção mensal', corpo: grande, largo: true, acoes: [{ label: 'Fechar' }] });
+    });
 
     function valorTir(f) {
       return f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? '> 1.000%' : '—');
@@ -807,7 +814,10 @@
         temFV ? mini : null
       ];
       blocos.forEach(function (b) { if (b) resumo.appendChild(b); });
-      if (temFV) App.Chart.desenhar(mini, { consumo: r.consumoMeses, geracao: r.geracaoMeses, titulo: 'Consumo × Geração — ' + U.kwp(r.kwp) + ' kWp' });
+      if (temFV) {
+        dadosMini = App.Documento.dadosGrafico(r, ctx);
+        App.Chart.desenharProducao(mini, Object.assign({}, dadosMini, { compacto: true, titulo: 'Produção mensal — ' + U.kwp(r.kwp) + ' kWp' }));
+      }
       if (r.alertas.length) {
         resumo.appendChild(h('ul.alertas', r.alertas.map(function (a) { return h('li.' + a.nivel, a.msg); })));
       } else {
