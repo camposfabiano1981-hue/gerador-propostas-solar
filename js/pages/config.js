@@ -295,7 +295,8 @@
     const status = h('p.ajuda-sec');
     cont.appendChild(UI.cabecalho('Leitura de datasheet (IA)', 'Cadastro de módulos, inversores, microinversores, híbridos e baterias a partir do datasheet, com a API do Claude (Anthropic).'));
     cont.appendChild(h('div.card.dica',
-      h('p', h('strong', 'Como funciona: '), 'em Cadastros › Equipamentos, use “📄 Ler datasheet” e escolha o PDF (ou uma foto) da ficha técnica, ou “🔎 Pesquisar datasheet” e informe o modelo: ' +
+      h('p', h('strong', 'Sem IA: '), 'o “📄 Ler datasheet” também lê o PDF no próprio navegador, de graça e sem chave (escolha “No navegador”). Funciona com PDFs que têm texto; confira os campos lidos, porque cada fabricante monta a tabela de um jeito.'),
+      h('p', h('strong', 'Com IA: '), 'em Cadastros › Equipamentos, use “📄 Ler datasheet” e escolha o PDF (ou uma foto) da ficha técnica, ou “🔎 Pesquisar datasheet” e informe o modelo: ' +
         'a IA procura o datasheet oficial na internet e o lê. O botão 🔄 de cada item atualiza o cadastro pelo datasheet mais recente. ' +
         'Os itens entram marcados como “Revisar” até você conferir e salvar.'),
       h('p', h('strong', 'Chave de API: '), 'crie uma chave no Console da Anthropic (platform.claude.com, em API Keys) e defina um limite de gastos para ela. ' +

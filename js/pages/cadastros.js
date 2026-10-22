@@ -283,25 +283,44 @@
     return true;
   }
 
+  const CHAVE_MODO = 'gsp.leituraModo';
+  const MODOS_LEITURA = [
+    { v: 'local', t: 'No navegador — gratuito, sem chave de API (confira os campos lidos)' },
+    { v: 'ia', t: 'Com IA (API do Claude) — mais completo, aceita foto; custo por leitura' }
+  ];
+
+  function modoLeituraPadrao() {
+    let m = null;
+    try { m = localStorage.getItem(CHAVE_MODO); } catch (e) { m = null; }
+    if (m === 'local' || m === 'ia') return m;
+    return App.IA.configurada() ? 'ia' : 'local';
+  }
+
   function escolherDatasheet(def, ctrl) {
-    if (exigeChaveIA()) return;
-    const estado = { modeloInteresse: '' };
+    const estado = { modeloInteresse: '', modo: modoLeituraPadrao() };
     const arquivo = h('input', { type: 'file', accept: 'application/pdf,.pdf,image/jpeg,image/png,image/webp' });
     UI.modal({
       titulo: 'Ler datasheet — ' + def.label,
       corpo: h('div',
-        h('p', 'Escolha o PDF do datasheet (ou uma foto nítida da ficha técnica). A IA lê todos os modelos da tabela e preenche os campos de ' + App.IA.NOMES_TIPO[def.id] + '.'),
+        h('p', 'Escolha o PDF do datasheet. Todos os modelos da tabela são lidos e preenchem os campos de ' + App.IA.NOMES_TIPO[def.id] + ' para você revisar.'),
         h('div.campo', h('label', 'Arquivo do datasheet'), arquivo),
-        UI.grade([{ k: 'modeloInteresse', label: 'Modelo de interesse (opcional)', placeholder: 'Ex.: SUN-6K-SG05LP1-EU', help: 'Todos os modelos são lidos; este vem marcado na lista.' }], estado, null, 1)),
+        UI.grade([
+          { k: 'modo', label: 'Como ler', type: 'select', options: MODOS_LEITURA, help: 'No navegador: o PDF não sai do computador; precisa ter texto (não escaneado). Com IA: lê qualquer formato e foto da ficha.' },
+          { k: 'modeloInteresse', label: 'Modelo de interesse (opcional)', placeholder: 'Ex.: SUN-6K-SG05LP1-EU', help: 'Todos os modelos são lidos; este vem marcado na lista.' }
+        ], estado, null, 1)),
       acoes: [
         { label: 'Cancelar' },
         {
           label: 'Ler datasheet', primario: true, onClick: function () {
             const f = arquivo.files[0];
             if (!f) { UI.toast('Escolha o arquivo do datasheet.', 'erro'); return false; }
+            try { localStorage.setItem(CHAVE_MODO, estado.modo); } catch (e) { /* preferência opcional */ }
+            const local = estado.modo === 'local';
+            if (!local && exigeChaveIA()) return false;
             progressoIA('Lendo datasheet…', [h('p', 'Arquivo: ', h('strong', f.name))], function (o) {
-              return App.IA.lerDatasheet(f, Object.assign(o, { tipo: def.id, modeloInteresse: estado.modeloInteresse }));
-            }, function (res) { mostrarLeitura(def, ctrl, { nome: f.name }, estado.modeloInteresse, res); });
+              const opc = Object.assign(o, { tipo: def.id, modeloInteresse: estado.modeloInteresse });
+              return local ? App.LeituraLocal.lerDatasheet(f, opc) : App.IA.lerDatasheet(f, opc);
+            }, function (res) { mostrarLeitura(def, ctrl, { nome: f.name }, estado.modeloInteresse, res); }, local);
           }
         }
       ]
@@ -343,8 +362,8 @@
     });
   }
 
-  /** Janela de progresso das chamadas à IA (tempo, etapa, recebimento e cancelamento). */
-  function progressoIA(titulo, linhas, tarefa, aoConcluir) {
+  /** Janela de progresso da leitura (tempo, etapa, recebimento e cancelamento); `local` = leitura no navegador. */
+  function progressoIA(titulo, linhas, tarefa, aoConcluir, local) {
     const controle = new AbortController();
     const tempo = h('strong', '0 s');
     const etapa = h('span.ajuda-sec', 'Iniciando…');
@@ -356,7 +375,7 @@
       titulo: titulo,
       corpo: h('div',
         linhas,
-        h('p', 'Modelo: ' + App.IA.nomeModelo(App.IA.config().modelo) + ' · tempo: ', tempo),
+        h('p', (local ? 'Leitura no navegador (sem IA)' : 'Modelo: ' + App.IA.nomeModelo(App.IA.config().modelo)) + ' · tempo: ', tempo),
         h('p', etapa),
         h('p.ajuda-sec', 'Pode levar alguns minutos. Não feche esta janela.')),
       acoes: [{ label: 'Cancelar' }],
@@ -400,8 +419,8 @@
       return { m: m, reg: reg, marcado: alvo ? i === iAlvo : (!interesse || destaque), destaque: destaque };
     });
     const corpo = h('div');
-    const info = [res.modelos.length + ' modelo(s) encontrado(s)', 'lido por ' + App.IA.nomeModelo(res.modeloIA)];
-    if (res.custoUSD != null) info.push('custo estimado US$ ' + U.fmt(res.custoUSD, 3));
+    const info = [res.modelos.length + ' modelo(s) encontrado(s)', res.local ? 'lido no navegador, sem custo' : 'lido por ' + App.IA.nomeModelo(res.modeloIA)];
+    if (res.custoUSD != null && !res.local) info.push('custo estimado US$ ' + U.fmt(res.custoUSD, 3));
     corpo.appendChild(h('p.ajuda-sec', info.join(' · ') + (res.fallback ? ' (refeito no modelo indicado pela Anthropic após recusa do filtro de segurança)' : '') + '.'));
     if (fonte.url) {
       corpo.appendChild(h('div.nota' + (fonte.viaPdf ? '' : '.aviso'), h('strong', 'Fonte: '), h('a', { href: fonte.url, target: '_blank', rel: 'noopener' }, fonte.url),

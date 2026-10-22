@@ -66,6 +66,7 @@ window.App = window.App || {};
 
   /** Nome de exibição do modelo (ex.: "Claude Opus 5.5"). */
   IA.nomeModelo = function (id) {
+    if (id === 'local') return 'leitura no navegador';
     const m = MODELOS.find(function (x) { return x.id === id; });
     return m ? m.nome.split(' — ')[0] : ((FALLBACK[id] || {}).nome || id || '');
   };

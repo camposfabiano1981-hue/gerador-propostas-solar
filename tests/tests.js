@@ -533,6 +533,51 @@
     }
   })();
 
+  // ---------------------------------------------------------------- leitura local do datasheet (sem IA)
+  const LL = App.LeituraLocal, LI = LL._internos;
+  igual('leitura local: números com vírgula, milhar, faixa e sinal', LI.numeros('1,500 V; 48,5; 40-560; -0.29%/°C; 0,045').join('|'), '1500|48.5|40|560|-0.29|0.045');
+  igual('leitura local: faixas', [LI.faixa('40~560'), LI.faixa('320 to 540+'), LI.faixa('16-60'), LI.faixa('≥ 400')].map(JSON.stringify).join(' '), '[40,560] [320,540] [16,60] [400,null]');
+  igual('leitura local: menor corrente por entrada', [LI.menorDaLista('4 × 16'), LI.menorDaLista('26+13'), LI.menorDaLista('16/32'), LI.menorDaLista('13')].join('|'), '16|13|16|13');
+  igual('leitura local: potência em kW (W, VA, kW)', [LI.kW('5000', 'Nominal Output Power (W)'), LI.kW('6.6', 'Max. Output Power (kVA)'), LI.kW('1600', 'Rated output power (VA)'), LI.kW('7800W', 'PV power')].join('|'), '5|6.6|1.6|7.8');
+  igual('leitura local: energia em kWh', [LI.kWh('3552', 'Nominal Capacity (Wh)'), LI.kWh('5.12', 'Energy (kWh)')].join('|'), '3.552|5.12');
+  igual('leitura local: garantias e degradação do módulo',
+    JSON.stringify(LI.garantiasModulo('12 year Product Workmanship Warranty\n30 year Power Warranty\n1% first year degradation\n0.4% Annual Power Attenuation')),
+    '{"garantiaProduto":12,"garantiaPerformance":30,"degradacao1Ano":1,"degradacaoAnual":0.4}');
+  ok('leitura local: códigos de modelo', ['GW5000-DNS-30', 'SUN-6K-SG05LP1-EU-SM2', 'HMS-2000-4T', 'US3000C', 'TSM-620NEG19RC.20'].every(LI.ehModelo) &&
+    !['IP66', 'MC4-EVO2', '220/230V', 'TS4', '1500V', 'RS485', 'IEC 61215', '50/60Hz'].some(LI.ehModelo));
+  // linhas sintéticas: rótulo em x = 30, colunas dos modelos a partir de x = 250 (passo 100)
+  const lin = function (y, rot, vals, extra) {
+    const cs = [{ t: rot, x: 30, x2: 30 + rot.length * 3.5, h: 7 }];
+    (vals || []).forEach(function (v, i) { const x = vals.length === 1 && extra && extra.span ? 350 : 250 + 100 * i; cs.push({ t: String(v), x: x - 10, x2: x + 10, h: 7 }); });
+    ((extra && extra.lado) || []).forEach(function (t, i) { cs.push({ t: t, x: 600 + i * 90, x2: 640 + i * 90, h: 7 }); });
+    return { y: y, h: 7, pagina: 1, celulas: cs };
+  };
+  const rLoc = LL.analisar([
+    { y: 820, h: 18, pagina: 1, celulas: [{ t: 'GoodWe DNS Series', x: 30, x2: 200, h: 18 }] },
+    lin(800, 'Technical Data', ['GW5000-DNS-30', 'GW6000-DNS-30', 'GW8000-DNS-30']),
+    lin(790, 'Input', []),
+    lin(780, 'Max. Input Voltage (V)', [600], { span: true }),
+    lin(770, 'MPPT Operating Voltage Range (V)', ['40~560']),
+    lin(760, 'Max. Input Current per MPPT (A)', ['16/16', '16/16', '16/32'], { lado: ['Communication', 'WiFi'] }),
+    lin(750, 'Number of MPP Trackers', [2], { span: true }),
+    lin(740, 'Output', []),
+    lin(730, 'Nominal Output Power (W)', [5000, 6000, 8000]),
+    lin(720, 'Grid Type', ['Single phase', 'Single phase', 'Single phase'])
+  ], 'inversor');
+  igual('leitura local: modelos pelo cabeçalho', rLoc.modelos.map(function (m) { return m.modelo; }).join(','), 'GW5000-DNS-30,GW6000-DNS-30,GW8000-DNS-30');
+  igual('leitura local: valor mesclado vale para todos e por coluna', rLoc.modelos.map(function (m) { return [m.vmaxCC, m.mpptMin, m.mpptMax, m.mppts, m.potencia, m.imaxMppt].join('/'); }).join(' '),
+    '600/40/560/2/5/16 600/40/560/2/6/16 600/40/560/2/8/16');
+  ok('leitura local: tabela ao lado na mesma linha não invade as colunas', rLoc.modelos.every(function (m) { return m.monitoramento === 'WiFi' && m.fabricante === 'GoodWe' && m.fases === 'Monofásico'; }));
+  const rPar = LL.analisar([
+    { y: 820, h: 24, pagina: 1, celulas: [{ t: 'US3000C', x: 30, x2: 130, h: 24 }] },
+    { y: 800, h: 8, pagina: 1, celulas: [{ t: 'Nominal Voltage (V)', x: 30, x2: 110, h: 8 }, { t: '48', x: 170, x2: 180, h: 8 }, { t: 'Nominal Capacity (Wh)', x: 310, x2: 400, h: 8 }, { t: '3552', x: 450, x2: 470, h: 8 }] },
+    { y: 784, h: 8, pagina: 1, celulas: [{ t: 'Charge Current (A)', x: 30, x2: 110, h: 8 }, { t: 'Recommend 37 / Max 74', x: 170, x2: 260, h: 8 }, { t: 'Discharge Current (A)', x: 310, x2: 400, h: 8 }, { t: 'Recommend 37 / Max 74', x: 450, x2: 540, h: 8 }] },
+    { y: 768, h: 8, pagina: 1, celulas: [{ t: 'Depth of Discharge', x: 30, x2: 110, h: 8 }, { t: '95%', x: 170, x2: 185, h: 8 }, { t: 'Cycle Life', x: 310, x2: 360, h: 8 }, { t: '>6000', x: 450, x2: 470, h: 8 }] },
+    { y: 752, h: 8, pagina: 1, celulas: [{ t: 'Battery: LiFePO4 (Pylontech)', x: 30, x2: 150, h: 8 }] }
+  ], 'bateria');
+  igual('leitura local: tabela de pares rótulo/valor (bateria de um modelo)', [rPar.modelos[0].modelo, rPar.modelos[0].tensao, rPar.modelos[0].energia, rPar.modelos[0].iCargaMax, rPar.modelos[0].iDescargaMax,
+    rPar.modelos[0].dod, rPar.modelos[0].ciclos, rPar.modelos[0].quimica, rPar.modelos[0].tipoBateria, rPar.modelos[0].fabricante].join('|'), 'US3000C|48|3.552|37|37|95|6000|LiFePO4|LV|Pylontech');
+
   // ---------------------------------------------------------------- valores por extenso
   igual('extenso: valor do contrato modelo', U.extenso(86110.55), 'Oitenta e seis mil, cento e dez reais e cinquenta e cinco centavos');
   igual('extenso: 12.700,00', U.extenso(12700), 'Doze mil e setecentos reais');

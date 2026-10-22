@@ -47,7 +47,9 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 
 **Cadastro pelo datasheet** — módulos, inversores on-grid, microinversores, inversores híbridos e baterias **não têm catálogo de fábrica**: são cadastrados a partir do datasheet do modelo exato, porque esses dados comandam o dimensionamento.
 - Os formulários seguem as seções do datasheet (módulo: dados elétricos STC, coeficientes de temperatura, limites, mecânica e garantia; inversor: entrada CC, saída CA, bateria, backup, eficiência, geral). Os campos marcados com ★ entram no cálculo; a coluna **Datasheet** da lista mostra os itens completos, os que têm campos ★ vazios e os que aguardam revisão.
-- **📄 Ler datasheet**: envie o PDF (ou uma foto) da ficha técnica e a IA (API do Claude, da Anthropic) preenche os campos de cada modelo da tabela.
+- **📄 Ler datasheet**: envie o PDF da ficha técnica e escolha **como ler**:
+  - **No navegador** (gratuito, sem chave): o PDF é aberto no próprio computador com o PDF.js, o texto é organizado em linhas e colunas pela posição e os campos são procurados pelos rótulos usuais das fichas (inglês e português). Identifica as colunas de cada modelo, tabelas lado a lado, faixas ("40~560"), correntes por MPPT ("16/16", "4 × 16"), W/kW e Wh/kWh. Precisa de PDF com texto (não escaneado); a janela informa quantos campos ★ foram encontrados.
+  - **Com IA** (API do Claude, da Anthropic): lê qualquer formato, inclusive foto da ficha técnica, com custo por leitura.
 - **🔎 Pesquisar datasheet**: informe fabricante e modelo; a IA procura na internet o datasheet oficial (de preferência o PDF do fabricante), lê o PDF original e mostra a fonte. Se o PDF não puder ser baixado, usa a transcrição feita na pesquisa e avisa para conferir com atenção.
 - **🔄** (em cada item da lista): pesquisa o datasheet do item e atualiza os dados técnicos, mantendo preço, descrição e observações.
 - Os itens entram marcados como **Revisar**; confira com o documento, informe o preço dos novos e salve.
@@ -155,6 +157,7 @@ css/app.css           Estilos
 js/util.js            Formatação pt-BR, números, datas, DOM
 js/defaults.js        Dados padrão (empresa, premissas, textos, catálogo de estruturas e materiais)
 js/datasheet.js       Campos de datasheet de módulos, inversores, microinversores, híbridos e baterias (formulários e esquema da leitura por IA)
+js/datasheet-local.js Leitura de datasheets no navegador, sem IA (PDF.js carregado sob demanda)
 js/ia.js              Leitura e pesquisa de datasheets com a API do Claude (SDK oficial carregado sob demanda)
 js/store.js           Persistência local, numeração e backup
 js/energia.js         Tarifas (convencional, branca, verde, azul), contas, compensação, cenários e recomendação
@@ -177,4 +180,4 @@ tools/serve.ps1       Servidor local opcional (Windows/PowerShell)
 
 ## Testes
 
-Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; as regras dos dados de datasheet (Voc no frio e Vmp no calor pelo coeficiente do módulo, tensão máxima do sistema, fusível de string, área e degradação; strings e correntes por MPPT, microinversores, tensão e paralelismo do banco, eficiência de ciclo), o esquema da leitura por IA e a migração da base; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.
+Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; as regras dos dados de datasheet (Voc no frio e Vmp no calor pelo coeficiente do módulo, tensão máxima do sistema, fusível de string, área e degradação; strings e correntes por MPPT, microinversores, tensão e paralelismo do banco, eficiência de ciclo), o esquema da leitura por IA, a leitura no navegador (números, faixas, colunas de modelos, tabelas lado a lado e de pares) e a migração da base; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.
