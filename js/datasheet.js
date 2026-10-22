@@ -220,16 +220,18 @@ window.App = window.App || {};
   }
 
   /** Esquema JSON (respostas estruturadas) da leitura do datasheet: um objeto por modelo/coluna. */
+  /*
+   * Todos os campos são texto obrigatório ("" = ausente no datasheet): as respostas estruturadas limitam a 16 os campos
+   * anuláveis (anyOf/null) e a 24 os opcionais, e uma ficha tem perto de 40 campos. Os números chegam como texto e
+   * são convertidos em converter().
+   */
   function esquema(tipo) {
     const props = {}, req = [];
     todos(tipo).forEach(function (c) {
-      const desc = c.label + (c.un ? ' (' + c.un + ')' : '') + (c.ia ? ' — ' + c.ia : '');
-      let tipoJson;
-      if (c.tipo === 'texto') tipoJson = { type: 'string' };
-      else if (c.tipo === 'int') tipoJson = { type: 'integer' };
-      else if (c.tipo === 'opcao') tipoJson = { type: 'string', enum: c.opcoes };
-      else tipoJson = { type: 'number' };
-      props[c.k] = { description: desc, anyOf: [tipoJson, { type: 'null' }] };
+      const desc = c.label + (c.un ? ' (' + c.un + ')' : '') + (c.ia ? ' — ' + c.ia : '') +
+        (c.tipo === 'num' || c.tipo === 'int' ? '. Number only, as text with a decimal point, no unit and no thousands separator' : '') +
+        '. Empty string if not in the datasheet.';
+      props[c.k] = c.tipo === 'opcao' ? { type: 'string', enum: c.opcoes.concat(['']), description: desc } : { type: 'string', description: desc };
       req.push(c.k);
     });
     return {
@@ -248,6 +250,16 @@ window.App = window.App || {};
     };
   }
 
+  /** Número de um valor lido ("48.5", "-0,25", "1,500.5", 620); NaN se não houver. */
+  function numero(v) {
+    if (typeof v === 'number') return v;
+    let s = String(v == null ? '' : v).trim().replace(/[\u2212\u2013]/g, '-');
+    if (!s) return NaN;
+    s = s.indexOf('.') >= 0 ? s.replace(/,/g, '') : s.replace(',', '.');
+    const m = s.match(/-?\d+(\.\d+)?/);
+    return m ? Number(m[0]) : NaN;
+  }
+
   /** Converte um modelo lido do datasheet em campos do cadastro (somente valores válidos). */
   function converter(tipo, m) {
     const out = { tipo: tipo, ativo: true, preco: 0 };
@@ -256,7 +268,7 @@ window.App = window.App || {};
       if (v == null || v === '') return;
       if (c.tipo === 'texto') { const s = String(v).trim(); if (s) out[c.k] = s; }
       else if (c.tipo === 'opcao') { if (c.opcoes.indexOf(v) >= 0) out[c.k] = v; }
-      else { const n = Number(v); if (isFinite(n) && (n >= 0 || c.neg)) out[c.k] = c.tipo === 'int' ? Math.round(n) : n; }
+      else { const n = numero(v); if (isFinite(n) && (n >= 0 || c.neg)) out[c.k] = c.tipo === 'int' ? Math.round(n) : n; }
     });
     // microinversor: cada entrada tem o próprio MPPT (regra "por MPPT" dos materiais)
     if (tipo === 'micro' && out.modulosPorUnidade && !out.mppts) out.mppts = out.modulosPorUnidade;

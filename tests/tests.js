@@ -385,8 +385,11 @@
   DS.TIPOS.forEach(function (t) {
     const sch = DS.esquema(t);
     const item = sch.properties.modelos.items;
-    ok('datasheet ' + t + ': esquema fechado, campos obrigatórios e anuláveis', sch.additionalProperties === false && item.additionalProperties === false &&
-      item.required.length === DS.todos(t).length && item.required.every(function (k) { return item.properties[k].anyOf.some(function (x) { return x.type === 'null'; }); }));
+    const txt = JSON.stringify(sch);
+    ok('datasheet ' + t + ': esquema fechado e todos os campos obrigatórios (sem opcionais)', sch.additionalProperties === false && item.additionalProperties === false &&
+      item.required.length === DS.todos(t).length && Object.keys(item.properties).length === item.required.length);
+    ok('datasheet ' + t + ': sem campos anuláveis/uniões (limite de 16 das respostas estruturadas)', txt.indexOf('anyOf') < 0 && txt.indexOf('"null"') < 0 && !/"type":\[/.test(txt));
+    ok('datasheet ' + t + ': campos de texto com opção vazia nas listas', item.required.every(function (k) { const pr = item.properties[k]; return pr.type === 'string' && (!pr.enum || pr.enum.indexOf('') >= 0); }));
     ok('datasheet ' + t + ': sem restrições não suportadas pelas respostas estruturadas', JSON.stringify(sch).search(/"(minimum|maximum|minLength|maxLength|multipleOf)"/) < 0);
     igual('datasheet ' + t + ': campos únicos', new Set(DS.todos(t).map(function (c) { return c.k; })).size, DS.todos(t).length);
   });
@@ -394,6 +397,9 @@
   ok('datasheet: conversão limpa textos e descarta opção inválida, negativo e nulo', conv.fabricante === 'Hoymiles' && conv.fases === undefined && conv.vmaxCC === undefined &&
     conv.iscMaxMppt === 25 && !('potModuloMin' in conv) && conv.tipo === 'micro' && conv.preco === 0);
   igual('datasheet: inteiro arredondado e MPPTs do microinversor = entradas', conv.modulosPorUnidade + '/' + conv.mppts, '4/4');
+  const convTxt = DS.converter('modulo', { fabricante: 'T', modelo: 'M', potencia: '620', voc: '48,5', vmp: '40.24', coefVoc: '\u22120.25', vMaxSistema: '1500', isc: '', celulas: '132', bifacial: '' });
+  igual('datasheet: números lidos como texto (vírgula, sinal de menos, vazio)', [convTxt.potencia, convTxt.voc, convTxt.vmp, convTxt.coefVoc, convTxt.vMaxSistema, convTxt.celulas, 'isc' in convTxt, 'bifacial' in convTxt].join('|'),
+    '620|48.5|40.24|-0.25|1500|132|false|false');
   ok('datasheet: formulário marca com ★ só os campos do dimensionamento', DS.camposForm('hibrido').some(function (d) { return d.k === 'vBatMin' && /^★/.test(d.label); }) &&
     DS.camposForm('hibrido').some(function (d) { return d.k === 'ip' && !/★/.test(d.label); }));
   igual('datasheet: campos ★ vazios para revisão', DS.faltando('bateria', { energia: 5, tensao: 51.2 }).indexOf('Energia nominal'), -1);
