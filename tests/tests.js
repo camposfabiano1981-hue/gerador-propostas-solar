@@ -31,7 +31,7 @@
       empresa: U.clone(D.empresa),
       premissas: prem,
       textos: U.clone(D.textos),
-      equipamentos: U.clone(D.equipamentos),
+      equipamentos: U.clone(D.equipamentos.concat(window.EQUIP_TESTE)),
       concessionarias: [{ id: 'c1', nome: 'Energisa MS', uf: 'MS', tarifas: { B1: 0.9762, B2: 0.72, B3: 0.98 }, tusdFioB: 0.08 }],
       localidades: [Object.assign(U.clone(D.localidades[0]), { concessionariaId: 'c1' })],
       pagamentos: [
@@ -183,7 +183,7 @@
   const rG9 = C.calcular(Object.assign(U.clone(pG), { cenarios: { backup: { n: 9 } } }), ctxG);
   ok('híbrido: alerta de capacidade acima do máximo da BYD HVS (38,4 kWh)', rG9.alertas.some(function (a) { return /acima do máximo do sistema/.test(a.msg); }));
   ok('híbrido: configuração de alta tensão sem "em paralelo"', /alta tensão/.test(rG9.hibrido.configuracao) && !/paralelo/.test(rG9.hibrido.configuracao), rG9.hibrido.configuracao);
-  ok('catálogo: capacidade máxima das baterias HV', D.equipamentos.find(function (e) { return e.id === 'bat-byd-hvs51'; }).capMaxSistema === 38.4);
+  ok('base antiga: capacidade máxima das baterias HV (migração)', D.CAP_MAX_SISTEMA['bat-byd-hvs51'] === 38.4 && window.EQUIP_TESTE.find(function (e) { return e.id === 'bat-byd-hvs51'; }).capMaxSistema === 38.4);
 
   // ---------------------------------------------------------------- híbrido: consumo próprio, perdas, balanço, potências e limites
   const kwh40 = 40 * 24 * 365 / 12 / 1000;
@@ -376,9 +376,136 @@
   igual('solo: mesas combinadas (2 × 12 + 1 × 4)', solo.filter(function (i) { return /Mesa de solo/.test(i.descricao); }).map(function (i) { return i.qtd + '×' + i.descricao.match(/p\/ (\d+)/)[1]; }).join(', '), '2×12, 1×4');
   ok('fibrocimento: somente o kit original (sem alternativas)', itensTelhado('Fibrocimento', 9).every(function (i) { return /Solfácil/.test(i.descricao); }));
   ok('catálogo: ids únicos', (function () { const v = {}; return D.equipamentos.every(function (e) { if (v[e.id]) return false; v[e.id] = true; return true; }); })());
-  ok('catálogo: fabricantes pedidos presentes', ['Huawei', 'Sungrow', 'Sofar', 'GoodWe', 'Solis', 'Hoymiles', 'Trina Solar', 'Astronergy', 'TCL Solar', 'OSDA', 'Honor Solar', 'ERA Solar']
+  ok('catálogo: fabricantes de módulos presentes', ['Trina Solar', 'Astronergy', 'TCL Solar', 'OSDA', 'Honor Solar', 'ERA Solar']
     .every(function (f) { return D.equipamentos.some(function (e) { return e.fabricante === f; }); }));
-  ok('catálogo: microinversores Sungrow, GoodWe e Hoymiles', ['Sungrow', 'GoodWe', 'Hoymiles'].every(function (f) { return D.equipamentos.some(function (e) { return e.tipo === 'micro' && e.fabricante === f; }); }));
+  ok('catálogo: sem inversores, microinversores, híbridos e baterias (cadastro pelo datasheet)', !D.equipamentos.some(function (e) { return ['inversor', 'micro', 'hibrido', 'bateria'].indexOf(e.tipo) >= 0; }));
+  ok('fixture de testes: ids únicos', (function () { const v = {}; return D.equipamentos.concat(window.EQUIP_TESTE).every(function (e) { if (v[e.id]) return false; v[e.id] = true; return true; }); })());
+
+  // ---------------------------------------------------------------- datasheet: campos, esquema da leitura por IA e conversão
+  const DS = App.Datasheet;
+  DS.TIPOS.forEach(function (t) {
+    const sch = DS.esquema(t);
+    const item = sch.properties.modelos.items;
+    ok('datasheet ' + t + ': esquema fechado, campos obrigatórios e anuláveis', sch.additionalProperties === false && item.additionalProperties === false &&
+      item.required.length === DS.todos(t).length && item.required.every(function (k) { return item.properties[k].anyOf.some(function (x) { return x.type === 'null'; }); }));
+    ok('datasheet ' + t + ': sem restrições não suportadas pelas respostas estruturadas', JSON.stringify(sch).search(/"(minimum|maximum|minLength|maxLength|multipleOf)"/) < 0);
+    igual('datasheet ' + t + ': campos únicos', new Set(DS.todos(t).map(function (c) { return c.k; })).size, DS.todos(t).length);
+  });
+  const conv = DS.converter('micro', { fabricante: ' Hoymiles ', modelo: 'HMS-2000-4T', fases: 'Trifásico?', modulosPorUnidade: 4.2, potencia: 2, vmaxCC: -1, iscMaxMppt: '25', potModuloMin: null });
+  ok('datasheet: conversão limpa textos e descarta opção inválida, negativo e nulo', conv.fabricante === 'Hoymiles' && conv.fases === undefined && conv.vmaxCC === undefined &&
+    conv.iscMaxMppt === 25 && !('potModuloMin' in conv) && conv.tipo === 'micro' && conv.preco === 0);
+  igual('datasheet: inteiro arredondado e MPPTs do microinversor = entradas', conv.modulosPorUnidade + '/' + conv.mppts, '4/4');
+  ok('datasheet: formulário marca com ★ só os campos do dimensionamento', DS.camposForm('hibrido').some(function (d) { return d.k === 'vBatMin' && /^★/.test(d.label); }) &&
+    DS.camposForm('hibrido').some(function (d) { return d.k === 'ip' && !/★/.test(d.label); }));
+  igual('datasheet: campos ★ vazios para revisão', DS.faltando('bateria', { energia: 5, tensao: 51.2 }).indexOf('Energia nominal'), -1);
+
+  // ---------------------------------------------------------------- datasheet no dimensionamento: eficiência, DoD e potências
+  const premD = D.premissas;
+  perto('η de ciclo: sem dados = premissa', C.eficienciaCiclo({}, {}, premD, false), 0.92, 1e-12);
+  perto('η de ciclo: bateria 96% × inversor típico 97%', C.eficienciaCiclo({ eficiencia: 96 }, {}, premD, false), 0.96 * 0.97, 1e-12);
+  perto('η de ciclo: bateria típica 95% × inversor 94,5%', C.eficienciaCiclo({}, { efBateria: 94.5 }, premD, false), 0.95 * 0.945, 1e-12);
+  perto('η de ciclo: BESS usa só a do gabinete', C.eficienciaCiclo({ eficiencia: 90 }, { efBateria: 97 }, premD, true), 0.9, 1e-12);
+  perto('DoD: energia útil ÷ nominal', C.dodBateria({ energia: 5.12, energiaUtil: 4.6 }, '', premD), 4.6 / 5.12, 1e-12);
+  perto('DoD: o da proposta prevalece', C.dodBateria({ dod: 95 }, 80, premD), 0.8, 1e-12);
+  perto('bateria: potência contínua = corrente × tensão', C.potenciaUnidade({ iDescargaMax: 100, tensao: 51.2 }), 5.12, 1e-12);
+  perto('inversor: potência de bateria = corrente máx. × tensão do banco', C.potenciaBateriaInversor({ iDescargaMax: 135 }, 51.2, 'descarga'), 6.912, 1e-12);
+  perto('inversor: potência de bateria do datasheet prevalece', C.potenciaBateriaInversor({ pBateriaMax: 6, iDescargaMax: 135 }, 51.2), 6, 1e-12);
+  const invPFV = { id: 'a', tipo: 'inversor', potencia: 5, fases: 'Monofásico', pFVMax: 5.5 };
+  igual('sugestão: respeita a entrada FV máxima do datasheet', C.sugerirInversor(6, 'mono', [invPFV, { id: 'b', tipo: 'inversor', potencia: 5, fases: 'Monofásico' }], premD, 0, 0, 0).inv.id, 'b');
+
+  // ---------------------------------------------------------------- datasheet no dimensionamento: strings e correntes por MPPT
+  const modDS = { id: 'mod-ds', tipo: 'modulo', ativo: true, fabricante: 'X', modelo: 'M620', potencia: 620, voc: 48.5, vmp: 40.2, isc: 16.3, area: 2.7 };
+  const invDS = { id: 'inv-ds', tipo: 'inversor', ativo: true, fabricante: 'Y', modelo: 'Z-5K', potencia: 5, fases: 'Monofásico', mppts: 2, stringsPorMppt: 1,
+    vmaxCC: 600, mpptMin: 90, mpptMax: 520, vPartida: 100, imaxMppt: 16, iscMaxMppt: 20 };
+  const calcS = function (inv, mod, extra) {
+    const c = ctxReferencia();
+    c.equipamentos.push(Object.assign({}, modDS, mod), Object.assign({}, invDS, inv));
+    return C.calcular(Object.assign(propostaReferencia(c), { moduloId: 'mod-ds', inversorId: 'inv-ds', nModulos: 9 }, extra), c);
+  };
+  const temAlerta = function (r, nivel, rx) { return r.alertas.some(function (a) { return a.nivel === nivel && rx.test(a.msg); }); };
+  const rStr = calcS({}, {});
+  const cStr = ctxReferencia();
+  cStr.equipamentos.push(modDS, invDS);
+  const docStr = textoModelo(App.Documento.montar(Object.assign(propostaReferencia(cStr), { moduloId: 'mod-ds', inversorId: 'inv-ds', nModulos: 9 }), rStr, cStr, cStr.clientes[0], { w: 1400, h: 752 })).join('\n');
+  ok('documento: arranjo elétrico com strings por MPPT e Isc', docStr.indexOf('1 string(s) de até 9 módulos — 1 string(s) por MPPT (Isc 16,3 A por MPPT / máx. 20 A)') >= 0);
+  ok('strings: arranjo dentro do datasheet sem alertas', !rStr.alertas.some(function (a) { return /MPPT|strings para|curto-circuito|partida|limitação/.test(a.msg); }), rStr.alertas.map(function (a) { return a.msg; }).join(' | '));
+  igual('strings: 1 string de 9 por MPPT, 2 entradas', [rStr.strings.nStrings, rStr.strings.porString, rStr.strings.porMppt, rStr.strings.entradas].join('/'), '1/9/1/2');
+  perto('strings: Imp do módulo = Pmáx ÷ Vmp', rStr.strings.impMppt, 620 / 40.2, 1e-9);
+  ok('strings: Isc do módulo acima do máximo por MPPT = erro', temAlerta(calcS({}, { isc: 21 }), 'erro', /curto-circuito por MPPT/));
+  ok('strings: Imp acima da corrente máx. de entrada = aviso de limitação', temAlerta(calcS({ imaxMppt: 14 }, {}), 'aviso', /limitação de corrente/));
+  const rStr2 = calcS({ mppts: 1, stringsPorMppt: 2 }, {}, { nModulos: 20, nInversores: 1 });
+  ok('strings: 2 strings no mesmo MPPT somam o Isc', rStr2.strings.porMppt === 2 && temAlerta(rStr2, 'erro', /2 × 16,3 A = 32,6 A/), rStr2.alertas.map(function (a) { return a.msg; }).join(' | '));
+  ok('strings: mais strings que entradas = erro', temAlerta(calcS({}, {}, { nModulos: 30, nInversores: 1 }), 'erro', /3 strings para 2 entradas/));
+  ok('strings: tensão acima da faixa MPPT = aviso', temAlerta(calcS({ mpptMax: 300 }, {}), 'aviso', /acima da faixa MPPT máxima/));
+  ok('strings: Voc abaixo da tensão de partida = aviso', temAlerta(calcS({}, {}, { nModulos: 2 }), 'aviso', /tensão de partida/));
+
+  // ---------------------------------------------------------------- datasheet no dimensionamento: microinversor
+  const calcM = function (inv, mod) {
+    const c = ctxReferencia();
+    c.equipamentos.push(Object.assign({}, modDS, mod), Object.assign({ id: 'mic-ds', tipo: 'micro', ativo: true, fabricante: 'H', modelo: 'M-2000', potencia: 2, fases: 'Monofásico',
+      modulosPorUnidade: 4, mppts: 4, iscMaxMppt: 20, imaxMppt: 16, maxPorRamal: 3 }, inv));
+    return C.calcular(Object.assign(propostaReferencia(c), { topologia: 'micro', moduloId: 'mod-ds', inversorId: 'mic-ds', nModulos: 40 }), c);
+  };
+  const rMic = calcM({}, {});
+  igual('micro: 10 unidades em 4 ramais CA (máx. 3 por ramal)', rMic.nInversores + '/' + rMic.ramaisMicro, '10/4');
+  ok('micro: Isc do módulo acima do máximo por entrada = erro', temAlerta(calcM({}, { isc: 21 }), 'erro', /por entrada do microinversor/));
+  ok('micro: Imp acima da corrente máx. por entrada = aviso', temAlerta(calcM({ imaxMppt: 14 }, {}), 'aviso', /limitação de corrente/));
+
+  // ---------------------------------------------------------------- datasheet no dimensionamento: inversor híbrido e baterias
+  const hibDS = { id: 'hib-ds', tipo: 'hibrido', ativo: true, fabricante: 'D', modelo: 'H-6K', potencia: 6, potenciaBackup: 6, fases: 'Monofásico', mppts: 2, tipoBateria: 'LV',
+    vBatMin: 40, vBatMax: 60, iDescargaMax: 100, iCargaMax: 100, efBateria: 95, paraleloMax: 1 };
+  const batDS = { id: 'bat-ds', tipo: 'bateria', ativo: true, fabricante: 'B', modelo: 'B12', energia: 2.4, tensao: 12, tipoBateria: 'LV', eficiencia: 85, dod: 50, picoKW: 0.2 };
+  let ultimoH = null;
+  const calcH = function (inv, bat, extra) {
+    const c = ctxReferencia();
+    c.premissas = U.clone(D.premissas);
+    c.equipamentos.push(Object.assign({}, hibDS, inv), Object.assign({}, batDS, bat));
+    ultimoH = { c: c };
+    return C.calcular(ultimoH.p = Object.assign(propostaReferencia(c), { tipoSistema: 'hibrido', inversorId: 'hib-ds', bateriaId: 'bat-ds', nModulos: 10, cargas: U.clone(D.cargasExemplo),
+      autonomiaHoras: 6, cenarioEscolhido: 'backup', cenarios: { backup: { n: 4 } }, valorTotal: 32000, premissas: c.premissas }, extra), c);
+  };
+  const rHd = calcH({}, {});
+  const docHd = textoModelo(App.Documento.montar(ultimoH.p, rHd, ultimoH.c, ultimoH.c.clientes[0], { w: 1400, h: 752 })).join('\n');
+  ok('documento: tensão do banco com a faixa do inversor', docHd.indexOf('48 V — faixa do inversor 40–60 V') >= 0);
+  igual('híbrido: baterias de 12 V em série até a faixa do inversor (40–60 V)', rHd.hibrido.serie + ' × 12 V = ' + rHd.hibrido.tensaoBanco + ' V', '4 × 12 V = 48 V');
+  perto('híbrido: η de ciclo = bateria 85% × inversor 95%', rHd.hibrido.eficiencia, 0.85 * 0.95, 1e-12);
+  perto('híbrido: capacidade necessária usa a η dos datasheets', rHd.hibrido.capNecessaria, rHd.hibrido.energiaBackup / 1000 / (0.5 * 0.85 * 0.95), 1e-9);
+  perto('híbrido: potência de bateria do inversor = 100 A × 48 V', rHd.hibrido.pBateriaInv, 4.8, 1e-9);
+  ok('híbrido: pico de partida acima do pico das baterias = aviso', temAlerta(rHd, 'aviso', /potência de pico do banco de baterias/));
+  ok('híbrido: banco fora da faixa de tensão do inversor = erro', temAlerta(calcH({ tensaoBateria: 48 }, { tensao: 100 }), 'erro', /fora da faixa de tensão de bateria do inversor/));
+  ok('híbrido: alta tensão fora da faixa do inversor = erro', temAlerta(calcH({ tipoBateria: 'HV', vBatMin: 250, vBatMax: 600 }, { tipoBateria: 'HV', tensao: 204.8, vMin: 150, vMax: 220 }), 'erro', /fora da faixa de bateria do inversor/));
+  ok('híbrido: mais inversores que o paralelismo do datasheet = aviso', temAlerta(calcH({}, {}, { nInversores: 2 }), 'aviso', /operação sem paralelismo/));
+  ok('híbrido: dentro dos limites, sem alerta de tensão', !rHd.alertas.some(function (a) { return /faixa de tensão|faixa de bateria/.test(a.msg); }));
+
+  // ---------------------------------------------------------------- base v6 → v7: catálogo zerado sem mudar propostas
+  (function () {
+    const S = App.Store;
+    const chaves = ['col.equipamentos', 'col.propostas', 'col.localidades', 'col.concessionarias', 'col.pagamentos', 'removidos.v7', 'v'];
+    const guardado = {};
+    chaves.forEach(function (k) { guardado[k] = localStorage.getItem('gsp.' + k); });
+    try {
+      const cm = ctxReferencia();
+      ['equipamentos', 'localidades', 'concessionarias', 'pagamentos'].forEach(function (k) { localStorage.setItem('gsp.col.' + k, JSON.stringify(cm[k])); });
+      const fixa = Object.assign(propostaReferencia(cm), { id: 'pf' });
+      const auto = Object.assign(propostaReferencia(cm), { id: 'pa', inversorId: '' });
+      localStorage.setItem('gsp.col.propostas', JSON.stringify([fixa, auto]));
+      const invAuto = C.calcular(U.clone(auto), C.contexto());
+      S.migrar(6);
+      const depois = S.list('equipamentos');
+      const pa = S.get('propostas', 'pa');
+      const rAuto = C.calcular(U.clone(pa), C.contexto());
+      igual('migração v7: versão da base', localStorage.getItem('gsp.v'), '7');
+      ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
+      igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
+      ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
+      igual('migração v7: só ficam os equipamentos em uso', depois.filter(function (e) { return DS.TIPOS.indexOf(e.tipo) >= 0; }).length, 2);
+      igual('migração v7: cópia de segurança dos removidos', S.removidosV7().length, window.EQUIP_TESTE.length - 2);
+      igual('migração v7: restauração devolve os removidos', S.restaurarRemovidosV7(), window.EQUIP_TESTE.length - 2);
+      ok('migração v7: cópia descartada após restaurar', !S.removidosV7().length);
+    } finally {
+      chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
+    }
+  })();
 
   // ---------------------------------------------------------------- valores por extenso
   igual('extenso: valor do contrato modelo', U.extenso(86110.55), 'Oitenta e seis mil, cento e dez reais e cinquenta e cinco centavos');

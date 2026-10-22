@@ -7,7 +7,9 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 6;
+  const VERSAO = 7;
+  // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
+  const TIPOS_DATASHEET = ['inversor', 'micro', 'hibrido', 'bateria'];
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
@@ -91,7 +93,73 @@ window.App = window.App || {};
       // portfólio de projetos realizados (seção da proposta após a apresentação da empresa)
       if (ler('col.projetos', null) == null) gravar('col.projetos', []);
     }
+    if (v < 7) zerarCatalogoDatasheet();
     gravar('v', VERSAO);
+  };
+
+  /**
+   * Versão 7: inversores, microinversores, híbridos e baterias passam a ser cadastrados pelo datasheet. Os que não estão em
+   * nenhuma proposta são removidos (cópia em gsp.removidos.v7, restaurável); os usados ficam inativos para a proposta continuar
+   * igual. Propostas com escolha automática recebem o equipamento que o cálculo já usava, para não mudarem de resultado.
+   */
+  function zerarCatalogoDatasheet() {
+    const eqs = Store.list('equipamentos');
+    const propostas = Store.list('propostas');
+    const C = App.Calc;
+    if (C && propostas.length) {
+      let ctx = null;
+      try { ctx = C.contexto(); } catch (e) { ctx = null; }
+      propostas.forEach(function (p) {
+        if (!ctx || (p.inversorId && p.bateriaId)) return;
+        try {
+          const r = C.calcular(U.clone(p), ctx);
+          const inv = r.inversor, bat = r.hibrido && r.hibrido.bateria;
+          if (!p.inversorId && inv && TIPOS_DATASHEET.indexOf(inv.tipo) >= 0) {
+            p.inversorId = inv.id;
+            // com o inversor fixado a quantidade automática pode mudar; mantém a do cálculo original
+            if (!(U.num(p.nInversores) > 0) && C.calcular(U.clone(p), ctx).nInversores !== r.nInversores) p.nInversores = r.nInversores;
+          }
+          if (!p.bateriaId && bat && bat.tipo === 'bateria') p.bateriaId = bat.id;
+        } catch (e) { /* proposta incompleta: segue sem fixar */ }
+      });
+      gravar('col.propostas', propostas);
+    }
+    const usados = {};
+    propostas.forEach(function (p) {
+      [p.inversorId, p.bateriaId].concat((p.itens || []).map(function (i) { return i.equipamentoId; })).forEach(function (id) { if (id) usados[id] = true; });
+    });
+    const manter = [], removidos = [];
+    eqs.forEach(function (e) {
+      if (TIPOS_DATASHEET.indexOf(e.tipo) < 0) { manter.push(e); return; }
+      if (usados[e.id]) {
+        e.ativo = false;
+        e.arquivado = true;
+        manter.push(e);
+      } else removidos.push(e);
+    });
+    if (removidos.length) gravar('removidos.v7', removidos);
+    gravar('col.equipamentos', manter);
+  }
+
+  /** Equipamentos removidos na versão 7 (cópia de segurança). */
+  Store.removidosV7 = function () { return ler('removidos.v7', []) || []; };
+
+  /** Devolve ao cadastro os equipamentos removidos na versão 7 (inativos, para revisão com o datasheet). */
+  Store.restaurarRemovidosV7 = function () {
+    const lista = Store.removidosV7();
+    const eqs = Store.list('equipamentos');
+    const ids = {};
+    eqs.forEach(function (e) { ids[e.id] = true; });
+    let n = 0;
+    lista.forEach(function (e) { if (!ids[e.id]) { e.ativo = false; eqs.push(e); n++; } });
+    gravar('col.equipamentos', eqs);
+    Store.descartarRemovidosV7();
+    return n;
+  };
+
+  Store.descartarRemovidosV7 = function () {
+    delete mem['removidos.v7'];
+    try { localStorage.removeItem(PREFIX + 'removidos.v7'); } catch (e) { /* indisponível */ }
   };
 
   Store.semear = function () {

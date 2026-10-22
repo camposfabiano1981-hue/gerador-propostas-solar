@@ -6,7 +6,7 @@
   <meta name="description" content="Plataforma para elaboração de propostas comerciais de energia solar fotovoltaica (On-Grid e Híbrido) com geração em Word (.docx).">
   <title>Propostas Solar</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='14' fill='%23F59E0B'/%3E%3Cg stroke='%231E3A8A' stroke-width='5' stroke-linecap='round'%3E%3Cpath d='M32 4v8M32 52v8M4 32h8M52 32h8M12 12l6 6M46 46l6 6M12 52l6-6M46 18l6-6'/%3E%3C/g%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/app.css?v=2026.10.21.2">
+  <link rel="stylesheet" href="css/app.css?v=2026.10.22.1">
 </head>
 <body>
   <header class="barra-mobile">
@@ -40,6 +40,7 @@
       <a href="#/premissas">📐 Premissas</a>
       <a href="#/textos">📝 Textos padrão</a>
       <a href="#/modelo-contrato">📜 Modelo de contrato</a>
+      <a href="#/ia">🤖 Leitura de datasheet (IA)</a>
       <a href="#/dados">💾 Backup e dados</a>
     </nav>
     <small id="versao-app" class="versao-app"></small>
@@ -50,27 +51,29 @@
   <noscript><p style="padding:24px">Esta plataforma precisa de JavaScript habilitado.</p></noscript>
 
   <!-- ?v= força o navegador a baixar os arquivos novos a cada publicação: altere junto com App.VERSAO_APP (js/app.js) -->
-  <script src="js/util.js?v=2026.10.21.2"></script>
-  <script src="js/defaults.js?v=2026.10.21.2"></script>
-  <script src="js/store.js?v=2026.10.21.2"></script>
-  <script src="js/energia.js?v=2026.10.21.2"></script>
-  <script src="js/calc.js?v=2026.10.21.2"></script>
-  <script src="js/chart.js?v=2026.10.21.2"></script>
-  <script src="js/zip.js?v=2026.10.21.2"></script>
-  <script src="js/docx-parts.js?v=2026.10.21.2"></script>
-  <script src="js/logo-default.js?v=2026.10.21.2"></script>
-  <script src="js/documento.js?v=2026.10.21.2"></script>
-  <script src="js/docx.js?v=2026.10.21.2"></script>
-  <script src="js/pdf.js?v=2026.10.21.2"></script>
-  <script src="js/contrato.js?v=2026.10.21.2"></script>
-  <script src="js/avulsa.js?v=2026.10.21.2"></script>
-  <script src="js/ui.js?v=2026.10.21.2"></script>
-  <script src="js/pages/propostas.js?v=2026.10.21.2"></script>
-  <script src="js/pages/proposta.js?v=2026.10.21.2"></script>
-  <script src="js/pages/contratos.js?v=2026.10.21.2"></script>
-  <script src="js/pages/avulsas.js?v=2026.10.21.2"></script>
-  <script src="js/pages/cadastros.js?v=2026.10.21.2"></script>
-  <script src="js/pages/config.js?v=2026.10.21.2"></script>
-  <script src="js/app.js?v=2026.10.21.2"></script>
+  <script src="js/util.js?v=2026.10.22.1"></script>
+  <script src="js/defaults.js?v=2026.10.22.1"></script>
+  <script src="js/store.js?v=2026.10.22.1"></script>
+  <script src="js/energia.js?v=2026.10.22.1"></script>
+  <script src="js/datasheet.js?v=2026.10.22.1"></script>
+  <script src="js/calc.js?v=2026.10.22.1"></script>
+  <script src="js/chart.js?v=2026.10.22.1"></script>
+  <script src="js/zip.js?v=2026.10.22.1"></script>
+  <script src="js/docx-parts.js?v=2026.10.22.1"></script>
+  <script src="js/logo-default.js?v=2026.10.22.1"></script>
+  <script src="js/documento.js?v=2026.10.22.1"></script>
+  <script src="js/docx.js?v=2026.10.22.1"></script>
+  <script src="js/pdf.js?v=2026.10.22.1"></script>
+  <script src="js/contrato.js?v=2026.10.22.1"></script>
+  <script src="js/avulsa.js?v=2026.10.22.1"></script>
+  <script src="js/ui.js?v=2026.10.22.1"></script>
+  <script src="js/ia.js?v=2026.10.22.1"></script>
+  <script src="js/pages/propostas.js?v=2026.10.22.1"></script>
+  <script src="js/pages/proposta.js?v=2026.10.22.1"></script>
+  <script src="js/pages/contratos.js?v=2026.10.22.1"></script>
+  <script src="js/pages/avulsas.js?v=2026.10.22.1"></script>
+  <script src="js/pages/cadastros.js?v=2026.10.22.1"></script>
+  <script src="js/pages/config.js?v=2026.10.22.1"></script>
+  <script src="js/app.js?v=2026.10.22.1"></script>
 </body>
 </html>

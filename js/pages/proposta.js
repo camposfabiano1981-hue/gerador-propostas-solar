@@ -620,7 +620,12 @@
           linhaInfo('Cobertura do consumo', U.fmt(r.cobertura * 100, 1) + '%'),
           linhaInfo('Área aproximada', '~' + U.fmt(r.area, 0) + ' m²')
         ];
-        if (r.strings) itensInfo.push(linhaInfo('Arranjo sugerido', r.strings.nStrings + ' string(s) de até ' + r.strings.porString + ' módulos (máx. ' + r.strings.maxSerie + '/string)'));
+        if (r.strings) {
+          const st = r.strings;
+          itensInfo.push(linhaInfo('Arranjo sugerido', st.nStrings + ' string(s) de até ' + st.porString + ' módulos (máx. ' + st.maxSerie + '/string) — ' + st.porMppt + ' por MPPT' +
+            (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 1) + (r.inversor && U.num(r.inversor.iscMaxMppt) > 0 ? '/' + U.fmtSmart(r.inversor.iscMaxMppt, 1) : '') + ' A)' : '')));
+        }
+        if (r.ramaisMicro) itensInfo.push(linhaInfo('Circuitos CA (ramais)', r.ramaisMicro + ' (máx. ' + r.inversor.maxPorRamal + ' microinversores por ramal)'));
         if (!p.inversorId && sug) itensInfo.push(linhaInfo('Sugestão automática', sug.n + ' × ' + C.nomeEquip(sug.inv)));
         infos.sistema.replaceChildren.apply(infos.sistema, itensInfo.filter(Boolean));
       }
@@ -650,6 +655,11 @@
             surto && surto * 1000 < hb.picoPartida ? 'alerta' : null));
         }
         if (r.hibridoAtivo && r.consumoProprio) extrasH.push(linhaInfo('Consumo próprio do inversor', U.fmtSmart(r.consumoProprioW, 0) + ' W ≈ ' + U.fmt(r.consumoProprio, 0) + ' kWh/mês'));
+        extrasH.push(linhaInfo('DoD / eficiência de ciclo', U.fmt(hb.dod * 100, 0) + '% / ' + U.fmtSmart(hb.eficiencia * 100, 1) + '%' +
+          (r.hibridoAtivo && r.inversor && U.num(r.inversor.efBateria) > 0 || hb.bateria && U.num(hb.bateria.eficiencia) > 0 ? ' (datasheets)' : ' (premissa)')));
+        if (r.hibridoAtivo && hb.tensaoBanco && r.inversor && (U.num(r.inversor.vBatMin) > 0 || U.num(r.inversor.vBatMax) > 0)) {
+          extrasH.push(linhaInfo('Tensão do banco', U.fmtSmart(hb.tensaoBanco, 1) + ' V (inversor ' + (r.inversor.vBatMin || '…') + '–' + (r.inversor.vBatMax || '…') + ' V)'));
+        }
         const bl = r.balanco;
         if (bl) {
           const baixo = bl.utilizacao + 1e-9 < r.premissas.hibrido.utilizacaoMin;

@@ -303,6 +303,12 @@ window.App = window.App || {};
         ['Módulos Fotovoltaicos', mod ? r.nModulos + ' módulos × ' + mod.potencia + ' Wp — ' + [mod.fabricante, mod.tecnologia, mod.modelo].filter(Boolean).join(' ') + (modExtra ? ' (' + modExtra + ')' : '') : '—'],
         [hib ? 'Inversor Híbrido' : (r.micro ? 'Microinversores' : 'Inversor'), inv ? r.nInversores + ' × ' + [inv.fabricante, inv.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(inv) : '—']
       );
+      if (r.strings) {
+        const st = r.strings;
+        dim.push(['Arranjo Elétrico (strings)', st.nStrings + ' string(s) de até ' + st.porString + ' módulos — ' + st.porMppt + ' string(s) por MPPT' +
+          (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 2) + ' A por MPPT' + (inv && U.num(inv.iscMaxMppt) > 0 ? ' / máx. ' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A' : '') + ')' : '')]);
+      }
+      if (r.ramaisMicro) dim.push(['Circuitos CA dos Microinversores', r.ramaisMicro + ' ramal(is) — até ' + inv.maxPorRamal + ' microinversores por ramal (datasheet)']);
       if (temArm) dim.push([r.bessAtivo ? 'Armazenamento (BESS)' : 'Banco de Baterias', linhaArm]);
       dim.push(
         ['FDG — Fator de Dimensionamento Global (Pcc/Pca)', U.fmt(r.fdg, 3) + (r.fdgOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
@@ -396,6 +402,10 @@ window.App = window.App || {};
         ['Configuração', arm.configuracao || '—'],
         ['Capacidade Útil', U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)']
       );
+      if (hib && arm.tensaoBanco && inv && (U.num(inv.vBatMin) > 0 || U.num(inv.vBatMax) > 0)) {
+        linhas.push(['Tensão do Banco', U.fmtSmart(arm.tensaoBanco, 1) + ' V — faixa do inversor ' + (inv.vBatMin || '…') + '–' + (inv.vBatMax || '…') + ' V']);
+      }
+      if (hib && inv && U.num(inv.tempoComutacao) > 0) linhas.push(['Tempo de Comutação para Backup', U.fmtSmart(inv.tempoComutacao, 0) + ' ms (datasheet do inversor)']);
       if (!backupCen && arm.cargas.length) linhas.push(['Reserva para Backup', U.fmtSmart(arm.reservaUtil, 2) + ' kWh úteis (fora da ' + (cen.id === 'picos' ? 'redução de picos' : 'ciclagem diária') + ')']);
       if (arm.potenciaArm && isFinite(arm.potenciaArm)) {
         const potOk = !arm.cargas.length || arm.potenciaArm * 1000 + 1e-6 >= arm.potCargas * fs;

@@ -285,6 +285,44 @@
     }, 'Restaurar padrão')));
   });
 
+  /* ------------------------------------------------------------ leitura de datasheet (IA) */
+
+  UI.rota('/ia', function (cont) {
+    const IA = App.IA;
+    const estado = IA.config();
+    const status = h('p.ajuda-sec');
+    cont.appendChild(UI.cabecalho('Leitura de datasheet (IA)', 'Cadastro de inversores, microinversores, híbridos e baterias a partir do PDF do datasheet, com a API do Claude (Anthropic).'));
+    cont.appendChild(h('div.card.dica',
+      h('p', h('strong', 'Como funciona: '), 'em Cadastros › Equipamentos, use “📄 Ler datasheet” e escolha o PDF (ou uma foto) da ficha técnica. ' +
+        'A IA preenche os campos técnicos de cada modelo da tabela; os itens entram marcados como “Revisar” até você conferir e salvar.'),
+      h('p', h('strong', 'Chave de API: '), 'crie uma chave no Console da Anthropic (platform.claude.com, em API Keys) e defina um limite de gastos para ela. ' +
+        'A chave fica salva só neste navegador — não vai para o backup nem para outro lugar além da própria API da Anthropic.'),
+      h('p', h('strong', 'Custo: '), 'cobrado pela Anthropic na sua conta, por tokens. Uma ficha técnica de poucas páginas costuma custar alguns centavos de dólar no Opus 5.5 ' +
+        '(o valor estimado aparece ao final de cada leitura). Se o filtro de segurança do modelo recusar o documento, o pedido é refeito automaticamente no modelo indicado pela Anthropic (Opus 5.5 e Sonnet 5.5).')));
+    const salvar = function () {
+      try { IA.salvarConfig(estado); UI.toast('Configuração salva.', 'ok'); } catch (e) { UI.toast(e.message, 'erro'); }
+    };
+    cont.appendChild(h('div.card',
+      UI.grade([
+        { k: 'chave', label: 'Chave de API da Anthropic', type: 'password', placeholder: 'sk-ant-…', cls: 'span2', help: 'Começa com sk-ant-. Para remover, apague o campo e salve.' },
+        { k: 'modelo', label: 'Modelo', type: 'select', options: IA.MODELOS.map(function (m) { return { v: m.id, t: m.nome }; }), cls: 'span2' }
+      ], estado, null, 2),
+      h('div.barra-itens',
+        h('button.btn.primario', { type: 'button', onclick: salvar }, 'Salvar'),
+        h('button.btn', {
+          type: 'button', onclick: async function (ev) {
+            const b = ev.currentTarget;
+            b.disabled = true;
+            status.textContent = 'Testando…';
+            try {
+              const nome = await IA.testar(estado);
+              status.textContent = '✅ Chave válida — ' + nome + '.';
+            } catch (e) { status.textContent = '⚠️ ' + e.message; } finally { b.disabled = false; }
+          }
+        }, 'Testar chave')),
+      status));
+  });
+
   /* ------------------------------------------------------------ backup */
 
   UI.rota('/dados', function (cont) {
@@ -336,5 +374,23 @@
             }
           }
         }, 'Restaurar padrões'))));
+    const removidos = S.removidosV7();
+    if (removidos.length) {
+      // cópia de segurança do antigo catálogo de inversores, microinversores, híbridos e baterias (atualização da base v7)
+      const box = h('div.card',
+        h('h3', 'Equipamentos do catálogo antigo'),
+        h('p', 'Na atualização para o cadastro pelo datasheet, ' + removidos.length + ' inversor(es)/bateria(s) sem uso em propostas foram retirados. ' +
+          'Restaure-os se tiver preços ou dados que queira aproveitar — voltam inativos, para revisão com o datasheet.'),
+        h('div.barra-itens',
+          h('button.btn', { type: 'button', onclick: function () {
+            const n = S.restaurarRemovidosV7();
+            UI.toast(n + ' equipamento(s) restaurado(s) como inativos.', 'ok');
+            box.remove();
+          } }, 'Restaurar'),
+          h('button.btn.perigo', { type: 'button', onclick: async function () {
+            if (await UI.confirmar('Descartar a cópia dos equipamentos do catálogo antigo?', 'Descartar', true)) { S.descartarRemovidosV7(); box.remove(); }
+          } }, 'Descartar cópia')));
+      cont.appendChild(box);
+    }
   });
 })(window.App);

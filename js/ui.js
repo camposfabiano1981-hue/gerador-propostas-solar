@@ -84,9 +84,17 @@ window.App = window.App || {};
     setTimeout(function () { t.remove(); }, 3700);
   };
 
+  /** o: {titulo, corpo, largo, acoes: [{label, primario, perigo, onClick(fechar), manterAberto}], aoFechar} */
   UI.modal = function (o) {
     const dlg = h('dialog.modal' + (o.largo ? '.largo' : ''));
-    const fechar = function () { dlg.close(); dlg.remove(); };
+    let fechado = false;
+    const fechar = function () {
+      if (fechado) return;
+      fechado = true;
+      dlg.close();
+      dlg.remove();
+      if (o.aoFechar) o.aoFechar();
+    };
     const acoes = h('div.modal-acoes');
     (o.acoes || []).forEach(function (a) {
       acoes.appendChild(h('button.btn' + (a.primario ? '.primario' : '') + (a.perigo ? '.perigo' : ''), {
@@ -247,9 +255,10 @@ window.App = window.App || {};
       return itens;
     }
 
-    function abrir(item) {
+    /** item = registro a editar; sem item, um novo — o padrão de cfg.novo() ou `inicial`, já montado (ex.: lido de um datasheet). */
+    function abrir(item, inicial) {
       const novo = !item;
-      const estado = novo ? cfg.novo() : U.clone(item);
+      const estado = novo ? (inicial ? U.clone(inicial) : cfg.novo()) : U.clone(item);
       const corpo = h('div');
       const desenhar = function () {
         corpo.innerHTML = '';
@@ -264,6 +273,7 @@ window.App = window.App || {};
           { label: 'Cancelar' },
           {
             label: 'Salvar', primario: true, onClick: function () {
+              if (cfg.antesSalvar) cfg.antesSalvar(estado);
               const erro = cfg.validar ? cfg.validar(estado) : null;
               if (erro) { UI.toast(erro, 'erro'); return false; }
               try {
@@ -315,14 +325,14 @@ window.App = window.App || {};
       tabelaBox.appendChild(h('div.tabela-rolagem', h('table.tabela', h('thead', thead), tbody)));
     }
 
-    cont.appendChild(UI.cabecalho(cfg.titulo, cfg.subtitulo, [
-      busca,
+    const ctrl = { atualizar: desenharTabela, abrir: abrir };
+    cont.appendChild(UI.cabecalho(cfg.titulo, cfg.subtitulo, [busca].concat(cfg.acoesTopo ? cfg.acoesTopo(ctrl) : [], [
       h('button.btn.primario', { type: 'button', onclick: function () { abrir(null); } }, cfg.rotuloNovo || '+ Novo')
-    ]));
+    ])));
     if (cfg.antesTabela) cont.appendChild(cfg.antesTabela);
     cont.appendChild(tabelaBox);
     desenharTabela();
-    return { atualizar: desenharTabela, abrir: abrir };
+    return ctrl;
   };
 
   App.UI = UI;

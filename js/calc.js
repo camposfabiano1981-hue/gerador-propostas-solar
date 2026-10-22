@@ -248,6 +248,53 @@ window.App = window.App || {};
     return pos(inv.tensaoBateria) && inv.tensaoBateria > 60 ? 'HV' : 'LV';
   };
 
+  /** Percentual do cadastro (ex.: 95) como fração; aceita também a fração (0,95). */
+  function frac(v) {
+    const n = pos(v);
+    return n ? (n > 1 ? n / 100 : n) : null;
+  }
+
+  // valores típicos quando só um dos datasheets informa a eficiência (produto ≈ premissa padrão de 92%)
+  C.EF_BATERIA_TIPICA = 0.95;
+  C.EF_INVERSOR_BATERIA_TIPICA = 0.97;
+
+  /**
+   * Eficiência de ciclo do armazenamento. BESS: a do gabinete (CA–CA). Híbrido: eficiência de ciclo (round-trip) da bateria ×
+   * eficiência bateria↔CA do inversor, conforme os datasheets; faltando uma delas usa o valor típico; sem nenhuma, a premissa.
+   */
+  C.eficienciaCiclo = function (bat, inv, prem, bess) {
+    const eb = bat ? frac(bat.eficiencia) : null;
+    if (bess) return eb || prem.hibrido.eficiencia;
+    const ei = inv ? frac(inv.efBateria) : null;
+    if (eb == null && ei == null) return prem.hibrido.eficiencia;
+    return (eb == null ? C.EF_BATERIA_TIPICA : eb) * (ei == null ? C.EF_INVERSOR_BATERIA_TIPICA : ei);
+  };
+
+  /** DoD: o informado na proposta, o do datasheet ou energia útil ÷ nominal; senão a premissa. */
+  C.dodBateria = function (bat, dodProposta, prem) {
+    if (pos(dodProposta)) return U.num(dodProposta) / 100;
+    if (bat && frac(bat.dod)) return frac(bat.dod);
+    if (bat && pos(bat.energiaUtil) && pos(bat.energia)) return Math.min(1, bat.energiaUtil / bat.energia);
+    return prem.hibrido.dod;
+  };
+
+  /** Potência contínua de descarga de uma unidade (kW): a do datasheet ou corrente contínua × tensão. */
+  C.potenciaUnidade = function (b) {
+    if (!b) return null;
+    if (pos(b.potencia)) return b.potencia;
+    if (pos(b.iDescargaMax) && pos(b.tensao)) return b.iDescargaMax * b.tensao / 1000;
+    return null;
+  };
+
+  /** Potência de bateria do inversor híbrido (kW): a do datasheet ou corrente máxima × tensão do banco. tipo 'carga' | 'descarga'. */
+  C.potenciaBateriaInversor = function (inv, vBanco, tipo) {
+    if (!inv) return null;
+    if (pos(inv.pBateriaMax)) return inv.pBateriaMax;
+    const i = pos(tipo === 'carga' ? inv.iCargaMax : inv.iDescargaMax);
+    const v = pos(vBanco) || pos(inv.tensaoBateria);
+    return i && v ? i * v / 1000 : null;
+  };
+
   function fasesCompat(inv, ligacao) {
     const tri = /tri/i.test(inv.fases || '');
     if (ligacao === 'tri') return { ok: true, pen: tri ? 0 : 0.3 };
@@ -296,6 +343,9 @@ window.App = window.App || {};
         const fdg = kwp / (n * pot);
         let score = Math.abs(fdg - prem.fdgAlvo) + fc.pen + (n - 1) * 0.08;
         if (fdg < prem.fdgMin || fdg > prem.fdgMax) score += 10;
+        // limites do datasheet: entrada FV máxima e unidades em paralelo (híbrido)
+        if (pos(inv.pFVMax) && kwp > inv.pFVMax * n + 1e-9) score += 10;
+        if (inv.tipo === 'hibrido' && pos(inv.paraleloMax) && n > inv.paraleloMax) score += 10;
         if (potCargasW > 0) {
           const bk = (pos(inv.potenciaBackup) || pot) * n * 1000;
           if (bk < potCargasW * prem.hibrido.fatorSegurancaInversor) score += 5;
@@ -541,12 +591,7 @@ window.App = window.App || {};
       h.bateria = porId(eqs, idEq) ||
         eqs.find(function (e) { return ativaDoTipo(e) && (!classeInv || tipoEq !== 'bateria' || C.classeBateria(e) === classeInv); }) ||
         eqs.find(ativaDoTipo) || null;
-      h.dod = pos(p.dod) ? U.num(p.dod) / 100 : (h.bateria && pos(h.bateria.dod) ? h.bateria.dod / 100 : prem.hibrido.dod);
-      h.eficiencia = h.bateria && pos(h.bateria.eficiencia) ? h.bateria.eficiencia / 100 : prem.hibrido.eficiencia;
-      // capacidade instalada para o backup: energia das cargas ÷ (DoD × eficiência bateria + inversor)
-      h.capNecessaria = h.energiaBackup / 1000 / (h.dod * h.eficiencia);
-      // energia útil mantida como reserva (SOC de backup) quando o banco também faz ciclagem ou corte de picos
-      h.reservaUtil = h.energiaBackup / 1000 / h.eficiencia;
+      h.dod = C.dodBateria(h.bateria, p.dod, prem);
       r.hibrido = h;
       if (!h.bateria) alerta('erro', r.bessAtivo ? 'Cadastre/selecione um equipamento BESS (Cadastros › Equipamentos › BESS).' : 'Cadastre/selecione uma bateria para o sistema híbrido.');
     }
@@ -595,6 +640,15 @@ window.App = window.App || {};
       alerta('erro', r.hibridoAtivo ? 'Cadastre/selecione um inversor híbrido compatível.'
         : (tipoInv === 'micro' ? 'Cadastre/selecione um microinversor compatível com a ligação.' : 'Cadastre/selecione um inversor compatível com a ligação.'));
     }
+    if (r.hibrido) {
+      // eficiência de ciclo (datasheets da bateria e do inversor híbrido) e capacidade para o backup:
+      // energia das cargas ÷ (DoD × eficiência)
+      const hb = r.hibrido;
+      hb.eficiencia = C.eficienciaCiclo(hb.bateria, r.hibridoAtivo ? inv : null, prem, r.bessAtivo);
+      hb.capNecessaria = hb.energiaBackup / 1000 / (hb.dod * hb.eficiencia);
+      // energia útil mantida como reserva (SOC de backup) quando o banco também faz ciclagem ou corte de picos
+      hb.reservaUtil = hb.energiaBackup / 1000 / hb.eficiencia;
+    }
     const potInv = inv ? U.numOr(inv.potencia, 0) : 0;
     let nInv;
     if (!inv) nInv = 0;
@@ -618,6 +672,10 @@ window.App = window.App || {};
         (r.fdg > prem.fdgMax ? 'Inversor subdimensionado: haverá corte de potência (clipping) nos horários de pico.' : 'Inversor superdimensionado em relação ao gerador FV.'));
     }
     if (inv && r.ligacao !== 'tri' && /tri/i.test(inv.fases || '')) alerta('erro', 'Inversor trifásico incompatível com ligação ' + C.LIG_ADJ[r.ligacao] + '.');
+    if (r.hibridoAtivo && inv && pos(inv.paraleloMax) && nInv > inv.paraleloMax) {
+      alerta('aviso', nInv + ' inversores híbridos ' + inv.modelo + ': o datasheet admite ' + (inv.paraleloMax > 1 ? 'no máximo ' + inv.paraleloMax + ' em paralelo' : 'operação sem paralelismo') +
+        '. Use um modelo de maior potência ou sistemas independentes (cada um com seu banco e suas cargas).');
+    }
 
     // Microinversor: entradas suficientes, faixa de potência e tensão do módulo
     if (r.micro && modulo) {
@@ -625,7 +683,16 @@ window.App = window.App || {};
       if (r.nModulos > capacidade) alerta('erro', r.nModulos + ' módulos para ' + nInv + ' microinversor(es) de ' + (inv.modulosPorUnidade || 1) + ' entradas (máx. ' + capacidade + ' módulos).');
       if (!moduloCompativel(inv, wp)) alerta('aviso', 'Módulo de ' + wp + ' W fora da faixa recomendada para o ' + inv.modelo + ' (' + (inv.potModuloMin || '—') + '–' + (inv.potModuloMax || '—') + ' W).');
       if (pos(modulo.voc) && pos(inv.vmaxCC) && modulo.voc * prem.fatorVocFrio > inv.vmaxCC) alerta('erro', 'Voc do módulo (corrigido p/ frio) acima da tensão máxima de entrada do microinversor (' + inv.vmaxCC + ' V).');
+      const impMod = pos(modulo.vmp) && wp ? wp / modulo.vmp : null;
+      if (pos(modulo.isc) && pos(inv.iscMaxMppt) && modulo.isc > inv.iscMaxMppt + 1e-9) {
+        alerta('erro', 'Isc do módulo (' + U.fmtSmart(modulo.isc, 2) + ' A) acima da corrente de curto-circuito máxima por entrada do microinversor (' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A).');
+      } else if (impMod && pos(inv.imaxMppt) && impMod > inv.imaxMppt + 1e-9) {
+        alerta('aviso', 'Corrente de operação do módulo (≈ ' + U.fmtSmart(impMod, 2) + ' A) acima da corrente máxima por entrada do microinversor (' + U.fmtSmart(inv.imaxMppt, 2) +
+          ' A): haverá limitação de corrente (perda de geração).');
+      }
     }
+    // microinversores: circuitos (ramais) CA conforme o máximo de unidades por ramal do datasheet
+    r.ramaisMicro = r.micro && inv && pos(inv.maxPorRamal) && nInv > 0 ? Math.ceil(nInv / inv.maxPorRamal - 1e-9) : null;
 
     // Arranjo (strings) — validação opcional quando houver dados elétricos
     r.strings = null;
@@ -634,10 +701,36 @@ window.App = window.App || {};
       const totMppt = (pos(inv.mppts) || 1) * nInv;
       const nStr = Math.max(1, Math.ceil(r.nModulos / Math.max(1, maxSerie)));
       const porStr = Math.ceil(r.nModulos / nStr);
-      r.strings = { maxSerie: maxSerie, nStrings: nStr, porString: porStr, mppts: totMppt };
+      const menorStr = Math.floor(r.nModulos / nStr);
+      // strings por MPPT (distribuição uniforme) e correntes do módulo: Isc (STC) e Imp = Pmáx ÷ Vmp
+      const porMppt = Math.ceil(nStr / totMppt - 1e-9);
+      const impMod = pos(modulo.vmp) && wp ? wp / modulo.vmp : null;
+      r.strings = {
+        maxSerie: maxSerie, nStrings: nStr, porString: porStr, menorString: menorStr, mppts: totMppt, porMppt: porMppt,
+        entradas: pos(inv.stringsPorMppt) ? totMppt * inv.stringsPorMppt : null,
+        iscMppt: pos(modulo.isc) ? porMppt * modulo.isc : null, impMppt: impMod ? porMppt * impMod : null
+      };
+      const st = r.strings;
       if (maxSerie < 1) alerta('erro', 'Voc do módulo excede a tensão máxima CC do inversor.');
-      if (pos(inv.mpptMin) && pos(modulo.vmp) && porStr * modulo.vmp < inv.mpptMin) {
-        alerta('aviso', 'Tensão da string (' + U.fmt(porStr * modulo.vmp, 0) + ' V) abaixo da faixa MPPT mínima do inversor (' + inv.mpptMin + ' V).');
+      if (st.entradas && nStr > st.entradas) {
+        alerta('erro', nStr + ' strings para ' + st.entradas + ' entradas do inversor (' + totMppt + ' MPPT × ' + inv.stringsPorMppt + ' string' + (inv.stringsPorMppt > 1 ? 's' : '') +
+          '). Aumente o número de inversores ou use um modelo com mais entradas.');
+      }
+      if (st.iscMppt && pos(inv.iscMaxMppt) && st.iscMppt > inv.iscMaxMppt + 1e-9) {
+        alerta('erro', 'Corrente de curto-circuito por MPPT (' + porMppt + ' × ' + U.fmtSmart(modulo.isc, 2) + ' A = ' + U.fmtSmart(st.iscMppt, 2) +
+          ' A) acima do máximo do inversor (' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A).');
+      } else if (st.impMppt && pos(inv.imaxMppt) && st.impMppt > inv.imaxMppt + 1e-9) {
+        alerta('aviso', 'Corrente de operação por MPPT (≈ ' + U.fmtSmart(st.impMppt, 2) + ' A) acima da corrente máxima de entrada do inversor (' + U.fmtSmart(inv.imaxMppt, 2) +
+          ' A): haverá limitação de corrente (perda de geração).');
+      }
+      if (pos(inv.mpptMin) && pos(modulo.vmp) && menorStr * modulo.vmp < inv.mpptMin) {
+        alerta('aviso', 'Tensão da string (' + U.fmt(menorStr * modulo.vmp, 0) + ' V) abaixo da faixa MPPT mínima do inversor (' + inv.mpptMin + ' V).');
+      }
+      if (pos(inv.mpptMax) && pos(modulo.vmp) && porStr * modulo.vmp > inv.mpptMax + 1e-9) {
+        alerta('aviso', 'Tensão da string (' + U.fmt(porStr * modulo.vmp, 0) + ' V) acima da faixa MPPT máxima do inversor (' + inv.mpptMax + ' V). Use mais strings, mais curtas.');
+      }
+      if (pos(inv.vPartida) && menorStr * modulo.voc < inv.vPartida) {
+        alerta('aviso', 'Voc da string (' + U.fmt(menorStr * modulo.voc, 0) + ' V) abaixo da tensão de partida do inversor (' + inv.vPartida + ' V).');
       }
     }
 
@@ -687,17 +780,41 @@ window.App = window.App || {};
       unid = {
         equip: eq,
         energia: pos(eq.energia) || 0,
-        potencia: pos(eq.potencia) || (r.bessAtivo ? 0 : (pos(eq.energia) || 0) * 0.5),
+        potencia: C.potenciaUnidade(eq) || (r.bessAtivo ? 0 : (pos(eq.energia) || 0) * 0.5),
         preco: itemEq ? U.numOr(itemEq.precoUnit, 0) : U.numOr(eq.preco, 0),
         vida: Math.min(pos(eq.vidaAnos) || ar.vidaCalendario, ar.vidaCalendario),
         ciclos: pos(eq.ciclos) || ar.ciclosPadrao
       };
       h.serie = 1;
-      if (r.hibridoAtivo && inv && pos(eq.tensao) && pos(inv.tensaoBateria)) h.serie = Math.max(1, Math.round(inv.tensaoBateria / eq.tensao));
-      // o banco não entrega mais que o inversor híbrido permite (potência de backup e potência máxima de bateria)
+      const baixaTensao = C.classeBateria(eq) !== 'HV';
+      if (r.hibridoAtivo && inv && pos(eq.tensao)) {
+        // baterias em série: tensão nominal do inversor ÷ tensão da bateria ou, em baixa tensão, o mínimo para entrar na faixa do inversor
+        if (pos(inv.tensaoBateria)) h.serie = Math.max(1, Math.round(inv.tensaoBateria / eq.tensao));
+        else if (baixaTensao && pos(inv.vBatMin)) h.serie = Math.max(1, Math.ceil(inv.vBatMin / eq.tensao - 1e-9));
+      }
+      h.tensaoBanco = pos(eq.tensao) ? eq.tensao * h.serie : null;
+      // o banco não entrega mais que o inversor híbrido permite (potência de backup e potência de bateria do datasheet)
+      h.pBateriaInv = r.hibridoAtivo && inv ? C.potenciaBateriaInversor(inv, h.tensaoBanco, 'descarga') : null;
+      h.pCargaInv = r.hibridoAtivo && inv ? C.potenciaBateriaInversor(inv, h.tensaoBanco, 'carga') : null;
       unid.limitePotencia = r.hibridoAtivo && inv
-        ? Math.min(pos(inv.potenciaBackup) || potInv, pos(inv.pBateriaMax) || Infinity) * Math.max(1, nInv) : Infinity;
-      unid.potenciaInformada = !!pos(eq.potencia);
+        ? Math.min(pos(inv.potenciaBackup) || potInv, h.pBateriaInv || Infinity) * Math.max(1, nInv) : Infinity;
+      unid.potenciaInformada = !!C.potenciaUnidade(eq);
+      // carga por unidade (kW): corrente contínua de carga × tensão
+      unid.potenciaCarga = pos(eq.iCargaMax) && pos(eq.tensao) ? eq.iCargaMax * eq.tensao / 1000 : null;
+      if (r.hibridoAtivo && inv && h.tensaoBanco) {
+        const vMin = pos(inv.vBatMin), vMax = pos(inv.vBatMax);
+        if (baixaTensao && ((vMin && h.tensaoBanco < vMin - 1e-9) || (vMax && h.tensaoBanco > vMax + 1e-9))) {
+          alerta('erro', 'Banco de ' + U.fmtSmart(h.tensaoBanco, 1) + ' V (' + h.serie + ' × ' + U.fmtSmart(eq.tensao, 1) + ' V) fora da faixa de tensão de bateria do inversor (' +
+            (vMin || '…') + '–' + (vMax || '…') + ' V).');
+        } else if (!baixaTensao && (vMin || vMax)) {
+          // alta tensão: a faixa de operação da bateria precisa cruzar a do inversor
+          const bMin = pos(eq.vMin) || eq.tensao, bMax = pos(eq.vMax) || eq.tensao;
+          if ((vMax && bMin > vMax + 1e-9) || (vMin && bMax < vMin - 1e-9)) {
+            alerta('erro', 'Tensão da bateria (' + U.fmtSmart(bMin, 0) + (bMax !== bMin ? '–' + U.fmtSmart(bMax, 0) : '') + ' V) fora da faixa de bateria do inversor (' +
+              (vMin || '…') + '–' + (vMax || '…') + ' V). Confira a configuração de módulos indicada pelo fabricante.');
+          }
+        }
+      }
       if (!unid.energia) { alerta('erro', 'Equipamento de armazenamento sem energia (kWh) cadastrada.'); unid = null; }
       else if (r.hibridoAtivo && !unid.potenciaInformada && h.potCargas > 0) {
         alerta('info', 'Potência de descarga da bateria ' + [eq.fabricante, eq.modelo].filter(Boolean).join(' ') + ' não cadastrada: considerado 0,5C (' +
@@ -836,6 +953,10 @@ window.App = window.App || {};
       h.potenciaArm = potenciaArm(h.nBaterias);
       h.autonomiaEstimada = h.energiaBackup > 0 && h.nBaterias > 0 ? (h.capUtil * h.eficiencia) / (h.energiaBackup / 1000) * h.autonomiaHoras : null;
       h.tensaoBanco = (vb || 0) * (h.serie || 1);
+      h.paraleloMax = h.bateria && !r.bessAtivo ? pos(h.bateria.paraleloMax) : null;
+      if (h.nBaterias > 0 && h.paraleloMax && C.classeBateria(h.bateria) !== 'HV' && h.paralelo > h.paraleloMax) {
+        alerta('aviso', h.paralelo + ' baterias ' + [h.bateria.fabricante, h.bateria.modelo].filter(Boolean).join(' ') + ' em paralelo: o datasheet admite no máximo ' + h.paraleloMax + '.');
+      }
       const altaTensao = !r.bessAtivo && C.classeBateria(h.bateria) === 'HV';
       h.configuracao = r.bessAtivo
         ? (h.nBaterias > 1 ? h.nBaterias + ' gabinetes em paralelo' : '1 gabinete')
@@ -875,6 +996,10 @@ window.App = window.App || {};
         if (pos(inv.capBateriaMax) && h.capInstalada > inv.capBateriaMax * nI + 1e-9) {
           alerta('aviso', 'Banco de ' + U.fmtSmart(h.capInstalada, 2) + ' kWh acima da capacidade máxima de bateria do inversor (' + U.fmtSmart(inv.capBateriaMax * nI, 2) + ' kWh).');
         }
+        const picoBat = h.bateria && pos(h.bateria.picoKW) ? h.bateria.picoKW * h.nBaterias : null;
+        if (picoBat && h.picoPartida > picoBat * 1000 + 1e-6) {
+          alerta('aviso', 'Pico de partida estimado (' + U.fmtSmart(h.picoPartida / 1000, 2) + ' kW) acima da potência de pico do banco de baterias (' + U.fmtSmart(picoBat, 2) + ' kW).');
+        }
         if (pos(inv.surtoKW) && h.picoPartida > inv.surtoKW * nI * 1000 + 1e-6) {
           alerta('aviso', 'Pico de partida estimado (' + U.fmtSmart(h.picoPartida / 1000, 2) + ' kW, motor partindo a ' + U.fmtSmart(prem.hibrido.fatorPartida, 1) +
             '× com as demais cargas ligadas) acima do surto do inversor (' + U.fmtSmart(inv.surtoKW * nI, 2) + ' kW).');
@@ -894,9 +1019,13 @@ window.App = window.App || {};
         if (!excedeBackup) msg += ' O banco é definido pelo backup; mais baterias não aumentam a economia.';
         alerta(excedeBackup ? 'aviso' : 'info', msg);
       }
-      if (b && b.potenciaCargaKW && r.hibridoAtivo && inv && pos(inv.pBateriaMax) && b.potenciaCargaKW > inv.pBateriaMax * Math.max(1, nInv) + 1e-9) {
+      if (b && b.potenciaCargaKW && r.hibridoAtivo && inv && h.pCargaInv && b.potenciaCargaKW > h.pCargaInv * Math.max(1, nInv) + 1e-9) {
         alerta('aviso', 'Recarregar ' + U.fmtSmart(b.cargaDia, 1) + ' kWh por dia exige cerca de ' + U.fmtSmart(b.potenciaCargaKW, 2) + ' kW de carga, acima da potência de bateria do inversor (' +
-          U.fmtSmart(inv.pBateriaMax * Math.max(1, nInv), 2) + ' kW).');
+          U.fmtSmart(h.pCargaInv * Math.max(1, nInv), 2) + ' kW).');
+      }
+      if (b && b.potenciaCargaKW && unid && unid.potenciaCarga && b.potenciaCargaKW > unid.potenciaCarga * h.nBaterias + 1e-9) {
+        alerta('aviso', 'Recarregar ' + U.fmtSmart(b.cargaDia, 1) + ' kWh por dia exige cerca de ' + U.fmtSmart(b.potenciaCargaKW, 2) + ' kW, acima da corrente de carga das baterias (' +
+          U.fmtSmart(unid.potenciaCarga * h.nBaterias, 2) + ' kW no banco).');
       }
     }
 

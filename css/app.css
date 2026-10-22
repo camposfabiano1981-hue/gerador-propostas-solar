@@ -172,7 +172,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .campo > label { font-size: 13px; font-weight: 600; color: var(--texto-2); }
 .campo .obrig { color: var(--vermelho); }
-.campo input[type=text], .campo input[type=date], .campo input[type=email], .campo input[type=tel], .campo input:not([type]),
+.campo input[type=text], .campo input[type=date], .campo input[type=email], .campo input[type=tel], .campo input[type=password], .campo input:not([type]),
 .campo select, .campo textarea {
   width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--borda-forte); border-radius: 8px; background: #fff;
 }
@@ -274,6 +274,7 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 .info-item strong { color: var(--texto); }
 .info-item.destaque { background: #DBEAFE; border-color: var(--azul-borda); }
 .info-item.destaque strong { color: var(--azul); }
+.tabela tr.destaque td { background: #DBEAFE; }
 .info-item.alerta { background: var(--ambar-bg); border-color: #FDE68A; }
 .info-item.alerta strong { color: var(--ambar); }
 .ajuda-sec { margin: 0; color: var(--muted); }
