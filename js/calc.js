@@ -278,6 +278,30 @@ window.App = window.App || {};
     return prem.hibrido.dod;
   };
 
+  /** Voc do módulo no frio (V): coeficiente de Voc do datasheet e temperatura mínima da célula; sem coeficiente, fator das premissas. */
+  C.vocFrio = function (m, prem) {
+    const coef = U.num(m && m.coefVoc);
+    if (isFinite(coef) && coef !== 0) return m.voc * (1 + Math.abs(coef) / 100 * (25 - U.numOr(prem.tempMinima, 0)));
+    return m.voc * prem.fatorVocFrio;
+  };
+
+  /** Vmp do módulo no calor (V), pelo coeficiente de Voc e a temperatura máxima da célula; sem coeficiente, o Vmp nominal. */
+  C.vmpQuente = function (m, prem) {
+    const coef = U.num(m && m.coefVoc);
+    if (isFinite(coef) && coef !== 0) return m.vmp * (1 - Math.abs(coef) / 100 * (U.numOr(prem.tempMaxCelula, 70) - 25));
+    return m.vmp;
+  };
+
+  /** Imp do módulo (A): a do datasheet ou Pmáx ÷ Vmp. */
+  C.impModulo = function (m) {
+    return pos(m && m.imp) || (m && pos(m.vmp) && pos(m.potencia) ? m.potencia / m.vmp : null);
+  };
+
+  /** Área ocupada por módulo (m²): a do datasheet ou comprimento × largura. */
+  C.areaModulo = function (m) {
+    return pos(m && m.area) || (m && pos(m.comprimento) && pos(m.largura) ? m.comprimento * m.largura / 1e6 : null);
+  };
+
   /** Potência contínua de descarga de uma unidade (kW): a do datasheet ou corrente contínua × tensão. */
   C.potenciaUnidade = function (b) {
     if (!b) return null;
@@ -614,7 +638,10 @@ window.App = window.App || {};
     r.geracaoAnual = r.kwp * r.hsp * 365 * prem.pr;
     r.geracaoMeses = r.fatores.map(function (f) { return r.geracaoMensal * f; });
     r.cobertura = r.consumoMedio > 0 ? r.geracaoMensal / r.consumoMedio : 0;
-    r.areaModulo = (modulo && pos(modulo.area)) || prem.areaModulo;
+    r.areaModulo = C.areaModulo(modulo) || prem.areaModulo;
+    // degradação anual dos módulos: a do datasheet (após o 1º ano) ou a das premissas
+    r.degradacaoModulos = modulo && pos(modulo.degradacaoAnual) ? modulo.degradacaoAnual / 100 : prem.degradacao;
+    r.degradacaoDatasheet = !!(modulo && pos(modulo.degradacaoAnual));
     r.area = r.nModulos * r.areaModulo;
 
     // Inversor (string, microinversor ou híbrido)
@@ -682,8 +709,8 @@ window.App = window.App || {};
       const capacidade = nInv * (pos(inv.modulosPorUnidade) || 1);
       if (r.nModulos > capacidade) alerta('erro', r.nModulos + ' módulos para ' + nInv + ' microinversor(es) de ' + (inv.modulosPorUnidade || 1) + ' entradas (máx. ' + capacidade + ' módulos).');
       if (!moduloCompativel(inv, wp)) alerta('aviso', 'Módulo de ' + wp + ' W fora da faixa recomendada para o ' + inv.modelo + ' (' + (inv.potModuloMin || '—') + '–' + (inv.potModuloMax || '—') + ' W).');
-      if (pos(modulo.voc) && pos(inv.vmaxCC) && modulo.voc * prem.fatorVocFrio > inv.vmaxCC) alerta('erro', 'Voc do módulo (corrigido p/ frio) acima da tensão máxima de entrada do microinversor (' + inv.vmaxCC + ' V).');
-      const impMod = pos(modulo.vmp) && wp ? wp / modulo.vmp : null;
+      if (pos(modulo.voc) && pos(inv.vmaxCC) && C.vocFrio(modulo, prem) > inv.vmaxCC) alerta('erro', 'Voc do módulo (corrigido p/ frio) acima da tensão máxima de entrada do microinversor (' + inv.vmaxCC + ' V).');
+      const impMod = C.impModulo(modulo);
       if (pos(modulo.isc) && pos(inv.iscMaxMppt) && modulo.isc > inv.iscMaxMppt + 1e-9) {
         alerta('erro', 'Isc do módulo (' + U.fmtSmart(modulo.isc, 2) + ' A) acima da corrente de curto-circuito máxima por entrada do microinversor (' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A).');
       } else if (impMod && pos(inv.imaxMppt) && impMod > inv.imaxMppt + 1e-9) {
@@ -697,21 +724,25 @@ window.App = window.App || {};
     // Arranjo (strings) — validação opcional quando houver dados elétricos
     r.strings = null;
     if (!r.micro && modulo && inv && pos(modulo.voc) && pos(inv.vmaxCC) && r.nModulos > 0) {
-      const maxSerie = Math.floor(inv.vmaxCC / (modulo.voc * prem.fatorVocFrio));
+      // tensão máxima: a menor entre a entrada CC do inversor e a tensão máxima do sistema do módulo; Voc corrigido p/ frio
+      const vocFrio = C.vocFrio(modulo, prem);
+      const vLimite = Math.min(inv.vmaxCC, pos(modulo.vMaxSistema) || Infinity);
+      const maxSerie = Math.floor(vLimite / vocFrio + 1e-9);
       const totMppt = (pos(inv.mppts) || 1) * nInv;
       const nStr = Math.max(1, Math.ceil(r.nModulos / Math.max(1, maxSerie)));
       const porStr = Math.ceil(r.nModulos / nStr);
       const menorStr = Math.floor(r.nModulos / nStr);
       // strings por MPPT (distribuição uniforme) e correntes do módulo: Isc (STC) e Imp = Pmáx ÷ Vmp
       const porMppt = Math.ceil(nStr / totMppt - 1e-9);
-      const impMod = pos(modulo.vmp) && wp ? wp / modulo.vmp : null;
+      const impMod = C.impModulo(modulo);
       r.strings = {
         maxSerie: maxSerie, nStrings: nStr, porString: porStr, menorString: menorStr, mppts: totMppt, porMppt: porMppt,
+        vocFrioString: porStr * vocFrio, vLimite: vLimite, limitePeloModulo: vLimite < inv.vmaxCC,
         entradas: pos(inv.stringsPorMppt) ? totMppt * inv.stringsPorMppt : null,
         iscMppt: pos(modulo.isc) ? porMppt * modulo.isc : null, impMppt: impMod ? porMppt * impMod : null
       };
       const st = r.strings;
-      if (maxSerie < 1) alerta('erro', 'Voc do módulo excede a tensão máxima CC do inversor.');
+      if (maxSerie < 1) alerta('erro', 'Voc do módulo (corrigido p/ frio) excede a tensão máxima CC ' + (st.limitePeloModulo ? 'do sistema do módulo.' : 'do inversor.'));
       if (st.entradas && nStr > st.entradas) {
         alerta('erro', nStr + ' strings para ' + st.entradas + ' entradas do inversor (' + totMppt + ' MPPT × ' + inv.stringsPorMppt + ' string' + (inv.stringsPorMppt > 1 ? 's' : '') +
           '). Aumente o número de inversores ou use um modelo com mais entradas.');
@@ -723,8 +754,14 @@ window.App = window.App || {};
         alerta('aviso', 'Corrente de operação por MPPT (≈ ' + U.fmtSmart(st.impMppt, 2) + ' A) acima da corrente máxima de entrada do inversor (' + U.fmtSmart(inv.imaxMppt, 2) +
           ' A): haverá limitação de corrente (perda de geração).');
       }
-      if (pos(inv.mpptMin) && pos(modulo.vmp) && menorStr * modulo.vmp < inv.mpptMin) {
-        alerta('aviso', 'Tensão da string (' + U.fmt(menorStr * modulo.vmp, 0) + ' V) abaixo da faixa MPPT mínima do inversor (' + inv.mpptMin + ' V).');
+      if (st.iscMppt && pos(modulo.fusivelMax) && porMppt >= 3 && (porMppt - 1) * modulo.isc > modulo.fusivelMax + 1e-9) {
+        alerta('aviso', porMppt + ' strings em paralelo no MPPT: a corrente reversa ((n − 1) × Isc = ' + U.fmtSmart((porMppt - 1) * modulo.isc, 1) +
+          ' A) supera o fusível máximo do módulo (' + U.fmtSmart(modulo.fusivelMax, 0) + ' A). Preveja fusíveis de string (ABNT NBR 16690).');
+      }
+      const vmpCalor = C.vmpQuente(modulo, prem);
+      if (pos(inv.mpptMin) && pos(modulo.vmp) && menorStr * vmpCalor < inv.mpptMin) {
+        alerta('aviso', 'Tensão da string (' + U.fmt(menorStr * vmpCalor, 0) + ' V' + (vmpCalor !== modulo.vmp ? ' com a célula a ' + U.fmt(U.numOr(prem.tempMaxCelula, 70), 0) + ' °C' : '') +
+          ') abaixo da faixa MPPT mínima do inversor (' + inv.mpptMin + ' V).');
       }
       if (pos(inv.mpptMax) && pos(modulo.vmp) && porStr * modulo.vmp > inv.mpptMax + 1e-9) {
         alerta('aviso', 'Tensão da string (' + U.fmt(porStr * modulo.vmp, 0) + ' V) acima da faixa MPPT máxima do inversor (' + inv.mpptMax + ' V). Use mais strings, mais curtas.');
@@ -898,7 +935,7 @@ window.App = window.App || {};
       const trocaManual = r.hibridoAtivo && prem.hibrido.trocaBateriaAno > 0;
       const custoHora = U.numOr(c.custoHoraFalta, 0), horasFalta = U.numOr(c.horasFaltaAno, 0);
       cen.fin = E.fluxo({
-        prem: prem, anoBase: anoBase, investimento: cen.investimento, tarifas: r.tarifas, consumo: cp, demanda: r.demanda,
+        prem: r.degradacaoDatasheet ? Object.assign({}, prem, { degradacao: r.degradacaoModulos }) : prem, anoBase: anoBase, investimento: cen.investimento, tarifas: r.tarifas, consumo: cp, demanda: r.demanda,
         disp: r.disponibilidade, cosip: r.cosip, tusd: r.tusdFioB, s: r.simultaneidade,
         geracaoAnual1: cen.incluirFV ? r.geracaoAnual : 0,
         estrategia: def.armazenamento ? def.id : null,

@@ -376,9 +376,8 @@
   igual('solo: mesas combinadas (2 × 12 + 1 × 4)', solo.filter(function (i) { return /Mesa de solo/.test(i.descricao); }).map(function (i) { return i.qtd + '×' + i.descricao.match(/p\/ (\d+)/)[1]; }).join(', '), '2×12, 1×4');
   ok('fibrocimento: somente o kit original (sem alternativas)', itensTelhado('Fibrocimento', 9).every(function (i) { return /Solfácil/.test(i.descricao); }));
   ok('catálogo: ids únicos', (function () { const v = {}; return D.equipamentos.every(function (e) { if (v[e.id]) return false; v[e.id] = true; return true; }); })());
-  ok('catálogo: fabricantes de módulos presentes', ['Trina Solar', 'Astronergy', 'TCL Solar', 'OSDA', 'Honor Solar', 'ERA Solar']
-    .every(function (f) { return D.equipamentos.some(function (e) { return e.fabricante === f; }); }));
-  ok('catálogo: sem inversores, microinversores, híbridos e baterias (cadastro pelo datasheet)', !D.equipamentos.some(function (e) { return ['inversor', 'micro', 'hibrido', 'bateria'].indexOf(e.tipo) >= 0; }));
+  ok('catálogo: sem módulos, inversores, microinversores, híbridos e baterias (cadastro pelo datasheet)', !D.equipamentos.some(function (e) { return ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'].indexOf(e.tipo) >= 0; }));
+  ok('catálogo: estruturas, materiais e BESS de exemplo mantidos', ['estrutura', 'material', 'bess'].every(function (t) { return D.equipamentos.some(function (e) { return e.tipo === t; }); }));
   ok('fixture de testes: ids únicos', (function () { const v = {}; return D.equipamentos.concat(window.EQUIP_TESTE).every(function (e) { if (v[e.id]) return false; v[e.id] = true; return true; }); })());
 
   // ---------------------------------------------------------------- datasheet: campos, esquema da leitura por IA e conversão
@@ -428,6 +427,7 @@
   cStr.equipamentos.push(modDS, invDS);
   const docStr = textoModelo(App.Documento.montar(Object.assign(propostaReferencia(cStr), { moduloId: 'mod-ds', inversorId: 'inv-ds', nModulos: 9 }), rStr, cStr, cStr.clientes[0], { w: 1400, h: 752 })).join('\n');
   ok('documento: arranjo elétrico com strings por MPPT e Isc', docStr.indexOf('1 string(s) de até 9 módulos — 1 string(s) por MPPT (Isc 16,3 A por MPPT / máx. 20 A)') >= 0);
+  ok('documento: Voc da string no frio e limite', docStr.indexOf('Voc da string no frio 489 V (limite 600 V)') >= 0, (docStr.match(/Voc da string[^\n]*/) || [''])[0]);
   ok('strings: arranjo dentro do datasheet sem alertas', !rStr.alertas.some(function (a) { return /MPPT|strings para|curto-circuito|partida|limitação/.test(a.msg); }), rStr.alertas.map(function (a) { return a.msg; }).join(' | '));
   igual('strings: 1 string de 9 por MPPT, 2 entradas', [rStr.strings.nStrings, rStr.strings.porString, rStr.strings.porMppt, rStr.strings.entradas].join('/'), '1/9/1/2');
   perto('strings: Imp do módulo = Pmáx ÷ Vmp', rStr.strings.impMppt, 620 / 40.2, 1e-9);
@@ -438,6 +438,24 @@
   ok('strings: mais strings que entradas = erro', temAlerta(calcS({}, {}, { nModulos: 30, nInversores: 1 }), 'erro', /3 strings para 2 entradas/));
   ok('strings: tensão acima da faixa MPPT = aviso', temAlerta(calcS({ mpptMax: 300 }, {}), 'aviso', /acima da faixa MPPT máxima/));
   ok('strings: Voc abaixo da tensão de partida = aviso', temAlerta(calcS({}, {}, { nModulos: 2 }), 'aviso', /tensão de partida/));
+
+  // ---------------------------------------------------------------- datasheet do módulo no dimensionamento
+  const premT = Object.assign(U.clone(D.premissas), { tempMinima: 0, tempMaxCelula: 70 });
+  perto('módulo: Voc no frio pelo coeficiente (−0,25%/°C a 0 °C)', C.vocFrio({ voc: 48.5, coefVoc: -0.25 }, premT), 48.5 * 1.0625, 1e-9);
+  perto('módulo: sem coeficiente usa o fator das premissas', C.vocFrio({ voc: 48.5 }, premT), 48.5 * 1.12, 1e-9);
+  perto('módulo: Vmp no calor (célula a 70 °C)', C.vmpQuente({ vmp: 40.2, coefVoc: -0.25 }, premT), 40.2 * (1 - 0.0025 * 45), 1e-9);
+  perto('módulo: Imp do datasheet ou Pmáx ÷ Vmp', C.impModulo({ imp: 15.1, potencia: 620, vmp: 40.2 }) + C.impModulo({ potencia: 620, vmp: 40.2 }), 15.1 + 620 / 40.2, 1e-9);
+  perto('módulo: área pelas dimensões', C.areaModulo({ comprimento: 2382, largura: 1134 }), 2.701188, 1e-9);
+  perto('datasheet: área do módulo calculada na leitura', DS.converter('modulo', { fabricante: 'T', modelo: 'M', potencia: 620, comprimento: 2382, largura: 1134, coefVoc: 0.25 }).area, 2.701, 1e-9);
+  igual('datasheet: coeficiente de Voc sempre negativo', DS.converter('modulo', { fabricante: 'T', modelo: 'M', coefVoc: 0.25 }).coefVoc, -0.25);
+  const rSv = calcS({ vmaxCC: 1100 }, { coefVoc: -0.25, vMaxSistema: 1000 }, { nModulos: 19 });
+  igual('strings: limite pela tensão máxima do sistema do módulo (1000 V ÷ 51,5 V)', rSv.strings.maxSerie + (rSv.strings.limitePeloModulo ? ' (módulo)' : ''), '19 (módulo)');
+  ok('strings: Vmp no calor abaixo da faixa MPPT = aviso (no STC passaria)', temAlerta(calcS({ mpptMin: 230 }, { coefVoc: -0.25 }, { nModulos: 6 }), 'aviso', /com a célula a 70 °C/) &&
+    !temAlerta(calcS({ mpptMin: 230 }, {}, { nModulos: 6 }), 'aviso', /faixa MPPT mínima/));
+  ok('strings: 3 strings em paralelo acima do fusível do módulo = aviso', temAlerta(calcS({ mppts: 1, stringsPorMppt: 3, iscMaxMppt: 60, imaxMppt: 60 }, { fusivelMax: 25 }, { nModulos: 30, nInversores: 1 }), 'aviso', /fusíveis de string/));
+  const rDeg = calcS({}, { degradacaoAnual: 0.4, comprimento: 2382, largura: 1134, area: null });
+  perto('módulo: degradação do datasheet na projeção de geração', rDeg.cen.fin.anos[1].geracao / rDeg.cen.fin.anos[0].geracao, 0.996, 1e-9);
+  perto('módulo: área do telhado pelas dimensões do datasheet', rDeg.areaModulo, 2.701188, 1e-9);
 
   // ---------------------------------------------------------------- datasheet no dimensionamento: microinversor
   const calcM = function (inv, mod) {
@@ -498,9 +516,11 @@
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
-      igual('migração v7: só ficam os equipamentos em uso', depois.filter(function (e) { return DS.TIPOS.indexOf(e.tipo) >= 0; }).length, 2);
-      igual('migração v7: cópia de segurança dos removidos', S.removidosV7().length, window.EQUIP_TESTE.length - 2);
-      igual('migração v7: restauração devolve os removidos', S.restaurarRemovidosV7(), window.EQUIP_TESTE.length - 2);
+      const nUso = new Set([fixa.moduloId, fixa.inversorId, invAuto.inversor.id]).size;
+      igual('migração v7: só ficam os equipamentos em uso (módulo e inversores)', depois.filter(function (e) { return DS.TIPOS.indexOf(e.tipo) >= 0; }).length, nUso);
+      ok('migração v7: módulo usado fica inativo', depois.some(function (e) { return e.id === fixa.moduloId && e.ativo === false && e.arquivado; }));
+      igual('migração v7: cópia de segurança dos removidos', S.removidosV7().length, window.EQUIP_TESTE.length - nUso);
+      igual('migração v7: restauração devolve os removidos', S.restaurarRemovidosV7(), window.EQUIP_TESTE.length - nUso);
       ok('migração v7: cópia descartada após restaurar', !S.removidosV7().length);
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });

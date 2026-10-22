@@ -45,14 +45,16 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 
 **Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, **microinversores**, inversores híbridos, baterias, BESS, estruturas e materiais com regras de quantidade), serviços, concessionárias e tarifas (B1/B2/B3, branca, verde, azul e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal), condições de pagamento e projetos realizados (portfólio com fotos).
 
-**Cadastro pelo datasheet** — inversores on-grid, microinversores, inversores híbridos e baterias **não têm catálogo de fábrica**: são cadastrados a partir do datasheet do modelo exato, porque esses dados comandam o dimensionamento.
-- Os formulários seguem as seções do datasheet (entrada CC, saída CA, bateria, backup, eficiência, geral). Os campos marcados com ★ entram no cálculo; a coluna **Datasheet** da lista mostra os itens completos, os que têm campos ★ vazios e os que aguardam revisão.
-- **📄 Ler datasheet**: envie o PDF (ou uma foto) da ficha técnica e a IA (API do Claude, da Anthropic) preenche os campos de cada modelo da tabela. Os itens entram marcados como **Revisar** e sem preço; confira com o documento, informe o preço e salve. Lendo de novo o datasheet de um item já cadastrado, os dados técnicos são atualizados e o preço, a descrição e as observações são mantidos.
-- A leitura usa a chave de API do próprio usuário (**Configurações › Leitura de datasheet (IA)**), salva só no navegador e fora do backup; o custo é cobrado pela Anthropic por tokens e aparece estimado ao final de cada leitura. Modelo padrão Claude Opus 5.5; com Opus 5.5 e Sonnet 5.5, se o filtro de segurança recusar o documento, o pedido é refeito no modelo indicado pela Anthropic (fallback no servidor).
+**Cadastro pelo datasheet** — módulos, inversores on-grid, microinversores, inversores híbridos e baterias **não têm catálogo de fábrica**: são cadastrados a partir do datasheet do modelo exato, porque esses dados comandam o dimensionamento.
+- Os formulários seguem as seções do datasheet (módulo: dados elétricos STC, coeficientes de temperatura, limites, mecânica e garantia; inversor: entrada CC, saída CA, bateria, backup, eficiência, geral). Os campos marcados com ★ entram no cálculo; a coluna **Datasheet** da lista mostra os itens completos, os que têm campos ★ vazios e os que aguardam revisão.
+- **📄 Ler datasheet**: envie o PDF (ou uma foto) da ficha técnica e a IA (API do Claude, da Anthropic) preenche os campos de cada modelo da tabela.
+- **🔎 Pesquisar datasheet**: informe fabricante e modelo; a IA procura na internet o datasheet oficial (de preferência o PDF do fabricante), lê o PDF original e mostra a fonte. Se o PDF não puder ser baixado, usa a transcrição feita na pesquisa e avisa para conferir com atenção.
+- **🔄** (em cada item da lista): pesquisa o datasheet do item e atualiza os dados técnicos, mantendo preço, descrição e observações.
+- Os itens entram marcados como **Revisar**; confira com o documento, informe o preço dos novos e salve.
+- A leitura usa a chave de API do próprio usuário (**Configurações › Leitura de datasheet (IA)**), salva só no navegador e fora do backup; o custo é cobrado pela Anthropic por tokens (e US$ 0,01 por busca na web, na pesquisa) e aparece estimado ao final de cada leitura. Modelo padrão Claude Opus 5.5; com Opus 5.5 e Sonnet 5.5, se o filtro de segurança recusar o documento, o pedido é refeito no modelo indicado pela Anthropic (fallback no servidor).
 - Na atualização desta versão, os itens do antigo catálogo usados em propostas ficam inativos (a proposta continua igual; as de escolha automática passam a ter o equipamento fixado) e os demais saem do cadastro, com cópia restaurável em **Backup e dados**.
 
 **Catálogo inicial** (preços em branco — informe os do seu distribuidor):
-- Módulos: Trina Solar, Astronergy, TCL Solar, OSDA, Honor Solar, ERA Solar (e DMEGC), com Voc/Vmp/Isc quando disponíveis na ficha.
 - Estruturas para telhado cerâmico, fibrocimento, metálico (trapezoidal, ondulado, zipado, sanduíche), laje, solo, shingle e carport, além de suportes e cabos específicos de microinversores.
 - Itens com dados parciais estão identificados nas observações; confira sempre o datasheet vigente.
 
@@ -78,7 +80,7 @@ e acesse `http://localhost:8765/`.
 
 ### Fluxo sugerido
 1. **Configurações › Empresa**: confira razão social, CNPJ, registro, responsável técnico e envie o logotipo.
-2. **Cadastros › Equipamentos**: cadastre inversores, microinversores, híbridos e baterias pelo datasheet (formulário ou **📄 Ler datasheet**, depois de informar a chave em **Configurações › Leitura de datasheet (IA)**) e os preços dos módulos e materiais (o kit é somado automaticamente).
+2. **Cadastros › Equipamentos**: cadastre módulos, inversores, microinversores, híbridos e baterias pelo datasheet (formulário, **📄 Ler datasheet** ou **🔎 Pesquisar datasheet**, depois de informar a chave em **Configurações › Leitura de datasheet (IA)**), com os preços do seu distribuidor, e os preços dos materiais (o kit é somado automaticamente).
 3. **Cadastros › Localidades / Concessionárias**: confira HSP, COSIP e tarifas da sua região.
 4. **Nova proposta**: escolha On-Grid, Híbrido ou BESS, selecione/cadastre o cliente, informe a modalidade tarifária, o consumo e o valor, compare os cenários, revise o resumo e clique em **Proposta em PDF** (ou **Word (.docx)**). Na lista de propostas, os botões **PDF** e **DOCX** baixam qualquer proposta salva.
 5. **Contrato**: na lista de propostas clique em ✍ (ou em Contratos › Novo contrato), confira os dados e as parcelas e baixe o contrato. Antes, preencha em **Configurações › Empresa** a razão social, endereço, contatos e dados bancários do contrato.
@@ -118,7 +120,9 @@ e acesse `http://localhost:8765/`.
 | Potência do banco (backup) | `nº de baterias ≥ fator de segurança × potência das cargas ÷ potência contínua por bateria` (datasheet ou `corrente contínua × tensão`; sem dado, 0,5C); limitada pela potência de bateria do inversor (`pot. máx.` ou `corrente máx. × tensão do banco`) |
 | Tensão do banco (híbrido) | baterias em série = tensão nominal do inversor ÷ tensão da bateria ou, em baixa tensão, o mínimo para entrar na faixa de bateria do inversor; banco fora da faixa = erro. Paralelismo de inversores e de baterias conferido com o máximo do datasheet |
 | Pico de partida | `Σ cargas + maior motor × (fator de partida − 1)` (padrão 5×), comparado ao surto do inversor e à potência de pico das baterias |
-| Strings (inversor) | `máx. em série = ⌊Vmáx CC ÷ (Voc × 1,12)⌋`; strings por MPPT distribuídas por igual: `Isc × strings ≤ Isc máx. por MPPT` (erro), `Imp × strings ≤ I máx. por MPPT` (aviso de limitação, `Imp = Pmáx ÷ Vmp`), strings ≤ MPPTs × entradas, Vmp na faixa MPPT e Voc ≥ tensão de partida |
+| Voc no frio / Vmp no calor | `Voc × (1 + c × (25 − T mín.))` e `Vmp × (1 − c × (T máx. célula − 25))`, com `c` = valor absoluto do coeficiente de Voc (%/°C ÷ 100) do datasheet (premissas T mín. 0 °C e T máx. 70 °C); sem coeficiente, `Voc × 1,12` e Vmp nominal |
+| Strings (inversor) | `máx. em série = ⌊min(Vmáx CC do inversor, Vmáx do sistema do módulo) ÷ Voc no frio⌋`; strings por MPPT distribuídas por igual: `Isc × strings ≤ Isc máx. por MPPT` (erro), `Imp × strings ≤ I máx. por MPPT` (aviso de limitação; Imp do datasheet ou `Pmáx ÷ Vmp`), strings ≤ MPPTs × entradas, Vmp no calor ≥ MPPT mínimo, Vmp ≤ MPPT máximo e Voc ≥ tensão de partida; com 3 ou mais strings em paralelo, `(n − 1) × Isc` comparado ao fusível máximo do módulo |
+| Módulo: área e degradação | área do datasheet ou `comprimento × largura`; degradação anual do datasheet (após o 1º ano) na projeção de geração, no lugar da premissa |
 | Microinversores | `nº = ⌈módulos ÷ entradas⌉`; Isc e Imp do módulo × limites por entrada; `ramais CA = ⌈nº ÷ máx. por ramal⌉` |
 | Consumo do dimensionamento (híbrido) | `consumo + consumo próprio do inversor (W × 24 h; padrão 40 W) + perdas do ciclo (energia ciclada × (1/η − 1))` |
 | Balanço diário / utilização | no mês de menor geração: `energia ciclada = min(capacidade acima da reserva × η, excedente solar × η, consumo noturno)`; `utilização = energia ciclada ÷ (capacidade acima da reserva × η)` (mínimo recomendado 70%); sugere módulos ou menos baterias |
@@ -149,9 +153,9 @@ A tarifa e a COSIP são reajustadas anualmente pelas taxas definidas em **Premis
 index.html            Aplicação (abre direto no navegador)
 css/app.css           Estilos
 js/util.js            Formatação pt-BR, números, datas, DOM
-js/defaults.js        Dados padrão (empresa, premissas, textos, catálogo de módulos, estruturas e materiais)
-js/datasheet.js       Campos de datasheet de inversores, microinversores, híbridos e baterias (formulários e esquema da leitura por IA)
-js/ia.js              Leitura de datasheets com a API do Claude (SDK oficial carregado sob demanda)
+js/defaults.js        Dados padrão (empresa, premissas, textos, catálogo de estruturas e materiais)
+js/datasheet.js       Campos de datasheet de módulos, inversores, microinversores, híbridos e baterias (formulários e esquema da leitura por IA)
+js/ia.js              Leitura e pesquisa de datasheets com a API do Claude (SDK oficial carregado sob demanda)
 js/store.js           Persistência local, numeração e backup
 js/energia.js         Tarifas (convencional, branca, verde, azul), contas, compensação, cenários e recomendação
 js/calc.js            Dimensionamento On-Grid/Híbrido/BESS, materiais, cenários, financeiro e pagamentos
@@ -167,10 +171,10 @@ js/logo-default.js    Logotipo padrão (gerado a partir de assets/logo-genesis.j
 js/ui.js              Roteador, diálogos, campos e cadastro genérico
 js/pages/*.js         Telas (painel, propostas, formulário, cadastros, configurações)
 tests/index.html      Testes automáticos do cálculo e do .docx
-tests/equipamentos-teste.js  Inversores e baterias usados nos cenários de teste (antigo catálogo)
+tests/equipamentos-teste.js  Módulos, inversores e baterias usados nos cenários de teste (antigo catálogo)
 tools/serve.ps1       Servidor local opcional (Windows/PowerShell)
 ```
 
 ## Testes
 
-Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; as regras dos dados de datasheet (strings e correntes por MPPT, microinversores, tensão e paralelismo do banco, eficiência de ciclo), o esquema da leitura por IA e a migração da base; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.
+Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; as regras dos dados de datasheet (Voc no frio e Vmp no calor pelo coeficiente do módulo, tensão máxima do sistema, fusível de string, área e degradação; strings e correntes por MPPT, microinversores, tensão e paralelismo do banco, eficiência de ciclo), o esquema da leitura por IA e a migração da base; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.

@@ -1,6 +1,6 @@
 /*
- * Leitura de datasheets com a API do Claude (Anthropic): envia o PDF (ou a imagem) do datasheet e recebe os dados técnicos
- * no formato dos campos de cadastro (App.Datasheet), um item por modelo/coluna da ficha. A chave de API fica só neste
+ * Leitura de datasheets com a API do Claude (Anthropic): envia o PDF (ou a imagem) do datasheet — ou pesquisa o datasheet do
+ * modelo na internet — e recebe os dados técnicos no formato dos campos de cadastro (App.Datasheet), um item por modelo/coluna da ficha. A chave de API fica só neste
  * navegador (não entra no backup); o SDK oficial é carregado do CDN na primeira leitura.
  */
 window.App = window.App || {};
@@ -27,10 +27,10 @@ window.App = window.App || {};
   const LIMITE_PDF = 20 * 1024 * 1024; // requisição até 32 MB, com o base64 ocupando 4/3 do arquivo
   const LIMITE_IMAGEM = 5 * 1024 * 1024;
   const IMAGENS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  const NOMES_TIPO = { inversor: 'inversor on-grid (string)', micro: 'microinversor', hibrido: 'inversor híbrido', bateria: 'bateria' };
+  const NOMES_TIPO = { modulo: 'módulo fotovoltaico', inversor: 'inversor on-grid (string)', micro: 'microinversor', hibrido: 'inversor híbrido', bateria: 'bateria' };
 
   const SISTEMA = [
-    'Você extrai dados técnicos de datasheets de equipamentos fotovoltaicos (inversores on-grid, microinversores, inversores híbridos e baterias) para um sistema de dimensionamento de projetos solares no Brasil. Os valores serão usados no cálculo de strings, de baterias e de backup, então a exatidão importa mais que a completude.',
+    'Você extrai dados técnicos de datasheets de equipamentos fotovoltaicos (módulos, inversores on-grid, microinversores, inversores híbridos e baterias) para um sistema de dimensionamento de projetos solares no Brasil. Os valores serão usados no cálculo de strings, de baterias e de backup, então a exatidão importa mais que a completude.',
     'Regras:',
     '- Use somente valores impressos no documento. Não estime, não complete com valores típicos e não deduza de outros modelos: o que não estiver no datasheet fica null.',
     '- Crie um item em "modelos" para cada modelo ou variante com coluna própria na tabela de dados técnicos, com o nome exato do modelo.',
@@ -137,37 +137,24 @@ window.App = window.App || {};
     throw new Error('Envie o datasheet em PDF ou imagem (JPG, PNG ou WebP).');
   };
 
+  const PRECO_PESQUISA = 0.01; // US$ por pesquisa na web (US$ 10 por 1.000)
+
   function custoEstimado(msg) {
     const u = msg.usage || {};
     const p = MODELOS.find(function (m) { return m.id === msg.model; }) || FALLBACK[msg.model];
     if (!p) return null;
     const entrada = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-    return (entrada * p.entrada + (u.output_tokens || 0) * p.saida) / 1e6;
+    const pesquisas = (u.server_tool_use && u.server_tool_use.web_search_requests) || 0;
+    return (entrada * p.entrada + (u.output_tokens || 0) * p.saida) / 1e6 + pesquisas * PRECO_PESQUISA;
   }
 
-  /**
-   * Lê o datasheet e devolve {tipoDetectado, modelos[] (campos do cadastro), avisos, modeloIA, fallback, custoUSD}.
-   * opcoes: {tipo, modeloInteresse, aoProgredir(caracteres), sinal (AbortSignal)}.
-   */
-  IA.lerDatasheet = async function (file, opcoes) {
-    const o = opcoes || {};
-    const tipo = o.tipo;
-    if (!App.Datasheet.CAMPOS[tipo]) throw new Error('Tipo de equipamento sem leitura de datasheet.');
-    const cfg = IA.config();
-    if (!cfg.chave) throw new Error('Configure a chave de API em Configurações › Leitura de datasheet (IA).');
-    const arquivo = await IA.blocoArquivo(file);
-    const c = await cliente(cfg);
-    const pedido = 'Extraia os dados técnicos deste datasheet para o cadastro de ' + NOMES_TIPO[tipo] + '.' +
-      (o.modeloInteresse ? ' Interessa principalmente o modelo "' + o.modeloInteresse + '", mas inclua todos os modelos da tabela.' : '');
-    const params = {
-      model: cfg.modelo,
-      max_tokens: 64000,
-      system: SISTEMA,
-      output_config: { effort: 'high', format: { type: 'json_schema', schema: App.Datasheet.esquema(tipo) } },
-      messages: [{ role: 'user', content: [arquivo, { type: 'text', text: pedido }] }]
-    };
+  function comFallback(params, cfg) {
     if (COM_FALLBACK[cfg.modelo]) { params.betas = [BETA_FALLBACK]; params.fallbacks = 'default'; }
-    let msg;
+    return params;
+  }
+
+  /** Envia o pedido em streaming (cancelável pelo sinal) e devolve a mensagem final; erros traduzidos guardam o original. */
+  async function enviar(c, params, o) {
     try {
       const stream = c.client.beta.messages.stream(params);
       if (o.sinal) {
@@ -175,25 +162,163 @@ window.App = window.App || {};
         else o.sinal.addEventListener('abort', function () { stream.abort(); });
       }
       if (o.aoProgredir) stream.on('text', function (delta, total) { o.aoProgredir(total.length); });
-      msg = await stream.finalMessage();
-    } catch (e) { throw traduzirErro(e, c.Anthropic); }
+      return await stream.finalMessage();
+    } catch (e) {
+      const t = traduzirErro(e, c.Anthropic);
+      if (t !== e) t.original = e;
+      throw t;
+    }
+  }
+
+  // com fallback no meio da resposta, o texto continua no bloco seguinte: junta todos os blocos de texto
+  function textoDe(msg) {
+    return msg.content.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
+  }
+
+  function preparar(tipo) {
+    if (!App.Datasheet.CAMPOS[tipo]) throw new Error('Tipo de equipamento sem leitura de datasheet.');
+    const cfg = IA.config();
+    if (!cfg.chave) throw new Error('Configure a chave de API em Configurações › Leitura de datasheet (IA).');
+    return cfg;
+  }
+
+  /** Extração estruturada dos campos do cadastro a partir do conteúdo do datasheet (PDF, imagem ou texto transcrito). */
+  async function extrair(c, cfg, conteudo, o) {
+    const tipo = o.tipo;
+    const pedido = 'Extraia os dados técnicos deste datasheet para o cadastro de ' + NOMES_TIPO[tipo] + '.' +
+      (o.modeloInteresse ? ' Interessa principalmente o modelo "' + o.modeloInteresse + '", mas inclua todos os modelos da tabela.' : '');
+    const params = comFallback({
+      model: cfg.modelo,
+      max_tokens: 64000,
+      system: SISTEMA,
+      output_config: { effort: 'high', format: { type: 'json_schema', schema: App.Datasheet.esquema(tipo) } },
+      messages: [{ role: 'user', content: conteudo.concat([{ type: 'text', text: pedido }]) }]
+    }, cfg);
+    const msg = await enviar(c, params, o);
     if (msg.stop_reason === 'refusal') throw new Error('O modelo recusou a leitura deste documento (filtro de segurança). Tente outro arquivo ou outro modelo.');
     if (msg.stop_reason === 'max_tokens') throw new Error('Resposta incompleta: o documento é extenso demais. Envie só as páginas da ficha técnica.');
-    // com fallback no meio da resposta, o texto continua no bloco seguinte: junta todos os blocos de texto
-    const texto = msg.content.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
     let dados;
-    try { dados = JSON.parse(texto); } catch (e) { throw new Error('Resposta da IA em formato inesperado. Tente novamente.'); }
+    try { dados = JSON.parse(textoDe(msg)); } catch (e) { throw new Error('Resposta da IA em formato inesperado. Tente novamente.'); }
     if (!dados || !Array.isArray(dados.modelos)) throw new Error('Resposta da IA em formato inesperado. Tente novamente.');
-    const fallback = (msg.usage && msg.usage.iterations || []).some(function (it) { return it.type === 'fallback_message'; });
     return {
       tipoDetectado: dados.tipoEquipamento,
       modelos: dados.modelos.map(function (m) { return App.Datasheet.converter(tipo, m); })
         .filter(function (m) { return m.fabricante || m.modelo; }),
       avisos: String(dados.avisos || '').trim(),
       modeloIA: msg.model,
-      fallback: fallback,
+      fallback: (msg.usage && msg.usage.iterations || []).some(function (it) { return it.type === 'fallback_message'; }),
       custoUSD: custoEstimado(msg)
     };
+  }
+
+  /**
+   * Lê o datasheet enviado e devolve {tipoDetectado, modelos[] (campos do cadastro), avisos, modeloIA, fallback, custoUSD}.
+   * opcoes: {tipo, modeloInteresse, aoProgredir(caracteres), sinal (AbortSignal)}.
+   */
+  IA.lerDatasheet = async function (file, opcoes) {
+    const o = opcoes || {};
+    const cfg = preparar(o.tipo);
+    const arquivo = await IA.blocoArquivo(file);
+    const c = await cliente(cfg);
+    return extrair(c, cfg, [arquivo], o);
+  };
+
+  const SISTEMA_PESQUISA = [
+    'Você localiza datasheets oficiais de equipamentos fotovoltaicos na internet para um sistema de dimensionamento de projetos solares no Brasil.',
+    '- Procure a ficha técnica (datasheet) do modelo pedido, de preferência o PDF no site do fabricante; na falta dele, o de um distribuidor confiável.',
+    '- Abra o documento com a ferramenta de leitura e confira se ele cobre exatamente o modelo pedido (mesma potência e variante). Se a versão do datasheet importar (ex.: G3, V2), prefira a mais recente.',
+    '- Depois de abrir o datasheet, transcreva todos os dados técnicos da tabela, com valores e unidades como impressos, para o modelo pedido e os demais modelos da mesma tabela.',
+    'Estruture a resposta assim:',
+    'PDF: <link direto do arquivo PDF do datasheet, ou "nenhum">',
+    'PAGINA: <link da página em que o datasheet foi encontrado, ou "nenhuma">',
+    'DADOS:',
+    '<transcrição dos dados técnicos>',
+    'Se não encontrar um datasheet confiável do modelo, responda "PDF: nenhum" e explique em uma frase, sem inventar dados.'
+  ].join('\n');
+
+  // pesquisa e leitura na web com filtragem dinâmica (Opus 5.5 e Sonnet 5.5); o Haiku usa as versões básicas
+  const FERRAMENTAS_WEB = {
+    dinamicas: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }, { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 4 }],
+    basicas: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }, { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 4 }]
+  };
+
+  /** Link da linha "RÓTULO: ..." da resposta da pesquisa. */
+  function linkDe(texto, rotulo) {
+    const rx = new RegExp('^[\\s*_#>-]*' + rotulo + '[\\s*_]*:', 'i');
+    const linha = texto.split('\n').find(function (l) { return rx.test(l); });
+    const m = linha && linha.match(/https?:\/\/[^\s<>()\[\]"']+/);
+    return m ? m[0].replace(/[.,;:]+$/, '') : null;
+  }
+
+  /** Conteúdo do turno pausado para reenvio: antes de um fallback, sem blocos internos do modelo que recusou. */
+  function paraReenvio(conteudo) {
+    let ultimo = -1;
+    conteudo.forEach(function (b, i) { if (b.type === 'fallback') ultimo = i; });
+    if (ultimo < 0) return conteudo;
+    const comResultado = {};
+    conteudo.forEach(function (b) { if (b.tool_use_id) comResultado[b.tool_use_id] = true; });
+    return conteudo.filter(function (b, i) {
+      if (i >= ultimo) return true;
+      if (['thinking', 'redacted_thinking', 'tool_use'].indexOf(b.type) >= 0) return false;
+      return !(b.type === 'server_tool_use' && !comResultado[b.id]);
+    });
+  }
+
+  /**
+   * Pesquisa o datasheet do modelo na internet e lê os dados técnicos: primeiro o PDF original (pelo link encontrado);
+   * se ele não puder ser baixado, a transcrição feita na pesquisa. Devolve o mesmo resultado de lerDatasheet + fonte {pdf, pagina, viaPdf}.
+   * opcoes: {tipo, fabricante, modelo, aoEtapa(texto), aoProgredir, sinal}.
+   */
+  IA.pesquisarDatasheet = async function (opcoes) {
+    const o = opcoes || {};
+    const cfg = preparar(o.tipo);
+    const nome = [o.fabricante, o.modelo].map(function (x) { return String(x || '').trim(); }).filter(Boolean).join(' ');
+    if (!String(o.modelo || '').trim()) throw new Error('Informe o modelo do equipamento.');
+    const c = await cliente(cfg);
+    const inicial = { role: 'user', content: 'Encontre o datasheet do ' + NOMES_TIPO[o.tipo] + ' "' + nome + '".' };
+    const params = comFallback({
+      model: cfg.modelo,
+      max_tokens: 32000,
+      system: SISTEMA_PESQUISA,
+      output_config: { effort: 'medium' },
+      tools: cfg.modelo === 'claude-haiku-5-5' ? FERRAMENTAS_WEB.basicas : FERRAMENTAS_WEB.dinamicas,
+      messages: [inicial]
+    }, cfg);
+    if (o.aoEtapa) o.aoEtapa('Pesquisando o datasheet na internet…');
+    let msg, custo = 0;
+    // turnos longos de pesquisa podem voltar pausados (pause_turn): reenvia o turno para o servidor continuar
+    for (let i = 0; i < 4; i++) {
+      msg = await enviar(c, params, o);
+      custo += custoEstimado(msg) || 0;
+      if (msg.stop_reason !== 'pause_turn') break;
+      params.messages = [inicial, { role: 'assistant', content: paraReenvio(msg.content) }];
+    }
+    if (msg.stop_reason === 'refusal') throw new Error('O modelo recusou a pesquisa (filtro de segurança). Envie o PDF pelo botão "Ler datasheet".');
+    if (msg.stop_reason === 'pause_turn') throw new Error('A pesquisa demorou demais e foi interrompida. Tente de novo ou envie o PDF pelo botão "Ler datasheet".');
+    const texto = textoDe(msg);
+    const pdf = linkDe(texto, 'PDF'), pagina = linkDe(texto, 'PAGINA');
+    const transcricao = (texto.split(/^[\s*_#>-]*DADOS[\s*_]*:/im)[1] || '').trim();
+    if (!pdf && transcricao.length < 40) {
+      throw new Error('Datasheet de "' + nome + '" não encontrado na internet. Confira o modelo ou envie o PDF pelo botão "Ler datasheet".');
+    }
+    const oLeitura = Object.assign({}, o, { modeloInteresse: o.modelo });
+    if (o.aoEtapa) o.aoEtapa('Lendo o datasheet encontrado…');
+    let res = null;
+    if (pdf) {
+      try {
+        res = await extrair(c, cfg, [{ type: 'document', source: { type: 'url', url: pdf } }], oLeitura);
+      } catch (e) {
+        // PDF inacessível para a API (bloqueio do site, link de página): segue com a transcrição, se houver
+        if (!(e.original instanceof c.Anthropic.BadRequestError) || transcricao.length < 40) throw e;
+      }
+    }
+    const viaPdf = !!res;
+    if (!res) {
+      res = await extrair(c, cfg, [{ type: 'text', text: 'Dados técnicos transcritos do datasheet' + (pagina || pdf ? ' (fonte: ' + (pdf || pagina) + ')' : '') + ':\n\n' + transcricao }], oLeitura);
+    }
+    res.custoUSD = (res.custoUSD || 0) + custo;
+    res.fonte = { pdf: pdf, pagina: pagina, viaPdf: viaPdf };
+    return res;
   };
 
   App.IA = IA;

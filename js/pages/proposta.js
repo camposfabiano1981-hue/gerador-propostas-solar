@@ -623,7 +623,8 @@
         if (r.strings) {
           const st = r.strings;
           itensInfo.push(linhaInfo('Arranjo sugerido', st.nStrings + ' string(s) de até ' + st.porString + ' módulos (máx. ' + st.maxSerie + '/string) — ' + st.porMppt + ' por MPPT' +
-            (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 1) + (r.inversor && U.num(r.inversor.iscMaxMppt) > 0 ? '/' + U.fmtSmart(r.inversor.iscMaxMppt, 1) : '') + ' A)' : '')));
+            (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 1) + (r.inversor && U.num(r.inversor.iscMaxMppt) > 0 ? '/' + U.fmtSmart(r.inversor.iscMaxMppt, 1) : '') + ' A)' : '') +
+            ' · Voc no frio ' + U.fmt(st.vocFrioString, 0) + '/' + U.fmt(st.vLimite, 0) + ' V'));
         }
         if (r.ramaisMicro) itensInfo.push(linhaInfo('Circuitos CA (ramais)', r.ramaisMicro + ' (máx. ' + r.inversor.maxPorRamal + ' microinversores por ramal)'));
         if (!p.inversorId && sug) itensInfo.push(linhaInfo('Sugestão automática', sug.n + ' × ' + C.nomeEquip(sug.inv)));

@@ -82,12 +82,15 @@
   /* ------------------------------------------------------------ equipamentos */
 
   function camposDatasheet(tipo, desc, e) {
-    const notas = [{ el: h('p.nota.span-all', '★ Dados usados no dimensionamento técnico. Preencha conforme o datasheet do modelo exato ou use \u201c📄 Ler datasheet\u201d.') }];
-    if (e && e.origem && e.origem.arquivo) {
+    const notas = [{ el: h('p.nota.span-all', '★ Dados usados no dimensionamento técnico. Preencha conforme o datasheet do modelo exato, use \u201c📄 Ler datasheet\u201d ou \u201c🔎 Pesquisar datasheet\u201d.') }];
+    const o = e && e.origem;
+    if (o && (o.arquivo || o.url)) {
       const falta = App.Datasheet.faltando(tipo, e);
+      const quando = ' em ' + U.dataBR(String(o.lidoEm || '').slice(0, 10)) + (o.modeloIA ? ' (' + App.IA.nomeModelo(o.modeloIA) + ')' : '') + '. ';
       notas.push({ el: h('p.nota.span-all' + (e.revisar ? '.aviso' : ''),
-        '📄 Lido do datasheet \u201c' + e.origem.arquivo + '\u201d em ' + U.dataBR(String(e.origem.lidoEm || '').slice(0, 10)) + (e.origem.modeloIA ? ' (' + App.IA.nomeModelo(e.origem.modeloIA) + ')' : '') + '. ' +
-        (e.revisar ? 'Confira os valores com o documento e salve para concluir a revisão. ' : '') +
+        o.url ? ['🔎 Datasheet encontrado na internet: ', h('a', { href: o.url, target: '_blank', rel: 'noopener' }, o.url), quando + (o.viaPdf === false ? 'Lido da transcrição da página (sem o PDF original). ' : '')]
+          : '📄 Lido do datasheet \u201c' + o.arquivo + '\u201d' + quando,
+        (e.revisar ? 'Confira os valores com o documento e salve para concluir a revisão. ' : ''),
         (falta.length ? 'Sem dado no datasheet: ' + falta.join(', ') + '.' : '')) });
     }
     return notas.concat(App.Datasheet.camposForm(tipo), [
@@ -100,29 +103,8 @@
   }
 
   const CAMPOS_EQUIP = {
-    modulo: function () {
-      return [
-        { k: 'fabricante', label: 'Fabricante', required: true },
-        { k: 'modelo', label: 'Modelo', required: true },
-        { k: 'potencia', label: 'Potência', type: 'number', suffix: 'Wp', required: true },
-        { k: 'eficiencia', label: 'Eficiência', type: 'number', suffix: '%' },
-        { k: 'tecnologia', label: 'Tecnologia', placeholder: 'Ex.: Bifacial, Monocristalino, TOPCon' },
-        { k: 'detalhe', label: 'Detalhe construtivo', placeholder: 'Ex.: Frame Composto' },
-        { k: 'area', label: 'Área ocupada por módulo', type: 'number', suffix: 'm²', help: 'Usada no cálculo da área do telhado.' },
-        { k: 'preco', label: 'Preço unitário', type: 'money' },
-        { k: 'garantiaProduto', label: 'Garantia do produto', type: 'number', suffix: 'anos' },
-        { k: 'garantiaPerformance', label: 'Garantia de performance', type: 'number', suffix: 'anos' },
-        { secao: 'Dados elétricos (opcional — verificação de strings)' },
-        { k: 'voc', label: 'Voc', type: 'number', suffix: 'V' },
-        { k: 'vmp', label: 'Vmp', type: 'number', suffix: 'V' },
-        { k: 'isc', label: 'Isc', type: 'number', suffix: 'A' },
-        { secao: 'Proposta' },
-        { k: 'descricaoProposta', label: 'Descrição na lista de equipamentos', cls: 'span2', help: function (e) { return 'Em branco = automática: ' + C.descModulo(Object.assign({}, e, { descricaoProposta: '' })); } },
-        { k: 'obs', label: 'Observações internas', cls: 'span2' },
-        { k: 'ativo', label: 'Ativo (disponível nas propostas)', type: 'checkbox' }
-      ];
-    },
-    // inversor on-grid, microinversor, híbrido e bateria: campos na estrutura do datasheet (App.Datasheet; ★ = dimensionamento)
+    modulo: function (e) { return camposDatasheet('modulo', C.descModulo, e); },
+    // módulo, inversor on-grid, microinversor, híbrido e bateria: campos na estrutura do datasheet (App.Datasheet; ★ = dimensionamento)
     inversor: function (tipo, e) { return camposDatasheet(tipo, C.descInversor, e); },
     bateria: function (e) { return camposDatasheet('bateria', C.descBateria, e); },
     bess: function () {
@@ -194,6 +176,7 @@
       { t: 'Eficiência', cls: 'num', v: function (e) { return e.eficiencia ? U.fmtSmart(e.eficiencia, 2) + '%' : '—'; } },
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)); } },
       { t: 'R$/Wp', cls: 'num', v: function (e) { return e.potencia && e.preco ? U.fmt(e.preco / e.potencia, 2) : '—'; } },
+      colDatasheet('modulo'),
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
     ],
     inversor: [
@@ -275,9 +258,12 @@
     }) || null;
   }
 
-  /** Registro a gravar: novo ou o já cadastrado com os dados técnicos atualizados (preço, descrição e observações mantidos). */
-  function registroDatasheet(tipo, m, origem, novo) {
-    const ex = existenteDatasheet(tipo, m);
+  /**
+   * Registro a gravar: novo ou o já cadastrado com os dados técnicos atualizados (preço, descrição e observações mantidos).
+   * `alvo`: item escolhido para atualizar (ação 🔄), mesmo que o nome do modelo no datasheet seja um pouco diferente.
+   */
+  function registroDatasheet(tipo, m, origem, novo, alvo) {
+    const ex = alvo ? (S.get('equipamentos', alvo.id) || alvo) : existenteDatasheet(tipo, m);
     const tecnicos = Object.assign({}, m);
     delete tecnicos.tipo; delete tecnicos.ativo; delete tecnicos.preco;
     const r = ex ? Object.assign(U.clone(ex), tecnicos) : Object.assign(novo(), tecnicos);
@@ -287,15 +273,18 @@
     return { registro: r, existente: !!ex };
   }
 
+  function exigeChaveIA() {
+    if (App.IA.configurada()) return false;
+    UI.modal({
+      titulo: 'Leitura de datasheet (IA)',
+      corpo: h('p', 'Para preencher o cadastro pelo datasheet (PDF ou pesquisa na internet), informe antes a chave de API da Anthropic em Configurações › Leitura de datasheet (IA).'),
+      acoes: [{ label: 'Fechar' }, { label: 'Configurar agora', primario: true, onClick: function () { UI.ir('#/ia'); } }]
+    });
+    return true;
+  }
+
   function escolherDatasheet(def, ctrl) {
-    if (!App.IA.configurada()) {
-      UI.modal({
-        titulo: 'Leitura de datasheet (IA)',
-        corpo: h('p', 'Para preencher o cadastro a partir do PDF do datasheet, informe antes a chave de API da Anthropic em Configurações › Leitura de datasheet (IA).'),
-        acoes: [{ label: 'Fechar' }, { label: 'Configurar agora', primario: true, onClick: function () { UI.ir('#/ia'); } }]
-      });
-      return;
-    }
+    if (exigeChaveIA()) return;
     const estado = { modeloInteresse: '' };
     const arquivo = h('input', { type: 'file', accept: 'application/pdf,.pdf,image/jpeg,image/png,image/webp' });
     UI.modal({
@@ -310,38 +299,77 @@
           label: 'Ler datasheet', primario: true, onClick: function () {
             const f = arquivo.files[0];
             if (!f) { UI.toast('Escolha o arquivo do datasheet.', 'erro'); return false; }
-            lerDatasheetIA(def, ctrl, f, estado.modeloInteresse);
+            progressoIA('Lendo datasheet…', [h('p', 'Arquivo: ', h('strong', f.name))], function (o) {
+              return App.IA.lerDatasheet(f, Object.assign(o, { tipo: def.id, modeloInteresse: estado.modeloInteresse }));
+            }, function (res) { mostrarLeitura(def, ctrl, { nome: f.name }, estado.modeloInteresse, res); });
           }
         }
       ]
     });
   }
 
-  function lerDatasheetIA(def, ctrl, file, modeloInteresse) {
+  /** Pesquisa o datasheet na internet: novo cadastro (sem alvo) ou atualização do item `alvo`. */
+  function pesquisarDatasheet(def, ctrl, alvo) {
+    if (exigeChaveIA()) return;
+    const estado = { fabricante: alvo ? alvo.fabricante || '' : '', modelo: alvo ? alvo.modelo || '' : '' };
+    const iniciar = function () {
+      const nome = [estado.fabricante, estado.modelo].filter(Boolean).join(' ');
+      progressoIA('Pesquisando datasheet…', [h('p', 'Equipamento: ', h('strong', nome))], function (o) {
+        return App.IA.pesquisarDatasheet(Object.assign(o, { tipo: def.id, fabricante: estado.fabricante, modelo: estado.modelo }));
+      }, function (res) {
+        const url = res.fonte.pdf || res.fonte.pagina;
+        mostrarLeitura(def, ctrl, { nome: 'pesquisa ' + nome, url: url, viaPdf: res.fonte.viaPdf }, estado.modelo, res, alvo);
+      });
+    };
+    UI.modal({
+      titulo: (alvo ? 'Atualizar pelo datasheet — ' : 'Pesquisar datasheet — ') + def.label,
+      corpo: h('div',
+        h('p', 'A IA pesquisa na internet o datasheet oficial do modelo (de preferência o PDF do fabricante), lê os dados técnicos e mostra o que encontrou para você conferir antes de ' +
+          (alvo ? 'atualizar o cadastro (preço, descrição e observações são mantidos).' : 'cadastrar.')),
+        UI.grade([
+          { k: 'fabricante', label: 'Fabricante', placeholder: 'Ex.: Trina Solar' },
+          { k: 'modelo', label: 'Modelo', required: true, placeholder: 'Ex.: TSM-620NEG19RC.20' }
+        ], estado, null, 2),
+        h('p.ajuda-sec', 'Informe o código completo do modelo, como na etiqueta ou na nota do distribuidor. Cada pesquisa custa cerca de US$ 0,01 por busca na web, além dos tokens.')),
+      acoes: [
+        { label: 'Cancelar' },
+        {
+          label: 'Pesquisar', primario: true, onClick: function () {
+            if (!String(estado.modelo || '').trim()) { UI.toast('Informe o modelo.', 'erro'); return false; }
+            iniciar();
+          }
+        }
+      ]
+    });
+  }
+
+  /** Janela de progresso das chamadas à IA (tempo, etapa, recebimento e cancelamento). */
+  function progressoIA(titulo, linhas, tarefa, aoConcluir) {
     const controle = new AbortController();
-    const nomeIA = App.IA.nomeModelo(App.IA.config().modelo);
     const tempo = h('strong', '0 s');
-    const recebido = h('span.ajuda-sec', 'Analisando o documento…');
+    const etapa = h('span.ajuda-sec', 'Iniciando…');
     const inicio = Date.now();
     const relogio = setInterval(function () { tempo.textContent = Math.round((Date.now() - inicio) / 1000) + ' s'; }, 1000);
     let concluido = false;
+    let textoEtapa = '';
     const fechar = UI.modal({
-      titulo: 'Lendo datasheet…',
+      titulo: titulo,
       corpo: h('div',
-        h('p', 'Arquivo: ', h('strong', file.name)),
-        h('p', 'Modelo: ' + nomeIA + ' · tempo: ', tempo),
-        h('p', recebido),
-        h('p.ajuda-sec', 'Fichas de várias páginas podem levar alguns minutos. Não feche esta janela.')),
-      acoes: [{ label: 'Cancelar leitura' }],
+        linhas,
+        h('p', 'Modelo: ' + App.IA.nomeModelo(App.IA.config().modelo) + ' · tempo: ', tempo),
+        h('p', etapa),
+        h('p.ajuda-sec', 'Pode levar alguns minutos. Não feche esta janela.')),
+      acoes: [{ label: 'Cancelar' }],
       aoFechar: function () { clearInterval(relogio); if (!concluido) controle.abort(); }
     });
-    App.IA.lerDatasheet(file, {
-      tipo: def.id, modeloInteresse: modeloInteresse, sinal: controle.signal,
-      aoProgredir: function (n) { recebido.textContent = 'Recebendo os dados… (' + U.fmt(n, 0) + ' caracteres)'; }
+    tarefa({
+      sinal: controle.signal,
+      aoEtapa: function (t) { textoEtapa = t; etapa.textContent = t; },
+      aoProgredir: function (n) { etapa.textContent = (textoEtapa ? textoEtapa + ' ' : '') + '(' + U.fmt(n, 0) + ' caracteres recebidos)'; }
     }).then(function (res) {
       concluido = true;
       fechar();
-      mostrarLeitura(def, ctrl, file, modeloInteresse, res);
+      aoConcluir(res);
     }).catch(function (e) {
       concluido = true;
       fechar();
@@ -349,32 +377,51 @@
     });
   }
 
-  function mostrarLeitura(def, ctrl, file, modeloInteresse, res) {
+  /** Índice do modelo lido que corresponde ao item a atualizar (nome igual, contido ou único modelo da ficha). */
+  function indiceAlvo(modelos, alvo) {
+    const a = normTxt(alvo.modelo);
+    let i = modelos.findIndex(function (m) { return normTxt(m.modelo) === a; });
+    if (i < 0) i = modelos.findIndex(function (m) { const n = normTxt(m.modelo); return n && a && (n.indexOf(a) >= 0 || a.indexOf(n) >= 0); });
+    if (i < 0 && modelos.length === 1) i = 0;
+    return i;
+  }
+
+  function mostrarLeitura(def, ctrl, fonte, modeloInteresse, res, alvo) {
     const tipo = def.id;
-    const origem = { arquivo: file.name, lidoEm: new Date().toISOString(), modeloIA: res.modeloIA };
+    const origem = { arquivo: fonte.url ? null : fonte.nome, url: fonte.url || null, viaPdf: fonte.url ? fonte.viaPdf : undefined, lidoEm: new Date().toISOString(), modeloIA: res.modeloIA };
+    if (!fonte.url) delete origem.url; else delete origem.arquivo;
     const novo = function () { return { tipo: tipo, ativo: true, preco: 0 }; };
     const nDim = App.Datasheet.todos(tipo).filter(function (c) { return c.dim; }).length;
-    const alvo = normTxt(modeloInteresse);
-    const itens = res.modelos.map(function (m) {
-      const reg = registroDatasheet(tipo, m, origem, novo);
-      const destaque = alvo && normTxt(m.modelo).indexOf(alvo) >= 0;
-      return { m: m, reg: reg, marcado: !alvo || destaque, destaque: destaque };
+    const interesse = normTxt(modeloInteresse);
+    const iAlvo = alvo ? indiceAlvo(res.modelos, alvo) : -1;
+    const itens = res.modelos.map(function (m, i) {
+      const reg = registroDatasheet(tipo, m, origem, novo, i === iAlvo ? alvo : null);
+      const destaque = alvo ? i === iAlvo : !!(interesse && normTxt(m.modelo).indexOf(interesse) >= 0);
+      return { m: m, reg: reg, marcado: alvo ? i === iAlvo : (!interesse || destaque), destaque: destaque };
     });
     const corpo = h('div');
     const info = [res.modelos.length + ' modelo(s) encontrado(s)', 'lido por ' + App.IA.nomeModelo(res.modeloIA)];
     if (res.custoUSD != null) info.push('custo estimado US$ ' + U.fmt(res.custoUSD, 3));
     corpo.appendChild(h('p.ajuda-sec', info.join(' · ') + (res.fallback ? ' (refeito no modelo indicado pela Anthropic após recusa do filtro de segurança)' : '') + '.'));
+    if (fonte.url) {
+      corpo.appendChild(h('div.nota' + (fonte.viaPdf ? '' : '.aviso'), h('strong', 'Fonte: '), h('a', { href: fonte.url, target: '_blank', rel: 'noopener' }, fonte.url),
+        fonte.viaPdf ? ' — dados lidos do PDF original.' : ' — o PDF não pôde ser baixado pela IA; os dados vêm da transcrição feita na pesquisa. Confira com atenção.'));
+    }
+    if (alvo && iAlvo < 0) {
+      corpo.appendChild(h('div.nota.aviso', 'Nenhum modelo da ficha coincide com \u201c' + alvo.modelo + '\u201d. Confira o código do modelo; os modelos abaixo entram como novos cadastros se você os marcar.'));
+    }
     const outro = res.tipoDetectado && res.tipoDetectado !== tipo && App.Datasheet.TIPOS.indexOf(res.tipoDetectado) >= 0;
     if (outro) {
       const outroDef = D.TIPOS_EQUIP.find(function (t) { return t.id === res.tipoDetectado; });
       corpo.appendChild(h('div.nota.aviso', 'O documento parece ser de ' + App.IA.NOMES_TIPO[res.tipoDetectado] + ', mas foi lido com os campos de ' + App.IA.NOMES_TIPO[tipo] +
-        '. Para ler com os campos certos, abra a aba ' + (outroDef ? outroDef.label : res.tipoDetectado) + ' e use \u201c📄 Ler datasheet\u201d lá. ',
+        '. Para ler com os campos certos, abra a aba ' + (outroDef ? outroDef.label : res.tipoDetectado) + ' e repita a leitura lá. ',
         h('a', { href: '#/equipamentos?tipo=' + res.tipoDetectado, onclick: function () { fecharRes(); } }, 'Abrir a aba ' + (outroDef ? outroDef.label : res.tipoDetectado))));
     }
     if (res.avisos) corpo.appendChild(h('div.nota', h('strong', 'Observações da leitura: '), res.avisos));
     if (!itens.length) corpo.appendChild(h('p', 'Nenhum modelo identificado no documento.'));
     else {
       const principal = function (m) {
+        if (tipo === 'modulo') return [m.potencia ? U.fmtSmart(m.potencia, 0) + ' Wp' : '', m.eficiencia ? U.fmtSmart(m.eficiencia, 2) + '%' : '', m.tecnologia || ''].filter(Boolean).join(' · ');
         if (tipo === 'bateria') return [m.energia ? U.fmtSmart(m.energia, 2) + ' kWh' : '', m.tensao ? U.fmtSmart(m.tensao, 1) + ' V' : '', m.tipoBateria || ''].filter(Boolean).join(' · ');
         return [m.potencia ? U.fmtSmart(m.potencia, 2) + ' kW' : '', m.fases || '', tipo === 'micro' && m.modulosPorUnidade ? m.modulosPorUnidade + ' módulos' : '',
           tipo === 'hibrido' && m.tipoBateria ? 'bateria ' + m.tipoBateria : ''].filter(Boolean).join(' · ');
@@ -393,37 +440,39 @@
       }));
       corpo.appendChild(h('div.tabela-rolagem', h('table.tabela',
         h('thead', h('tr', h('th', ''), h('th', 'Modelo'), h('th', 'Dados principais'), h('th.num', '★ lidos'), h('th', 'Cadastro'))), tbody)));
-      corpo.appendChild(h('p.ajuda-sec', 'Os itens entram marcados como \u201cRevisar\u201d e sem preço: confira cada um com o datasheet, informe o preço e salve. ' +
+      corpo.appendChild(h('p.ajuda-sec', 'Os itens entram marcados como \u201cRevisar\u201d: confira cada um com o datasheet, informe o preço dos novos e salve. ' +
         'Em itens já cadastrados, preço, descrição e observações são mantidos.'));
     }
     const acoes = [{ label: 'Cancelar' }];
-    if (itens.length === 1) {
-      acoes.push({ label: 'Abrir no formulário', onClick: function () { const r = itens[0].reg; setTimeout(function () { ctrl.abrir(r.existente ? r.registro : null, r.existente ? null : r.registro); }, 0); } });
+    const unico = itens.length === 1 ? itens[0] : (iAlvo >= 0 ? itens[iAlvo] : null);
+    if (unico) {
+      acoes.push({ label: 'Abrir no formulário', onClick: function () { const r = unico.reg; setTimeout(function () { ctrl.abrir(r.existente ? r.registro : null, r.existente ? null : r.registro); }, 0); } });
     }
     if (itens.length) {
       acoes.push({
-        label: 'Cadastrar selecionados', primario: true, onClick: function () {
+        label: alvo ? 'Gravar selecionados' : 'Cadastrar selecionados', primario: true, onClick: function () {
           const sel = itens.filter(function (it) { return it.marcado; });
           if (!sel.length) { UI.toast('Marque ao menos um modelo.', 'erro'); return false; }
           try {
             sel.forEach(function (it) { S.save('equipamentos', it.reg.registro); });
           } catch (e) { UI.toast(e.message, 'erro'); return false; }
-          UI.toast(sel.length + ' equipamento(s) cadastrado(s) para revisão.', 'ok');
+          UI.toast(sel.length + ' equipamento(s) gravado(s) para revisão.', 'ok');
           ctrl.atualizar();
         }
       });
     }
-    const fecharRes = UI.modal({ titulo: 'Datasheet lido — ' + file.name, corpo: corpo, largo: true, acoes: acoes });
+    const fecharRes = UI.modal({ titulo: (fonte.url ? 'Datasheet encontrado — ' : 'Datasheet lido — ') + fonte.nome, corpo: corpo, largo: true, acoes: acoes });
   }
 
   UI.rota('/equipamentos', function (cont, params, qs) {
+    let ctrl = null; // controle do cadastro, usado pela ação 🔄 das linhas
     const tipo = qs.get('tipo') || 'modulo';
     const def = D.TIPOS_EQUIP.find(function (t) { return t.id === tipo; }) || D.TIPOS_EQUIP[0];
     const abas = h('div.abas', D.TIPOS_EQUIP.map(function (t) {
       const n = S.list('equipamentos').filter(function (e) { return e.tipo === t.id; }).length;
       return h('a.aba' + (t.id === def.id ? '.ativa' : ''), { href: '#/equipamentos?tipo=' + t.id }, t.label, h('span.contagem', String(n)));
     }));
-    UI.crud(cont, {
+    ctrl = UI.crud(cont, {
       colecao: 'equipamentos',
       titulo: 'Equipamentos — ' + def.label,
       subtitulo: 'Catálogo usado no dimensionamento e na lista de materiais. Informe os preços para o kit ser somado automaticamente.',
@@ -447,7 +496,6 @@
       },
       novo: function () {
         const base = { tipo: def.id, ativo: true, preco: 0 };
-        if (def.id === 'modulo') Object.assign(base, { area: 2.8, garantiaProduto: 12, garantiaPerformance: 25 });
         if (def.id === 'inversor' || def.id === 'hibrido') Object.assign(base, { fases: 'Monofásico', tensao: '220V', mppts: 1, garantia: 10 });
         if (def.id === 'micro') Object.assign(base, { fases: 'Monofásico', tensao: '220V', mppts: 4, modulosPorUnidade: 4, garantia: 12 });
         if (def.id === 'hibrido') Object.assign(base, { tensaoBateria: 48, tipoBateria: 'LV' });
@@ -476,8 +524,15 @@
         if (def.id === 'inversor' || def.id === 'hibrido' || def.id === 'micro') return CAMPOS_EQUIP.inversor(def.id, e);
         return CAMPOS_EQUIP[def.id](e);
       },
-      acoesTopo: App.Datasheet.TIPOS.indexOf(def.id) >= 0 ? function (ctrl) {
-        return [h('button.btn', { type: 'button', onclick: function () { escolherDatasheet(def, ctrl); } }, '📄 Ler datasheet')];
+      acoesTopo: App.Datasheet.TIPOS.indexOf(def.id) >= 0 ? function (c) {
+        return [
+          h('button.btn', { type: 'button', onclick: function () { escolherDatasheet(def, c); } }, '📄 Ler datasheet'),
+          h('button.btn', { type: 'button', onclick: function () { pesquisarDatasheet(def, c); } }, '🔎 Pesquisar datasheet')
+        ];
+      } : null,
+      acoesExtras: App.Datasheet.TIPOS.indexOf(def.id) >= 0 ? function (e) {
+        return h('button.btn-icone', { type: 'button', title: 'Atualizar pelo datasheet (pesquisa na internet)', 'aria-label': 'Atualizar pelo datasheet',
+          onclick: function () { if (ctrl) pesquisarDatasheet(def, ctrl, e); } }, '🔄');
       } : null
     });
   });

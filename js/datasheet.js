@@ -1,6 +1,6 @@
 /*
- * Campos técnicos dos equipamentos na estrutura dos datasheets (inversor on-grid, microinversor, inversor híbrido e
- * bateria). Fonte única para os formulários de cadastro, o esquema da leitura do datasheet por IA e a conversão do
+ * Campos técnicos dos equipamentos na estrutura dos datasheets (módulo fotovoltaico, inversor on-grid, microinversor,
+ * inversor híbrido e bateria). Fonte única para os formulários de cadastro, o esquema da leitura do datasheet por IA e a conversão do
  * resultado em cadastro. Campos com `dim: true` (★) entram no dimensionamento técnico.
  */
 window.App = window.App || {};
@@ -62,6 +62,51 @@ window.App = window.App || {};
   };
 
   const CAMPOS = {
+    modulo: [
+      { titulo: 'Identificação', campos: [
+        f('fabricante', 'Fabricante', '', 'texto', { obrig: true, ia: 'manufacturer / brand' }),
+        f('modelo', 'Modelo', '', 'texto', { obrig: true, ia: 'exact model name of this power class (e.g. "TSM-620NEG19RC.20")' }),
+        f('tecnologia', 'Tecnologia', '', 'texto', { ia: 'cell technology in Portuguese, short, e.g. "TOPCon bifacial", "Monocristalino PERC", "HJT bifacial"' }),
+        f('detalhe', 'Detalhe construtivo', '', 'texto', { ia: 'construction in Portuguese, short, e.g. "Vidro duplo, moldura de alumínio"' }),
+        f('bifacial', 'Bifacial', '', 'opcao', { opcoes: ['Sim', 'Não'], ia: 'Sim if the module is bifacial, Não otherwise' }),
+        f('bifacialidade', 'Bifacialidade', '%', 'num', { ia: 'bifaciality factor in %' })
+      ] },
+      { titulo: 'Dados elétricos (STC)', campos: [
+        f('potencia', 'Potência máxima (Pmáx)', 'Wp', 'num', { obrig: true, dim: true, ia: 'maximum power at STC in W' }),
+        f('voc', 'Tensão de circuito aberto (Voc)', 'V', 'num', { dim: true, ia: 'open-circuit voltage at STC' }),
+        f('vmp', 'Tensão de máxima potência (Vmp)', 'V', 'num', { dim: true, ia: 'maximum power voltage at STC' }),
+        f('isc', 'Corrente de curto-circuito (Isc)', 'A', 'num', { dim: true, ia: 'short-circuit current at STC (front side, not the bifacial gain table)' }),
+        f('imp', 'Corrente de máxima potência (Imp)', 'A', 'num', { dim: true, ajuda: 'Em branco = Pmáx ÷ Vmp.', ia: 'maximum power current at STC' }),
+        f('eficiencia', 'Eficiência do módulo', '%', 'num', { ia: 'module efficiency at STC in %' }),
+        f('tolerancia', 'Tolerância de potência', '', 'texto', { ia: 'power tolerance as printed, e.g. "0~+5 W"' })
+      ] },
+      { titulo: 'Coeficientes de temperatura', campos: [
+        f('coefVoc', 'Coeficiente de Voc', '%/°C', 'num', { dim: true, neg: true, ajuda: 'Negativo, ex.: -0,25. Corrige o Voc no frio e o Vmp no calor.', ia: 'temperature coefficient of Voc in %/°C (negative number)' }),
+        f('coefPmax', 'Coeficiente de Pmáx', '%/°C', 'num', { neg: true, ia: 'temperature coefficient of Pmax in %/°C (negative number)' }),
+        f('coefIsc', 'Coeficiente de Isc', '%/°C', 'num', { neg: true, ia: 'temperature coefficient of Isc in %/°C' }),
+        f('noct', 'Temperatura nominal de operação (NOCT/NMOT)', '°C', 'num', { ia: 'NOCT or NMOT in °C' })
+      ] },
+      { titulo: 'Limites', campos: [
+        f('vMaxSistema', 'Tensão máxima do sistema', 'V', 'num', { dim: true, ajuda: 'Limita os módulos em série junto com o inversor.', ia: 'maximum system voltage (IEC), e.g. 1500' }),
+        f('fusivelMax', 'Corrente máxima do fusível em série', 'A', 'num', { dim: true, ajuda: 'Indica quando são necessários fusíveis de string.', ia: 'maximum series fuse rating in A' })
+      ] },
+      { titulo: 'Dados mecânicos', campos: [
+        f('comprimento', 'Comprimento', 'mm', 'num', { ia: 'module length in mm' }),
+        f('largura', 'Largura', 'mm', 'num', { ia: 'module width in mm' }),
+        f('espessura', 'Espessura', 'mm', 'num', { ia: 'module thickness / frame height in mm' }),
+        f('area', 'Área ocupada por módulo', 'm²', 'num', { dim: true, ajuda: 'Área do telhado. Em branco = comprimento × largura.', ia: 'module area in m² only if printed; otherwise null' }),
+        f('peso', 'Peso', 'kg', 'num', { ia: 'weight in kg' }),
+        f('celulas', 'Nº de células', '', 'int', { ia: 'number of cells (half cells count as printed, e.g. 132)' }),
+        f('conector', 'Conector', '', 'texto', { ia: 'connector type, e.g. "MC4 compatível"' })
+      ] },
+      { titulo: 'Garantia e degradação', campos: [
+        f('garantiaProduto', 'Garantia do produto', 'anos', 'num', { ia: 'product / workmanship warranty in years' }),
+        f('garantiaPerformance', 'Garantia de performance', 'anos', 'num', { ia: 'linear power output warranty in years' }),
+        f('degradacao1Ano', 'Degradação no 1º ano', '%', 'num', { ia: 'first-year power degradation in %' }),
+        f('degradacaoAnual', 'Degradação anual (após o 1º ano)', '%/ano', 'num', { dim: true, ajuda: 'Usada na projeção de geração. Em branco = premissa.', ia: 'annual power degradation after the first year in %' }),
+        f('certificacoes', 'Certificações', '', 'texto', { ia: 'certifications (INMETRO, IEC 61215, IEC 61730, ...)' })
+      ] }
+    ],
     inversor: [IDENT_INV, ENTRADA_CC, SAIDA_CA, EFICIENCIA, GERAL_INV(false)],
     micro: [
       IDENT_INV,
@@ -151,7 +196,7 @@ window.App = window.App || {};
     ]
   };
 
-  const TIPOS = ['inversor', 'micro', 'hibrido', 'bateria'];
+  const TIPOS = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
 
   function todos(tipo) {
     return (CAMPOS[tipo] || []).reduce(function (a, s) { return a.concat(s.campos); }, []);
@@ -211,11 +256,14 @@ window.App = window.App || {};
       if (v == null || v === '') return;
       if (c.tipo === 'texto') { const s = String(v).trim(); if (s) out[c.k] = s; }
       else if (c.tipo === 'opcao') { if (c.opcoes.indexOf(v) >= 0) out[c.k] = v; }
-      else { const n = Number(v); if (isFinite(n) && n >= 0) out[c.k] = c.tipo === 'int' ? Math.round(n) : n; }
+      else { const n = Number(v); if (isFinite(n) && (n >= 0 || c.neg)) out[c.k] = c.tipo === 'int' ? Math.round(n) : n; }
     });
     // microinversor: cada entrada tem o próprio MPPT (regra "por MPPT" dos materiais)
     if (tipo === 'micro' && out.modulosPorUnidade && !out.mppts) out.mppts = out.modulosPorUnidade;
     if (tipo === 'bateria' && !out.quimica) out.quimica = 'LiFePO4';
+    // módulo: área pelas dimensões e coeficiente de Voc sempre negativo
+    if (tipo === 'modulo' && !out.area && out.comprimento && out.largura) out.area = Math.round(out.comprimento * out.largura / 1000) / 1000;
+    if (tipo === 'modulo' && out.coefVoc > 0) out.coefVoc = -out.coefVoc;
     return out;
   }
 

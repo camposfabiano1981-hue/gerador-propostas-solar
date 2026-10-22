@@ -123,11 +123,13 @@
       { k: 'pr', label: 'Performance Ratio (PR)', type: 'number', help: 'Ex.: 0,80' },
       { k: 'degradacao', label: 'Degradação anual dos módulos', type: 'pct' },
       { k: 'simultaneidade', label: 'Simultaneidade (autoconsumo direto)', type: 'pct', help: 'Parcela da geração consumida na hora (não paga Fio B); o restante é injetado e paga Fio B quando compensado.' },
-      { k: 'areaModulo', label: 'Área por módulo (padrão)', type: 'number', suffix: 'm²' },
+      { k: 'areaModulo', label: 'Área por módulo (padrão)', type: 'number', suffix: 'm²', help: 'Quando o módulo não tem área nem dimensões cadastradas.' },
       { k: 'fdgMin', label: 'FDG mínimo', type: 'number', help: 'FDG (fator de dimensionamento global) = potência FV (Pcc) ÷ potência do inversor (Pca)' },
       { k: 'fdgMax', label: 'FDG máximo', type: 'number', help: 'Acima dele o inversor limita a potência (clipping).' },
       { k: 'fdgAlvo', label: 'FDG alvo (seleção automática)', type: 'number' },
-      { k: 'fatorVocFrio', label: 'Fator de correção Voc (frio)', type: 'number', help: 'Usado na verificação de strings.' },
+      { k: 'fatorVocFrio', label: 'Fator de correção Voc (frio)', type: 'number', help: 'Usado quando o módulo não tem coeficiente de Voc cadastrado.' },
+      { k: 'tempMinima', label: 'Temperatura mínima da célula', type: 'number', suffix: '°C', help: 'Voc no frio = Voc × (1 + |coef. Voc| × (25 − T mín.)). Use a mínima histórica do local.' },
+      { k: 'tempMaxCelula', label: 'Temperatura máxima da célula', type: 'number', suffix: '°C', help: 'Vmp no calor, conferido com a faixa MPPT mínima do inversor.' },
       { secao: 'Custo de disponibilidade (kWh/mês)' },
       { k: 'disponibilidade.mono', label: 'Monofásica', type: 'number', suffix: 'kWh' },
       { k: 'disponibilidade.bi', label: 'Bifásica', type: 'number', suffix: 'kWh' },
@@ -291,13 +293,14 @@
     const IA = App.IA;
     const estado = IA.config();
     const status = h('p.ajuda-sec');
-    cont.appendChild(UI.cabecalho('Leitura de datasheet (IA)', 'Cadastro de inversores, microinversores, híbridos e baterias a partir do PDF do datasheet, com a API do Claude (Anthropic).'));
+    cont.appendChild(UI.cabecalho('Leitura de datasheet (IA)', 'Cadastro de módulos, inversores, microinversores, híbridos e baterias a partir do datasheet, com a API do Claude (Anthropic).'));
     cont.appendChild(h('div.card.dica',
-      h('p', h('strong', 'Como funciona: '), 'em Cadastros › Equipamentos, use “📄 Ler datasheet” e escolha o PDF (ou uma foto) da ficha técnica. ' +
-        'A IA preenche os campos técnicos de cada modelo da tabela; os itens entram marcados como “Revisar” até você conferir e salvar.'),
+      h('p', h('strong', 'Como funciona: '), 'em Cadastros › Equipamentos, use “📄 Ler datasheet” e escolha o PDF (ou uma foto) da ficha técnica, ou “🔎 Pesquisar datasheet” e informe o modelo: ' +
+        'a IA procura o datasheet oficial na internet e o lê. O botão 🔄 de cada item atualiza o cadastro pelo datasheet mais recente. ' +
+        'Os itens entram marcados como “Revisar” até você conferir e salvar.'),
       h('p', h('strong', 'Chave de API: '), 'crie uma chave no Console da Anthropic (platform.claude.com, em API Keys) e defina um limite de gastos para ela. ' +
         'A chave fica salva só neste navegador — não vai para o backup nem para outro lugar além da própria API da Anthropic.'),
-      h('p', h('strong', 'Custo: '), 'cobrado pela Anthropic na sua conta, por tokens. Uma ficha técnica de poucas páginas costuma custar alguns centavos de dólar no Opus 5.5 ' +
+      h('p', h('strong', 'Custo: '), 'cobrado pela Anthropic na sua conta, por tokens (e US$ 0,01 por busca na web, na pesquisa). Uma ficha técnica de poucas páginas costuma custar alguns centavos de dólar no Opus 5.5 ' +
         '(o valor estimado aparece ao final de cada leitura). Se o filtro de segurança do modelo recusar o documento, o pedido é refeito automaticamente no modelo indicado pela Anthropic (Opus 5.5 e Sonnet 5.5).')));
     const salvar = function () {
       try { IA.salvarConfig(estado); UI.toast('Configuração salva.', 'ok'); } catch (e) { UI.toast(e.message, 'erro'); }
@@ -379,7 +382,7 @@
       // cópia de segurança do antigo catálogo de inversores, microinversores, híbridos e baterias (atualização da base v7)
       const box = h('div.card',
         h('h3', 'Equipamentos do catálogo antigo'),
-        h('p', 'Na atualização para o cadastro pelo datasheet, ' + removidos.length + ' inversor(es)/bateria(s) sem uso em propostas foram retirados. ' +
+        h('p', 'Na atualização para o cadastro pelo datasheet, ' + removidos.length + ' equipamento(s) sem uso em propostas (módulos, inversores e baterias) foram retirados. ' +
           'Restaure-os se tiver preços ou dados que queira aproveitar — voltam inativos, para revisão com o datasheet.'),
         h('div.barra-itens',
           h('button.btn', { type: 'button', onclick: function () {

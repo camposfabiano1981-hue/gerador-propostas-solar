@@ -1,5 +1,5 @@
 /*
- * Inversores, microinversores, híbridos e baterias usados nos testes (o antigo catálogo do app, removido na versão 7 da base:
+ * Módulos, inversores, microinversores, híbridos e baterias usados nos testes (o antigo catálogo do app, removido na versão 7 da base:
  * esses equipamentos passaram a ser cadastrados pelo usuário a partir do datasheet). Os cenários de referência dos testes
  * continuam usando estes dados, com os mesmos ids.
  */
@@ -15,7 +15,15 @@ window.EQUIP_TESTE = (function () {
     deye: 'Deye Cloud / SolarMAN (Wi-Fi)', growatt: 'ShinePhone / Growatt OSS (Wi-Fi)'
   };
 
-  /* dc = [Vmáx CC, MPPT mín., MPPT máx.] */
+  /* el = [Voc, Vmp, Isc]; dc = [Vmáx CC, MPPT mín., MPPT máx.] */
+  function modulo(id, fabricante, modelo, potencia, eficiencia, tecnologia, detalhe, area, gProduto, gPerformance, el, obs) {
+    return {
+      id: id, tipo: 'modulo', ativo: true, fabricante: fabricante, modelo: modelo, potencia: potencia, eficiencia: eficiencia,
+      tecnologia: tecnologia, detalhe: detalhe, area: area, garantiaProduto: gProduto, garantiaPerformance: gPerformance,
+      voc: el ? el[0] : null, vmp: el ? el[1] : null, isc: el ? el[2] : null, preco: 0, obs: obs || REF
+    };
+  }
+
   function inversor(id, fabricante, modelo, kw, fases, tensao, mppts, dc, garantia, monitoramento, obs) {
     return {
       id: id, tipo: 'inversor', ativo: true, fabricante: fabricante, modelo: modelo, potencia: kw, fases: fases, tensao: tensao, mppts: mppts,
@@ -51,6 +59,28 @@ window.EQUIP_TESTE = (function () {
   }
 
   const lista = [
+    {
+      id: 'mod-dmegc-625', tipo: 'modulo', ativo: true, fabricante: 'DMEGC', modelo: 'DM625G12RT-B66HBW-P',
+      potencia: 625, eficiencia: 23.1, tecnologia: 'Bifacial', detalhe: 'Frame Composto', area: 2.8,
+      garantiaProduto: 12, garantiaPerformance: 25, voc: null, vmp: null, isc: null, preco: 0, obs: REF
+    },
+
+    /* ---------- Módulos (2382 × 1134 mm = 2,70 m², exceto quando indicado) */
+    modulo('mod-trina-600', 'Trina Solar', 'Vertex N TSM-NEG19RC.20 600W', 600, 22.2, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 12, 30, [47.69, 39.43, 16.02]),
+    modulo('mod-trina-610', 'Trina Solar', 'Vertex N TSM-NEG19RC.20 610W', 610, 22.6, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 12, 30, [48.09, 39.79, 16.14]),
+    modulo('mod-trina-620', 'Trina Solar', 'Vertex N TSM-NEG19RC.20 620W', 620, 23.0, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 12, 30, [48.50, 40.24, 16.26]),
+    modulo('mod-astronergy-610', 'Astronergy', 'ASTRO N7 CHSM66RN(DG)/F-BH 610W', 610, 22.6, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, null, REF_PARCIAL),
+    modulo('mod-astronergy-620', 'Astronergy', 'ASTRO N7 CHSM66RN(DG)/F-BH 620W', 620, 23.0, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [49.04, 41.56, 16.11]),
+    modulo('mod-tcl-610', 'TCL Solar', 'HSM-ND66-GR610', 610, 22.6, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, null, REF_PARCIAL),
+    modulo('mod-tcl-620', 'TCL Solar', 'HSM-ND66-GR620', 620, 23.0, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.94, null, null], REF_PARCIAL),
+    modulo('mod-osda-610', 'OSDA', 'ODA610-33V-MHDRz', 610, 22.58, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.68, 41.38, 15.66]),
+    modulo('mod-osda-620', 'OSDA', 'ODA620-33V-MHDRz', 620, 22.96, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.78, 41.46, 15.89]),
+    modulo('mod-osda-625', 'OSDA', 'ODA625-33V-MHDRz', 625, 23.14, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.83, 41.51, 16.00]),
+    modulo('mod-honor-665', 'Honor Solar', 'HYM12/132H 665W', 665, null, 'Monocristalino', '2384 × 1303 mm', 3.1, null, null, null, REF_PARCIAL),
+    modulo('mod-honor-700', 'Honor Solar', 'HY-M12/132G 700W', 700, null, 'N-type Bifacial', 'Vidro duplo — 2384 × 1303 mm', 3.1, null, null, null, REF_PARCIAL),
+    modulo('mod-era-610', 'ERA Solar', 'ERA-RC-66HC 610M', 610, 22.6, 'N-type Monofacial', 'Moldura prata', 2.7, 15, 30, [48.10, 39.77, 16.05]),
+    modulo('mod-era-620', 'ERA Solar', 'ERA-RC-66HC 620M', 620, 23.0, 'N-type Monofacial', 'Moldura prata', 2.7, 15, 30, [48.50, 40.15, 16.15]),
+
     /* ---------- Inversores on-grid (string) */
     {
       id: 'inv-sofar-4', tipo: 'inversor', ativo: true, fabricante: 'Sofar', modelo: '4KTL2-G3',

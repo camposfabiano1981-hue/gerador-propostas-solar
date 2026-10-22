@@ -306,7 +306,8 @@ window.App = window.App || {};
       if (r.strings) {
         const st = r.strings;
         dim.push(['Arranjo Elétrico (strings)', st.nStrings + ' string(s) de até ' + st.porString + ' módulos — ' + st.porMppt + ' string(s) por MPPT' +
-          (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 2) + ' A por MPPT' + (inv && U.num(inv.iscMaxMppt) > 0 ? ' / máx. ' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A' : '') + ')' : '')]);
+          (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 2) + ' A por MPPT' + (inv && U.num(inv.iscMaxMppt) > 0 ? ' / máx. ' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A' : '') + ')' : '') +
+          '; Voc da string no frio ' + U.fmt(st.vocFrioString, 0) + ' V (limite ' + U.fmt(st.vLimite, 0) + ' V' + (st.limitePeloModulo ? ', tensão máxima do sistema do módulo' : '') + ')']);
       }
       if (r.ramaisMicro) dim.push(['Circuitos CA dos Microinversores', r.ramaisMicro + ' ramal(is) — até ' + inv.maxPorRamal + ' microinversores por ramal (datasheet)']);
       if (temArm) dim.push([r.bessAtivo ? 'Armazenamento (BESS)' : 'Banco de Baterias', linhaArm]);
@@ -513,7 +514,7 @@ window.App = window.App || {};
       if (r.modalidade.id === 'azul') prems.push('Demanda ponta ' + rs(tf.demP) + ' | fora de ponta ' + rs(tf.demFP) + '/kW');
     }
     prems.push('Inflação tarifária ' + U.fmtSmart(prem.inflacaoTarifa * 100, 2) + '% a.a.');
-    if (temFV) prems.push('Degradação módulos ' + U.fmtSmart(prem.degradacao * 100, 2) + '% a.a.');
+    if (temFV) prems.push('Degradação módulos ' + U.fmtSmart(r.degradacaoModulos * 100, 2) + '% a.a.' + (r.degradacaoDatasheet ? ' (datasheet)' : ''));
     prems.push('TMA (' + (prem.tmaNome || 'SELIC') + ') ' + U.fmt(prem.tma * 100, 2) + '% a.a.');
     if (!grupoA) prems.push('Disponibilidade ' + adj + ' ' + U.fmt(r.disponibilidade, 0) + ' kWh/mês');
     prems.push('COSIP ' + U.brl(r.cosip) + '/mês' + (prem.reajusteCosip > 0 ? ' (reajuste ' + U.fmtSmart(prem.reajusteCosip * 100, 2) + '% a.a.)' : ''));

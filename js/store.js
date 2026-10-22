@@ -9,7 +9,7 @@ window.App = window.App || {};
   const PREFIX = 'gsp.';
   const VERSAO = 7;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
-  const TIPOS_DATASHEET = ['inversor', 'micro', 'hibrido', 'bateria'];
+  const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
@@ -98,7 +98,7 @@ window.App = window.App || {};
   };
 
   /**
-   * Versão 7: inversores, microinversores, híbridos e baterias passam a ser cadastrados pelo datasheet. Os que não estão em
+   * Versão 7: módulos, inversores, microinversores, híbridos e baterias passam a ser cadastrados pelo datasheet. Os que não estão em
    * nenhuma proposta são removidos (cópia em gsp.removidos.v7, restaurável); os usados ficam inativos para a proposta continuar
    * igual. Propostas com escolha automática recebem o equipamento que o cálculo já usava, para não mudarem de resultado.
    */
@@ -110,7 +110,7 @@ window.App = window.App || {};
       let ctx = null;
       try { ctx = C.contexto(); } catch (e) { ctx = null; }
       propostas.forEach(function (p) {
-        if (!ctx || (p.inversorId && p.bateriaId)) return;
+        if (!ctx || (p.inversorId && p.bateriaId && p.moduloId)) return;
         try {
           const r = C.calcular(U.clone(p), ctx);
           const inv = r.inversor, bat = r.hibrido && r.hibrido.bateria;
@@ -120,13 +120,14 @@ window.App = window.App || {};
             if (!(U.num(p.nInversores) > 0) && C.calcular(U.clone(p), ctx).nInversores !== r.nInversores) p.nInversores = r.nInversores;
           }
           if (!p.bateriaId && bat && bat.tipo === 'bateria') p.bateriaId = bat.id;
+          if (!p.moduloId && r.modulo) p.moduloId = r.modulo.id;
         } catch (e) { /* proposta incompleta: segue sem fixar */ }
       });
       gravar('col.propostas', propostas);
     }
     const usados = {};
     propostas.forEach(function (p) {
-      [p.inversorId, p.bateriaId].concat((p.itens || []).map(function (i) { return i.equipamentoId; })).forEach(function (id) { if (id) usados[id] = true; });
+      [p.moduloId, p.inversorId, p.bateriaId].concat((p.itens || []).map(function (i) { return i.equipamentoId; })).forEach(function (id) { if (id) usados[id] = true; });
     });
     const manter = [], removidos = [];
     eqs.forEach(function (e) {

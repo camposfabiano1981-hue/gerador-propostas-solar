@@ -127,6 +127,9 @@ window.App = window.App || {};
     regraDisponibilidade: 'maior',
     areaModulo: 2.8,
     fatorVocFrio: 1.12,
+    // temperaturas da célula para corrigir Voc (mínima, amanhecer de inverno) e Vmp (máxima, sol forte) pelo coeficiente do módulo
+    tempMinima: 0,
+    tempMaxCelula: 70,
     fioB: [
       { ano: 2023, pct: 0.15 }, { ano: 2024, pct: 0.30 }, { ano: 2025, pct: 0.45 },
       { ano: 2026, pct: 0.60 }, { ano: 2027, pct: 0.75 }, { ano: 2028, pct: 0.90 }
@@ -396,23 +399,11 @@ window.App = window.App || {};
     { id: 'pg-sf72', nome: 'Solfácil', tipo: 'pmt', parcelas: 72, taxa: 0.0165, obs: '', ativo: true }
   ];
 
-  const REF = 'Dados de referência — conferir datasheet e preço com o distribuidor.';
-  // Dados parcialmente confirmados nas fontes consultadas (fichas de fabricantes/distribuidores, 2024–2026)
-  const REF_PARCIAL = 'Dados elétricos parciais — confirmar código, tensões e faixa MPPT no datasheet vigente antes de usar a verificação de strings.';
-
   /*
-   * Construtores do catálogo. el = [Voc, Vmp, Isc].
-   * Inversores, microinversores, híbridos e baterias não têm catálogo: são cadastrados pelo usuário a partir do datasheet
-   * (formulário ou leitura do PDF), pois os dados técnicos do modelo exato comandam o dimensionamento.
+   * Construtores do catálogo (estruturas e materiais). Módulos, inversores, microinversores, híbridos e baterias não têm
+   * catálogo: são cadastrados pelo usuário a partir do datasheet (formulário, leitura do PDF ou pesquisa na internet),
+   * pois os dados técnicos do modelo exato comandam o dimensionamento.
    */
-  function modulo(id, fabricante, modelo, potencia, eficiencia, tecnologia, detalhe, area, gProduto, gPerformance, el, obs) {
-    return {
-      id: id, tipo: 'modulo', ativo: true, fabricante: fabricante, modelo: modelo, potencia: potencia, eficiencia: eficiencia,
-      tecnologia: tecnologia, detalhe: detalhe, area: area, garantiaProduto: gProduto, garantiaPerformance: gPerformance,
-      voc: el ? el[0] : null, vmp: el ? el[1] : null, isc: el ? el[2] : null, preco: 0, obs: obs || REF
-    };
-  }
-
   function estrutura(id, telhado, descricao, resumo, regra, fator, autoIncluir, extra) {
     return Object.assign({
       id: id, tipo: 'estrutura', ativo: true, fabricante: '', telhado: telhado, descricao: descricao, resumo: resumo, regra: regra, fator: fator,
@@ -438,28 +429,6 @@ window.App = window.App || {};
   }
 
   D.equipamentos = [
-    {
-      id: 'mod-dmegc-625', tipo: 'modulo', ativo: true, fabricante: 'DMEGC', modelo: 'DM625G12RT-B66HBW-P',
-      potencia: 625, eficiencia: 23.1, tecnologia: 'Bifacial', detalhe: 'Frame Composto', area: 2.8,
-      garantiaProduto: 12, garantiaPerformance: 25, voc: null, vmp: null, isc: null, preco: 0, obs: REF
-    },
-
-    /* ---------- Módulos (2382 × 1134 mm = 2,70 m², exceto quando indicado) */
-    modulo('mod-trina-600', 'Trina Solar', 'Vertex N TSM-NEG19RC.20 600W', 600, 22.2, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 12, 30, [47.69, 39.43, 16.02]),
-    modulo('mod-trina-610', 'Trina Solar', 'Vertex N TSM-NEG19RC.20 610W', 610, 22.6, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 12, 30, [48.09, 39.79, 16.14]),
-    modulo('mod-trina-620', 'Trina Solar', 'Vertex N TSM-NEG19RC.20 620W', 620, 23.0, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 12, 30, [48.50, 40.24, 16.26]),
-    modulo('mod-astronergy-610', 'Astronergy', 'ASTRO N7 CHSM66RN(DG)/F-BH 610W', 610, 22.6, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, null, REF_PARCIAL),
-    modulo('mod-astronergy-620', 'Astronergy', 'ASTRO N7 CHSM66RN(DG)/F-BH 620W', 620, 23.0, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [49.04, 41.56, 16.11]),
-    modulo('mod-tcl-610', 'TCL Solar', 'HSM-ND66-GR610', 610, 22.6, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, null, REF_PARCIAL),
-    modulo('mod-tcl-620', 'TCL Solar', 'HSM-ND66-GR620', 620, 23.0, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.94, null, null], REF_PARCIAL),
-    modulo('mod-osda-610', 'OSDA', 'ODA610-33V-MHDRz', 610, 22.58, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.68, 41.38, 15.66]),
-    modulo('mod-osda-620', 'OSDA', 'ODA620-33V-MHDRz', 620, 22.96, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.78, 41.46, 15.89]),
-    modulo('mod-osda-625', 'OSDA', 'ODA625-33V-MHDRz', 625, 23.14, 'TOPCon Bifacial', 'Vidro duplo', 2.7, 15, 30, [48.83, 41.51, 16.00]),
-    modulo('mod-honor-665', 'Honor Solar', 'HYM12/132H 665W', 665, null, 'Monocristalino', '2384 × 1303 mm', 3.1, null, null, null, REF_PARCIAL),
-    modulo('mod-honor-700', 'Honor Solar', 'HY-M12/132G 700W', 700, null, 'N-type Bifacial', 'Vidro duplo — 2384 × 1303 mm', 3.1, null, null, null, REF_PARCIAL),
-    modulo('mod-era-610', 'ERA Solar', 'ERA-RC-66HC 610M', 610, 22.6, 'N-type Monofacial', 'Moldura prata', 2.7, 15, 30, [48.10, 39.77, 16.05]),
-    modulo('mod-era-620', 'ERA Solar', 'ERA-RC-66HC 620M', 620, 23.0, 'N-type Monofacial', 'Moldura prata', 2.7, 15, 30, [48.50, 40.15, 16.15]),
-
     /* ---------- BESS */
     {
       id: 'bess-exemplo-100', tipo: 'bess', ativo: true, fabricante: 'Genérico', modelo: 'BESS 100 kWh / 50 kW (exemplo)',
