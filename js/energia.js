@@ -407,7 +407,7 @@ window.App = window.App || {};
       anos: anos,
       horizonte: H,
       economiaMes1: anos[0].economiaMes,
-      economiaAno1: anos[0].bruta - anos[0].fioB,
+      economiaAno1: anos[0].economiaMes * 12, // só a conta de energia (sem o benefício de backup)
       beneficioAno1: anos[0].liq + anos[0].extra,
       paybackSimples: ind.paybackSimples,
       paybackDescontado: ind.paybackDescontado,

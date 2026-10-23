@@ -543,23 +543,34 @@ window.App = window.App || {};
     b.push(vazio());
 
     /* ---------- FLUXO DE CAIXA */
+    // economia anual = conta anual sem sistema − conta anual com sistema (que já inclui disponibilidade/energia não compensada, Fio B e COSIP)
     b.push(titulo((++sec) + '. FLUXO DE CAIXA — ' + H + ' ANOS'));
-    const fcCols = [{ t: 'Ano', w: 680, jc: 'center' }, { t: temFV ? 'Geração (kWh)' : 'Energia desloc. (kWh)', w: 1100, jc: 'right' },
-      { t: tou ? 'Tarifa FP (R$/kWh)' : 'Tarifa (R$/kWh)', w: 1000, jc: 'right' },
-      { t: '% Fio B', w: 700, jc: 'center' }, { t: 'Econ. Bruta (R$)', w: 1300, jc: 'right' }, { t: 'Custo Fio B (R$)', w: 1200, jc: 'right' },
-      { t: 'Econ. Líq. (R$)', w: 1280, jc: 'right' }, { t: 'Acumulado (R$)', w: 2100, jc: 'right' }];
-    const fcLin = f.anos.map(function (a) {
-      return [{ t: String(a.ano), b: true, jc: 'center' }, U.fmt(temFV ? a.geracao : a.descarga, 0), 'R$ ' + U.fmt(a.tarifa, 4), { t: U.fmtSmart(a.pctFioB * 100, 1) + '%', jc: 'center' },
-        U.brl(a.bruta), U.brl(a.fioB), U.brl(a.liq), { t: U.brl(a.acumulado), color: a.acumulado < 0 ? VERMELHO : VERDE }];
-    });
+    const ajustes = f.anos.some(function (a) { return a.beneficioBackup > 0 || a.extra > 0; });
+    const fcCols = ajustes
+      ? [{ t: 'Ano', w: 600, jc: 'center' }, { t: temFV ? 'Geração (kWh)' : 'Energia desloc. (kWh)', w: 1100, jc: 'right' },
+        { t: 'Conta anual sem sistema', w: 1500, jc: 'right' }, { t: 'Conta anual com sistema', w: 1500, jc: 'right' },
+        { t: 'Economia anual', w: 1400, jc: 'right' }, { t: temArm ? 'Backup / troca de baterias' : 'Ajustes', w: 1260, jc: 'right' },
+        { t: 'Fluxo acumulado', w: 2000, jc: 'right' }]
+      : [{ t: 'Ano', w: 640, jc: 'center' }, { t: temFV ? 'Geração (kWh)' : 'Energia desloc. (kWh)', w: 1240, jc: 'right' },
+        { t: 'Conta anual sem sistema', w: 1700, jc: 'right' }, { t: 'Conta anual com sistema', w: 1700, jc: 'right' },
+        { t: 'Economia anual', w: 1640, jc: 'right' }, { t: 'Fluxo acumulado', w: 2440, jc: 'right' }];
+    const linha0 = [{ t: '0', b: true, jc: 'center' }, '—', '—', '—', { t: 'Investimento', b: true }];
+    if (ajustes) linha0.push('—');
+    linha0.push({ t: U.brl(-r.total), b: true, color: VERMELHO });
+    const fcLin = [linha0].concat(f.anos.map(function (a) {
+      const lin = [{ t: String(a.ano), b: true, jc: 'center' }, U.fmt(temFV ? a.geracao : a.descarga, 0), U.brl(a.contaSem * 12), U.brl(a.contaCom * 12),
+        { t: U.brl(a.economiaMes * 12), color: VERDE }];
+      if (ajustes) { const aj = a.beneficioBackup - a.extra; lin.push(aj ? { t: U.brl(aj), color: aj < 0 ? VERMELHO : VERDE } : '—'); }
+      lin.push({ t: U.brl(a.acumulado), b: true, color: a.acumulado < 0 ? VERMELHO : VERDE });
+      return lin;
+    }));
     b.push(tabelaCabecalhoCentral(fcCols, fcLin, 18));
-    if (temFV && !grupoA && regraMaior && f.anos.some(function (a) { return a.minimo; })) {
-      b.push(T('Custo Fio B = acréscimo efetivo na conta. Nos anos em que o custo de disponibilidade é maior que a energia não compensada + Fio B, ' +
-        'o Fio B fica absorvido por ele (REN ANEEL 1.000/2021, art. 655-I).', { after: 80 }, { color: CINZA, sz: 18 }));
-    }
-    if (r.trocaBateria && r.trocaBateria.custo > 0) {
-      b.push(T('🔋 A economia líquida do ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ' já desconta a substituição ' + (r.bessAtivo ? 'do BESS' : 'do banco de baterias') + ' (' + U.brl(r.trocaBateria.custo) + ').', { after: 80 }, { color: CINZA, sz: 18 }));
-    }
+    b.push(T('Economia anual = conta anual sem sistema − conta anual com sistema; a conta com sistema já inclui ' +
+      (temFV ? (grupoA ? 'a energia não compensada, a demanda, o Fio B' : 'o custo de disponibilidade ou a energia não compensada, o Fio B') : 'a energia e a demanda') +
+      ' e a COSIP. O fluxo acumulado parte do investimento de ' + U.brl(r.total) + ' no ano 0' +
+      (ajustes ? ' e soma o benefício de backup' + (r.trocaBateria && r.trocaBateria.custo > 0 ? ', descontando a substituição ' + (r.bessAtivo ? 'do BESS' : 'das baterias') + ' (' + U.brl(r.trocaBateria.custo) + ' no ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ')' : '') : '') +
+      '. Valores com inflação tarifária de ' + U.fmtSmart(prem.inflacaoTarifa * 100, 2) + '% a.a.' + (temFV ? ' e degradação dos módulos de ' + U.fmtSmart(r.degradacaoModulos * 100, 2) + '% a.a.' : '') + '.',
+    { after: 80 }, { color: CINZA, sz: 18 }));
     b.push(vazio());
 
     /* ---------- PAGAMENTO */

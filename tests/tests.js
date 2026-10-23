@@ -313,6 +313,64 @@
   ok('proposta: validade continua na capa e nos dados do cliente', (txPreco.match(/^\d+ dias$/gm) || []).length >= 2);
   ok('proposta: tabela da conta compara disponibilidade × energia + Fio B', txPreco.indexOf('Custo Disponib.') >= 0 && txPreco.indexOf('Energia + Fio B') >= 0 && /art\. 655-I/.test(txPreco));
 
+  // ---------------------------------------------------------------- fluxo de caixa pela conta anual e indicadores de retorno
+  (function () {
+    const f = r.fin;
+    ok('fluxo: economia anual = (conta sem − conta com) × 12 em todos os anos', f.anos.every(function (a) { return Math.abs(a.liq - (a.contaSem - a.contaCom) * 12) < 1e-6; }));
+    perto('fluxo: economia anual do ano 1 = economia mensal × 12', f.economiaAno1, f.economiaMes1 * 12, 1e-9);
+    let acc = -r.total, pb = null;
+    f.anos.forEach(function (a, k) { const liq = (a.contaSem - a.contaCom) * 12; if (pb == null && acc + liq >= 0) pb = k + (-acc) / liq; acc += liq; });
+    perto('retorno: payback simples recalculado pelo fluxo da conta', f.paybackSimples, pb, 1e-9);
+    const vplManual = f.anos.reduce(function (s0, a, k) { return s0 + (a.contaSem - a.contaCom) * 12 / Math.pow(1 + D.premissas.tma, k + 1); }, -r.total);
+    perto('retorno: VPL recalculado (TMA)', f.vpl, vplManual, 1e-6);
+    const npvTir = f.anos.reduce(function (s0, a, k) { return s0 + a.liq / Math.pow(1 + f.tir, k + 1); }, -r.total);
+    ok('retorno: TIR zera o VPL', Math.abs(npvTir) < 0.01, npvTir);
+    perto('retorno: acumulado final = economia total − investimento', f.anos[f.anos.length - 1].acumulado, f.economiaTotal - r.total, 1e-6);
+    const tx = textoModelo(App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 }));
+    ok('fluxo no documento: colunas pela conta anual', ['Conta anual sem sistema', 'Conta anual com sistema', 'Economia anual', 'Fluxo acumulado'].every(function (c) { return tx.indexOf(c) >= 0; }) &&
+      tx.indexOf('Custo Fio B (R$)') < 0 && tx.indexOf('Econ. Bruta (R$)') < 0);
+    ok('fluxo no documento: ano 0 com o investimento', tx.indexOf('Investimento') >= 0 && tx.indexOf(U.brl(-r.total)) >= 0);
+    const a1 = f.anos[0];
+    ok('fluxo no documento: ano 1 com as contas anuais e a economia', [U.brl(a1.contaSem * 12), U.brl(a1.contaCom * 12), U.brl(a1.economiaMes * 12), U.brl(a1.acumulado)].every(function (v) { return tx.indexOf(v) >= 0; }));
+  })();
+
+  // ---------------------------------------------------------------- preço pela margem: instalação por módulo, lucro e comissão sobre o valor final
+  (function () {
+    const nova = C.novaProposta(ctx);
+    ok('nova proposta: preço pela margem, faixa 1, lucro 15% e comissão 5%, infraestrutura zerada',
+      nova.precificacao === 'margem' && nova.instalacaoFaixa === 1 && nova.lucroModo === 'pct' && nova.lucroPct === 0.15 && nova.comissaoPct === 0.05 && !U.num(nova.infraValor));
+    const base = Object.assign(U.clone(p), { precificacao: 'margem', instalacaoFaixa: 1, lucroModo: 'pct', lucroPct: 0.15, comissaoPct: 0.05, infraValor: '', valorTotal: '' });
+    const rm = C.calcular(base, ctx);
+    perto('margem: instalação = 9 módulos × R$ 80', rm.instalacao, 720, 1e-9);
+    perto('margem: valor final = custos ÷ (1 − 15% − 5%)', rm.total, (8177.08 + 720) / 0.8, 1e-6);
+    perto('margem: lucro = 15% do valor final', rm.lucro, rm.total * 0.15, 1e-6);
+    perto('margem: comissão = 5% do valor final', rm.comissao, rm.total * 0.05, 1e-6);
+    perto('margem: mão de obra da proposta = instalação + lucro + comissão', rm.maoObra, 720 + rm.lucro + rm.comissao, 1e-6);
+    perto('margem: kit + infra + mão de obra + outros = valor final', rm.kit + rm.infra + rm.maoObra + rm.outros, rm.total, 1e-6);
+    perto('margem: investimento do fluxo = valor final', rm.fin.anos[0].acumulado + rm.total, rm.fin.anos[0].liq, 1e-6);
+    perto('margem: faixa 2 = 9 × R$ 100', C.calcular(Object.assign(U.clone(base), { instalacaoFaixa: 2 }), ctx).instalacao, 900, 1e-9);
+    const rInfra = C.calcular(Object.assign(U.clone(base), { infraValor: 1200, outrosValor: 300, outrosDescricao: 'Frete' }), ctx);
+    perto('margem: infraestrutura e outros entram nos custos', rInfra.total, (8177.08 + 720 + 1200 + 300) / 0.8, 1e-6);
+    const rV = C.calcular(Object.assign(U.clone(base), { lucroModo: 'valor', lucroValor: 1500 }), ctx);
+    perto('margem: lucro em R$ — valor final = (custos + lucro) ÷ (1 − 5%)', rV.total, (8177.08 + 720 + 1500) / 0.95, 1e-6);
+    perto('margem: lucro em R$ mantido', rV.lucro, 1500, 1e-9);
+    const rPad = C.calcular(Object.assign(U.clone(base), { lucroPct: '', comissaoPct: '' }), ctx);
+    perto('margem: percentuais em branco usam as premissas', rPad.total, (8177.08 + 720) / 0.8, 1e-6);
+    const rAlto = C.calcular(Object.assign(U.clone(base), { lucroPct: 0.8, comissaoPct: 0.05 }), ctx);
+    ok('margem: lucro + comissão excessivos geram erro', rAlto.alertas.some(function (a) { return a.nivel === 'erro' && /inviabilizam/.test(a.msg); }));
+    const txm = textoModelo(App.Documento.montar(Object.assign(U.clone(base), { infraValor: 1200 }), rInfra, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
+    ok('margem: comissão e lucro não aparecem na proposta', !/comiss[aã]o|lucro/i.test(txm) && txm.indexOf(U.brl(rInfra.comissao)) < 0 && txm.indexOf(U.brl(rInfra.lucro)) < 0);
+    ok('margem: proposta mostra a mão de obra com lucro e comissão', txm.indexOf(U.brl(rInfra.maoObra)) >= 0 && txm.indexOf(U.brl(rInfra.total)) >= 0);
+    perto('proposta antiga (valor total) não muda', r.total, 12700, 1e-9);
+    // híbrido: lucro e comissão sobre o valor final do cenário (FV + armazenamento)
+    const pHm = Object.assign(U.clone(pH), { precificacao: 'margem', instalacaoFaixa: 1, lucroModo: 'pct', lucroPct: 0.15, comissaoPct: 0.05, infraValor: '', valorTotal: '' });
+    const rHm = C.calcular(pHm, ctxH);
+    const custoH = rHm.kit + rHm.instalacao + rHm.infra + rHm.outros + rHm.kitArm + (rHm.instalArm);
+    perto('margem híbrido: valor final = (FV + armazenamento) ÷ 0,8', rHm.total, custoH / 0.8, 1e-6);
+    perto('margem híbrido: linhas da proposta somam o valor final', rHm.kit + rHm.kitArm + rHm.instalArm + rHm.infra + rHm.maoObra + rHm.outros, rHm.total, 1e-6);
+    perto('margem híbrido: comissão = 5% do valor final', rHm.comissao, rHm.total * 0.05, 1e-6);
+  })();
+
   // ---------------------------------------------------------------- BESS no grupo A (verde) — picos e horários estratégicos
   const ctxA = ctxReferencia();
   ctxA.premissas = U.clone(D.premissas);
@@ -333,6 +391,9 @@
   igual('BESS horários: unidades', pt.n, 2);
   perto('BESS horários: economia mensal ano 1 (ponta − recarga fora de ponta)', pt.fin.anos[0].economiaMes, 2000 * 2.5 - (2000 / 0.9) * 0.6, 1e-6);
   perto('BESS: investimento = equipamento + 15% instalação', pt.investimento, 2 * 150000 * 1.15, 1e-6);
+  const rAm = C.calcular(Object.assign(U.clone(pA), { precificacao: 'margem', lucroModo: 'pct', lucroPct: 0.10, comissaoPct: 0.05 }), ctxA);
+  perto('BESS margem: valor final = (equipamento + instalação) ÷ (1 − 10% − 5%)', rAm.total, rAm.cen.n * 150000 * 1.15 / 0.85, 1e-6);
+  perto('BESS margem: lucro e comissão entram na instalação do armazenamento', rAm.kitArm + rAm.instalArm, rAm.total, 1e-6);
   ok('BESS: recomendação = maior VPL', rA.recomendacao && rA.recomendacao.id === (pt.fin.vpl >= pk.fin.vpl ? 'ponta' : 'picos'), rA.recomendacao && rA.recomendacao.id);
   ok('BESS: objetivo "demanda" recomenda redução de picos', C.calcular(Object.assign(U.clone(pA), { objetivo: 'demanda' }), ctxA).recomendacao.id === 'picos');
   ok('BESS: proposta usa o cenário recomendado', rA.cen.id === rA.recomendacao.id && rA.total === rA.cen.investimento);

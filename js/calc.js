@@ -513,6 +513,7 @@ window.App = window.App || {};
     ['fdgMin', 'fdgMax', 'fdgAlvo', 'regraDisponibilidade'].forEach(function (k) { if (prem[k] == null) prem[k] = D.premissas[k]; });
     prem.hibrido = Object.assign({}, D.premissas.hibrido, prem.hibrido || {});
     prem.armazenamento = Object.assign({}, D.premissas.armazenamento, prem.armazenamento || {});
+    prem.preco = Object.assign({}, D.premissas.preco, prem.preco || {});
     return prem;
   };
 
@@ -811,7 +812,35 @@ window.App = window.App || {};
     // outros valores: parcela própria do preço (com descrição); comissão: parte da mão de obra, só para controle gerencial
     r.outros = r.permiteFV ? U.numOr(p.outrosValor, 0) : 0;
     r.outrosDescricao = String(p.outrosDescricao || '').trim() || 'Outros valores';
-    if (!r.permiteFV) {
+    // preço pela margem (propostas novas): custos diretos + lucro + comissão, ambos em % do valor final (ou lucro em R$)
+    r.precoMargem = p.precificacao === 'margem';
+    if (r.precoMargem) {
+      const pp = prem.preco;
+      const pctOu = function (v, pad) { const n = U.num(v); return v !== '' && v != null && isFinite(n) ? n : pad; };
+      r.instalacaoFaixa = Number(p.instalacaoFaixa) === 2 ? 2 : 1;
+      r.instalacaoModulo = U.numOr(r.instalacaoFaixa === 2 ? pp.instalacaoFaixa2 : pp.instalacaoFaixa1, 0);
+      r.instalacao = r.permiteFV ? r.nModulos * r.instalacaoModulo : 0;
+      r.comissaoPct = Math.max(0, pctOu(p.comissaoPct, pp.comissaoPct));
+      r.lucroModo = p.lucroModo === 'valor' ? 'valor' : 'pct';
+      r.lucroPct = r.lucroModo === 'pct' ? Math.max(0, pctOu(p.lucroPct, pp.lucroPct)) : 0;
+      r.lucroFixo = r.lucroModo === 'valor' ? Math.max(0, U.numOr(p.lucroValor, 0)) : 0;
+      r.custoFV = r.permiteFV ? r.kit + r.instalacao + r.infra + r.outros : 0;
+      const divisor = 1 - r.comissaoPct - r.lucroPct;
+      if (divisor < 0.2) alerta('erro', 'Lucro + comissão (' + U.fmt((r.lucroPct + r.comissaoPct) * 100, 1) + '% do valor final) inviabilizam o preço — reduza os percentuais.');
+      // valor final P = (custos + lucro em R$) ÷ (1 − % comissão − % lucro); lucro e comissão saem de P
+      r.precificar = function (custo) {
+        if (!(custo > 0) || divisor < 0.2) return { total: 0, lucro: 0, comissao: 0 };
+        const total = (custo + r.lucroFixo) / divisor;
+        return { total: total, lucro: r.lucroModo === 'pct' ? total * r.lucroPct : r.lucroFixo, comissao: total * r.comissaoPct };
+      };
+      const pfv = r.precificar(r.custoFV);
+      r.investimentoFV = pfv.total;
+      r.lucro = pfv.lucro;
+      r.comissao = pfv.comissao;
+      // na proposta, lucro e comissão entram na linha de mão de obra + projeto + instalação + homologação
+      r.maoObra = r.permiteFV ? r.instalacao + r.lucro + r.comissao : 0;
+      r.maoObraLiquida = r.instalacao;
+    } else if (!r.permiteFV) {
       r.maoObra = 0;
       r.investimentoFV = 0;
     } else if (p.precoModo === 'separado') {
@@ -822,9 +851,11 @@ window.App = window.App || {};
       r.maoObra = r.investimentoFV - r.kit - r.infra - r.outros;
       if (r.investimentoFV > 0 && r.maoObra < 0) alerta('erro', 'Valor do sistema FV menor que kit + infraestrutura' + (r.outros ? ' + outros valores' : '') + ': mão de obra ficaria negativa.');
     }
-    r.comissao = r.permiteFV ? U.numOr(p.comissaoValor, 0) : 0;
-    r.maoObraLiquida = r.maoObra - r.comissao;
-    if (r.comissao > 0 && r.maoObra >= 0 && r.maoObraLiquida < 0) alerta('aviso', 'Comissão (' + U.brl(r.comissao) + ') maior que a mão de obra (' + U.brl(r.maoObra) + ').');
+    if (!r.precoMargem) {
+      r.comissao = r.permiteFV ? U.numOr(p.comissaoValor, 0) : 0;
+      r.maoObraLiquida = r.maoObra - r.comissao;
+      if (r.comissao > 0 && r.maoObra >= 0 && r.maoObraLiquida < 0) alerta('aviso', 'Comissão (' + U.brl(r.comissao) + ') maior que a mão de obra (' + U.brl(r.maoObra) + ').');
+    }
 
     // Unidade de armazenamento: energia, potência e custo
     const h = r.hibrido;
@@ -941,11 +972,20 @@ window.App = window.App || {};
       cen.capInstalada = cen.n * (unid ? unid.energia : 0);
       cen.capUtil = cen.capInstalada * (h ? h.dod : 0);
       cen.potencia = potenciaArm(cen.n);
-      cen.invFV = cen.incluirFV ? r.investimentoFV : 0;
       cen.kitArm = cen.n * (unid ? unid.preco : 0);
       cen.instalArm = cen.n > 0 ? (pos(p.instalArmValor) || cen.kitArm * ar.instalPct) : 0;
       cen.invArm = cen.kitArm + cen.instalArm;
-      cen.investimento = cen.invFV + cen.invArm;
+      if (r.precoMargem) {
+        // lucro e comissão sobre o valor final do cenário (sistema FV + armazenamento)
+        const pc = r.precificar((cen.incluirFV ? r.custoFV : 0) + cen.invArm);
+        cen.investimento = pc.total;
+        cen.lucro = pc.lucro;
+        cen.comissao = pc.comissao;
+        cen.invFV = cen.investimento - cen.invArm;
+      } else {
+        cen.invFV = cen.incluirFV ? r.investimentoFV : 0;
+        cen.investimento = cen.invFV + cen.invArm;
+      }
       cen.kwp = cen.incluirFV ? r.kwp : 0;
       const ciclosAno = def.id === 'ponta' ? (r.modalidade.id === 'conv' ? 365 : ar.diasUteis) : (def.id === 'picos' ? ar.diasUteis : 12);
       const vida = unid ? Math.max(1, Math.min(unid.vida, unid.ciclos / ciclosAno)) : 0;
@@ -1095,7 +1135,14 @@ window.App = window.App || {};
     // Valores do cenário escolhido
     r.kitArm = escolhido ? escolhido.kitArm || 0 : 0;
     r.instalArm = escolhido ? escolhido.instalArm || 0 : 0;
-    if (!r.incluiFV) { r.kit = 0; r.infra = 0; r.maoObra = 0; r.outros = 0; r.comissao = 0; r.maoObraLiquida = 0; }
+    if (!r.incluiFV) { r.kit = 0; r.infra = 0; r.maoObra = 0; r.outros = 0; r.comissao = 0; r.maoObraLiquida = 0; r.instalacao = 0; }
+    if (r.precoMargem && escolhido) {
+      r.lucro = escolhido.lucro || 0;
+      r.comissao = escolhido.comissao || 0;
+      // sem sistema FV no cenário, lucro e comissão entram na instalação do armazenamento
+      if (r.incluiFV) r.maoObra = r.instalacao + r.lucro + r.comissao;
+      else r.instalArm += r.lucro + r.comissao;
+    }
     r.total = escolhido ? escolhido.investimento : (r.incluiFV ? r.investimentoFV : 0);
     if (!(r.total > 0)) alerta('erro', r.permiteFV ? 'Informe o valor da proposta.' : 'Informe o preço do equipamento de armazenamento.');
     if (!p.kitManual && r.kitFVSoma === 0 && r.permiteFV && r.incluiFV && (itensP.length ? itensFVP : itensFVGerados).length) {
@@ -1329,8 +1376,14 @@ window.App = window.App || {};
       itens: [],
       kitManual: false,
       kitValor: '',
-      infraValor: 1500,
+      infraValor: '',
       infraDescricao: ctx.textos.infraDescricao,
+      precificacao: 'margem',
+      instalacaoFaixa: 1,
+      lucroModo: 'pct',
+      lucroPct: (ctx.premissas.preco || D.premissas.preco).lucroPct,
+      lucroValor: '',
+      comissaoPct: (ctx.premissas.preco || D.premissas.preco).comissaoPct,
       precoModo: 'composto',
       valorTotal: '',
       maoObraValor: '',

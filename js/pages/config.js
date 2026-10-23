@@ -154,6 +154,17 @@
       { k: 'fatorCO2', label: 'Fator de emissão', type: 'number', suffix: 'kg CO₂/kWh' }
     ], prem, marcar, 3)));
 
+    prem.preco = Object.assign({}, D.premissas.preco, prem.preco || {});
+    cont.appendChild(h('div.card', h('h3', 'Preço da proposta'),
+      h('p.ajuda-sec', 'Valor final = (kit + instalação por módulo + infraestrutura CA + outros valores) ÷ (1 − % lucro − % comissão). ' +
+        'Lucro e comissão são percentuais do valor final; na proposta, os dois entram na linha de mão de obra + projeto + instalação + homologação.'),
+      UI.grade([
+        { k: 'instalacaoFaixa1', label: 'Instalação por módulo — faixa 1 (automática)', type: 'money', suffix: '/módulo' },
+        { k: 'instalacaoFaixa2', label: 'Instalação por módulo — faixa 2', type: 'money', suffix: '/módulo' },
+        { k: 'lucroPct', label: 'Lucro padrão', type: 'pct', suffix: '% do valor final' },
+        { k: 'comissaoPct', label: 'Comissão', type: 'pct', suffix: '% do valor final' }
+      ], prem.preco, marcar, 3)));
+
     const fioBEd = UI.editorLinhas(prem.fioB, [
       { k: 'ano', label: 'Ano', type: 'int' },
       { k: 'pct', label: '% do Fio B cobrado', type: 'pct' }

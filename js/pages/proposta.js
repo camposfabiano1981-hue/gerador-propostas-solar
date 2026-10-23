@@ -10,6 +10,8 @@
 
   function normalizar(p, ctx) {
     const base = C.novaProposta(ctx);
+    // propostas gravadas antes do preço pela margem continuam com o valor informado (o total não muda ao abrir)
+    if (p.precificacao === undefined) p.precificacao = 'informado';
     Object.keys(base).forEach(function (k) {
       if (p[k] === undefined && k !== '_seq' && k !== 'numero') p[k] = U.clone(base[k]);
     });
@@ -103,6 +105,7 @@
         localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
         modalidade: ['local', 'consumo', 'cenarios'], bessComFV: ['sistema', 'cenarios', 'materiais'],
         consumoModo: ['consumo'], clienteId: ['cliente'], precoModo: ['materiais'], kitManual: ['materiais'], data: ['ident'],
+        precificacao: ['materiais'], instalacaoFaixa: ['materiais'], lucroModo: ['materiais'],
         'cenarios.ativo': ['cenarios']
       };
       if (k === 'localidadeId') {
@@ -404,11 +407,30 @@
 
       c.appendChild(h('h4.secao-form', 'Composição do preço'));
       if (p.tipoSistema === 'bess' && p.bessComFV === false) {
-        c.appendChild(h('p.ajuda-sec', 'Sem sistema FV: o investimento de cada cenário é o equipamento de armazenamento + a instalação (seção Armazenamento).'));
+        c.appendChild(h('p.ajuda-sec', 'Sem sistema FV: o custo de cada cenário é o equipamento de armazenamento + a instalação (seção Armazenamento)' +
+          (p.precificacao === 'margem' ? '; lucro e comissão incidem sobre o valor final.' : '.')));
+        if (p.precificacao === 'margem') composicaoMargem(c, true);
         infos.preco = h('div.info');
         c.appendChild(infos.preco);
         return;
       }
+      if (p.precificacao === 'margem') {
+        composicaoMargem(c);
+        infos.preco = h('div.info');
+        c.appendChild(infos.preco);
+        return;
+      }
+      // proposta antiga: preço informado (valor total ou itens separados), mantido até ser convertida
+      c.appendChild(h('div.card.dica',
+        h('p', 'Esta proposta usa o cálculo de preço anterior (valor total informado). As novas usam instalação por módulo + lucro + comissão sobre o valor final.'),
+        h('button.btn.pequeno', {
+          type: 'button', onclick: async function () {
+            if (!(await UI.confirmar('Passar esta proposta para o novo cálculo de preço? O valor final passa a ser kit + instalação por módulo + infraestrutura + outros valores, com lucro e comissão em % do valor final — o total vai mudar.', 'Converter'))) return;
+            const pp = (p.premissas && p.premissas.preco) || D.premissas.preco;
+            Object.assign(p, { precificacao: 'margem', instalacaoFaixa: 1, lucroModo: 'pct', lucroPct: pp.lucroPct, lucroValor: '', comissaoPct: pp.comissaoPct });
+            mudou('precificacao');
+          }
+        }, 'Usar o novo cálculo')));
       if (ehArm()) c.appendChild(h('p.ajuda-sec', 'Informe aqui o preço do sistema fotovoltaico. O armazenamento (equipamento + instalação) é somado automaticamente em cada cenário.'));
       const modos = h('div.opcoes-cartao.compacto', [
         ['composto', 'Valor total', 'Informe o preço final; a mão de obra é calculada (total − kit − infraestrutura − outros valores).'],
@@ -434,6 +456,57 @@
       infos.preco = h('div.info');
       c.appendChild(infos.preco);
     });
+
+    /** Preço pela margem: custos (kit, instalação por módulo, infraestrutura, outros) + lucro + comissão em % do valor final. */
+    function composicaoMargem(c, soArmazenamento) {
+      const pp = Object.assign({}, D.premissas.preco, (p.premissas && p.premissas.preco) || {});
+      if (!soArmazenamento) custosMargem(c, pp);
+      lucroComissao(c, soArmazenamento);
+    }
+
+    function custosMargem(c, pp) {
+      if (ehArm()) c.appendChild(h('p.ajuda-sec', 'O armazenamento (equipamento + instalação) entra no custo de cada cenário; lucro e comissão incidem sobre o valor final do cenário.'));
+      c.appendChild(h('h5.sub-preco', '1. Custos'));
+      c.appendChild(UI.grade([
+        { k: 'kitManual', label: 'Informar valor do kit manualmente (cotação do distribuidor)', type: 'checkbox', cls: 'span2' },
+        p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money' } : null
+      ], p, mudou, 3));
+      const faixa = Number(p.instalacaoFaixa) === 2 ? 2 : 1;
+      c.appendChild(h('p.rotulo-campo', 'Instalação por módulo'));
+      c.appendChild(h('div.opcoes-cartao.compacto', [
+        [1, 'Faixa 1 — ' + U.brl(pp.instalacaoFaixa1) + '/módulo', 'Automática (padrão)'],
+        [2, 'Faixa 2 — ' + U.brl(pp.instalacaoFaixa2) + '/módulo', 'Escolha quando a instalação exigir mais']
+      ].map(function (o) {
+        return h('button.opcao' + (faixa === o[0] ? '.ativa' : ''), {
+          type: 'button', onclick: function () { if (faixa !== o[0]) { p.instalacaoFaixa = o[0]; mudou('instalacaoFaixa'); } }
+        }, h('strong', o[1]), h('small', o[2]));
+      })));
+      c.appendChild(UI.grade([
+        { k: 'infraValor', label: 'Infraestrutura elétrica CA', type: 'money', help: 'Começa zerada: lance o valor desta obra (DPS, disjuntores, quadro, aterramento).' },
+        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (lista de equipamentos)', cls: 'span2' },
+        { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço e discriminado na proposta.' },
+        { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…', cls: 'span2' }
+      ], p, mudou, 3));
+    }
+
+    function lucroComissao(c, soArmazenamento) {
+      c.appendChild(h('h5.sub-preco', (soArmazenamento ? '' : '2. ') + 'Lucro e comissão (sobre o valor final da proposta)'));
+      const modoLucro = p.lucroModo === 'valor' ? 'valor' : 'pct';
+      c.appendChild(h('div.opcoes-cartao.compacto', [
+        ['pct', 'Lucro em percentual', '% do valor final da proposta'],
+        ['valor', 'Lucro em valor (R$)', 'Valor fixo somado ao preço']
+      ].map(function (o) {
+        return h('button.opcao' + (modoLucro === o[0] ? '.ativa' : ''), {
+          type: 'button', onclick: function () { if (modoLucro !== o[0]) { p.lucroModo = o[0]; mudou('lucroModo'); } }
+        }, h('strong', o[1]), h('small', o[2]));
+      })));
+      c.appendChild(UI.grade([
+        modoLucro === 'pct'
+          ? { k: 'lucroPct', label: 'Lucro', type: 'pct', suffix: '% do valor final', help: 'Padrão em Configurações › Premissas.' }
+          : { k: 'lucroValor', label: 'Lucro', type: 'money' },
+        { k: 'comissaoPct', label: 'Comissão', type: 'pct', suffix: '% do valor final', help: 'Calculada automaticamente. Não aparece na proposta: é somada à mão de obra + instalação + homologação.' }
+      ], p, mudou, 3));
+    }
 
     function desenharItens() {
       if (!corpoItens) return;
@@ -676,6 +749,27 @@
       if (infos.preco) {
         const wp = r.kwp * 1000;
         const linhas = [];
+        if (r.precoMargem) {
+          if (r.incluiFV || !ehArm()) {
+            linhas.push(linhaInfo('Kit fotovoltaico' + (p.kitManual ? ' (manual)' : ' (soma dos itens)'), U.brl(r.kit)),
+              linhaInfo('Instalação (' + r.nModulos + ' módulos × ' + U.brl(r.instalacaoModulo) + ')', U.brl(r.instalacao)),
+              linhaInfo('Infraestrutura CA', U.brl(r.infra)));
+            if (r.outros) linhas.push(linhaInfo(r.outrosDescricao, U.brl(r.outros)));
+          }
+          if (r.kitArm || r.instalArm) linhas.push(linhaInfo('Armazenamento (equipamento)', U.brl(r.kitArm)), linhaInfo('Instalação do armazenamento', U.brl(r.instalArm - (r.incluiFV ? 0 : r.lucro + r.comissao))));
+          const custo = r.total - r.lucro - r.comissao;
+          linhas.push(linhaInfo('Custo direto', U.brl(custo)),
+            linhaInfo('Lucro' + (r.lucroModo === 'pct' ? ' (' + U.fmtSmart(r.lucroPct * 100, 2) + '% do valor final)' : ' (valor fixo)'), U.brl(r.lucro)),
+            linhaInfo('Comissão (' + U.fmtSmart(r.comissaoPct * 100, 2) + '% do valor final — não sai na proposta)', U.brl(r.comissao)),
+            linhaInfo(ehArm() && r.cen ? 'Valor final — ' + r.cen.nome : 'Valor final da proposta', U.brl(r.total), 'destaque'));
+          if (r.incluiFV) linhas.push(linhaInfo('Na proposta: mão de obra + projeto + instalação + homologação', U.brl(r.maoObra) + ' (instalação + lucro + comissão)'));
+          else if (r.kitArm) linhas.push(linhaInfo('Na proposta: instalação e integração do armazenamento', U.brl(r.instalArm) + ' (com lucro e comissão)'));
+          if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
+          if (r.contasMes && r.contasMes.max - r.contasMes.min > 0.5) {
+            linhas.push(linhaInfo('Conta c/ sistema no ano 1', U.brl(r.contasMes.min) + ' (' + C.MESES_CURTOS[r.contasMes.mesMin] + ') a ' + U.brl(r.contasMes.max) + ' (' + C.MESES_CURTOS[r.contasMes.mesMax] + ')'));
+          }
+          infos.preco.replaceChildren.apply(infos.preco, linhas);
+        } else {
         if (r.incluiFV || !ehArm()) {
           linhas.push(linhaInfo('Kit fotovoltaico' + (p.kitManual ? ' (manual)' : ' (soma dos itens)'), U.brl(r.kit)),
             linhaInfo('Infraestrutura CA', U.brl(r.infra)),
@@ -693,6 +787,7 @@
           linhas.push(linhaInfo('Conta c/ sistema no ano 1', U.brl(r.contasMes.min) + ' (' + C.MESES_CURTOS[r.contasMes.mesMin] + ') a ' + U.brl(r.contasMes.max) + ' (' + C.MESES_CURTOS[r.contasMes.mesMax] + ')'));
         }
         infos.preco.replaceChildren.apply(infos.preco, linhas);
+        }
       }
       const totItens = corpoItens && corpoItens.querySelector('[data-total-itens]');
       if (totItens) totItens.textContent = 'Soma dos itens: ' + U.brl(r.kitSoma);

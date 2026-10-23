@@ -130,6 +130,8 @@ window.App = window.App || {};
     // temperaturas da célula para corrigir Voc (mínima, amanhecer de inverno) e Vmp (máxima, sol forte) pelo coeficiente do módulo
     tempMinima: 0,
     tempMaxCelula: 70,
+    // preço da proposta: instalação por módulo (a faixa 1 entra automaticamente), comissão e lucro em % do valor final
+    preco: { instalacaoFaixa1: 80, instalacaoFaixa2: 100, comissaoPct: 0.05, lucroPct: 0.15 },
     fioB: [
       { ano: 2023, pct: 0.15 }, { ano: 2024, pct: 0.30 }, { ano: 2025, pct: 0.45 },
       { ano: 2026, pct: 0.60 }, { ano: 2027, pct: 0.75 }, { ano: 2028, pct: 0.90 }
