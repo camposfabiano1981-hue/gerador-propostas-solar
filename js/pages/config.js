@@ -300,7 +300,7 @@
         'a IA procura o datasheet oficial na internet e o lê. O botão 🔄 de cada item atualiza o cadastro pelo datasheet mais recente. ' +
         'Os itens entram marcados como “Revisar” até você conferir e salvar.'),
       h('p', h('strong', 'Chave de API: '), 'crie uma chave no Console da Anthropic (platform.claude.com, em API Keys) e defina um limite de gastos para ela. ' +
-        'A chave fica salva só neste navegador — não vai para o backup nem para outro lugar além da própria API da Anthropic.'),
+        'A chave fica salva só neste navegador — não vai para o backup, para a nuvem nem para outro lugar além da própria API da Anthropic (em outro aparelho, cadastre a chave nele também).'),
       h('p', h('strong', 'Custo: '), 'cobrado pela Anthropic na sua conta, por tokens (e US$ 0,01 por busca na web, na pesquisa). Uma ficha técnica de poucas páginas costuma custar alguns centavos de dólar no Opus 5.5 ' +
         '(o valor estimado aparece ao final de cada leitura). Se o filtro de segurança do modelo recusar o documento, o pedido é refeito automaticamente no modelo indicado pela Anthropic (Opus 5.5 e Sonnet 5.5).')));
     const salvar = function () {
@@ -327,7 +327,119 @@
       status));
   });
 
+  /* ------------------------------------------------------------ sincronização (nuvem) */
+
+  UI.rota('/nuvem', function (cont) {
+    const N = App.Nuvem;
+    cont.appendChild(UI.cabecalho('Sincronização (nuvem)', 'Os mesmos dados no computador, no celular e no tablet: login com a conta Google e cópia no Firebase (Google), atualizada em tempo real.'));
+
+    // situação atual, atualizada enquanto a tela estiver aberta
+    const situacao = h('div');
+    const acoes = h('div.barra-itens');
+    const caixa = h('div.card', h('h3', 'Situação neste aparelho'), situacao, acoes);
+    cont.appendChild(caixa);
+    let desenhou = false;
+    const parar = N.observar(function (n) {
+      // a tela foi trocada: deixa de acompanhar
+      if (desenhou && !caixa.isConnected) { setTimeout(parar); return; }
+      desenhou = true;
+      situacao.innerHTML = '';
+      acoes.innerHTML = '';
+      situacao.appendChild(h('p', h('strong', n.resumo())));
+      if (n.usuario) situacao.appendChild(h('p', 'Conta: ', h('strong', n.usuario.email || n.usuario.nome)));
+      if (n.pendentes) situacao.appendChild(h('p', n.pendentes + ' alteração(ões) aguardando envio.'));
+      if (n.ultimaSync && n.usuario) situacao.appendChild(h('p.ajuda-sec', 'Última sincronização: ' + new Date(n.ultimaSync).toLocaleString('pt-BR')));
+      if (n.mensagem) situacao.appendChild(h('p.ajuda-sec', '⚠️ ' + n.mensagem));
+      if (n.estado === 'naoConfigurado') situacao.appendChild(h('p.ajuda-sec', 'Para ligar, siga o passo a passo abaixo (uma vez só) e cole a configuração do Firebase.'));
+      if (n.configurada() && !n.usuario && n.estado !== 'conectando') {
+        acoes.appendChild(h('button.btn.primario', {
+          type: 'button', onclick: async function (ev) {
+            ev.currentTarget.disabled = true;
+            try { await n.entrar(); } catch (e) { UI.toast(e.message, 'erro'); } finally { ev.currentTarget.disabled = false; }
+          }
+        }, 'Entrar com Google'));
+      }
+      if (n.usuario) {
+        acoes.appendChild(h('button.btn', {
+          type: 'button', onclick: async function () {
+            if (!(await UI.confirmar('Sair da conta neste aparelho? Os dados continuam aqui e na nuvem, mas as alterações deixam de ser sincronizadas até você entrar de novo.', 'Sair'))) return;
+            try { await n.sair(); } catch (e) { UI.toast(e.message, 'erro'); }
+          }
+        }, 'Sair da conta'));
+      }
+    });
+
+    // configuração do projeto Firebase
+    const origem = N.origemConfig();
+    const cfgAtual = N.config();
+    const estado = { texto: '' };
+    const conectar = function () {
+      let cfg;
+      try { cfg = N.lerConfig(estado.texto); } catch (e) { UI.toast(e.message, 'erro'); return; }
+      try { N.salvarConfig(cfg); } catch (e) { UI.toast(e.message, 'erro'); return; }
+      UI.toast('Configuração salva. Conectando…', 'ok');
+      setTimeout(function () { location.reload(); }, 600);
+    };
+    const cfgCard = h('div.card', h('h3', 'Projeto Firebase'));
+    if (cfgAtual) {
+      cfgCard.appendChild(h('p', 'Projeto: ', h('strong', cfgAtual.projectId), origem === 'site' ? ' — configuração publicada no site (vale para todos os aparelhos).' : ' — configuração colada neste aparelho.'));
+    }
+    const remover = origem !== 'aparelho' ? null : h('button.btn.perigo', {
+      type: 'button', onclick: async function () {
+        if (!(await UI.confirmar('Remover a configuração do Firebase deste aparelho? Os dados locais continuam aqui; a sincronização é desligada neste aparelho.', 'Remover', true))) return;
+        try { await N.sair(); } catch (e) { /* já desconectado */ }
+        N.salvarConfig(null);
+        location.reload();
+      }
+    }, 'Remover deste aparelho');
+    if (origem !== 'site') {
+      cfgCard.appendChild(UI.grade([
+        { k: 'texto', label: cfgAtual ? 'Trocar a configuração (firebaseConfig)' : 'Configuração do app web (firebaseConfig)', type: 'textarea', rows: 9, cls: 'span2',
+          placeholder: 'const firebaseConfig = {\n  apiKey: "…",\n  authDomain: "…firebaseapp.com",\n  projectId: "…",\n  storageBucket: "…",\n  messagingSenderId: "…",\n  appId: "…"\n};',
+          help: 'Cole o trecho copiado no passo 6 (pode colar o bloco inteiro do console). Não é senha: o acesso aos dados depende do login e das regras do passo 5.' }
+      ], estado, null, 2));
+      cfgCard.appendChild(h('div.barra-itens', h('button.btn.primario', { type: 'button', onclick: conectar }, 'Salvar e conectar'), remover));
+    }
+    cont.appendChild(cfgCard);
+
+    // passo a passo
+    const emailRegras = { email: (N.usuario && N.usuario.email) || '' };
+    const regras = h('pre.regras-nuvem', N.regras(emailRegras.email));
+    const campoEmail = UI.grade([{ k: 'email', label: 'Seu e-mail Google (o único com acesso aos dados)', type: 'text', placeholder: 'voce@gmail.com', cls: 'span2' }],
+      emailRegras, function () { regras.textContent = N.regras(emailRegras.email); }, 2);
+    const copiar = h('button.btn', {
+      type: 'button', onclick: async function () {
+        try { await navigator.clipboard.writeText(regras.textContent); UI.toast('Regras copiadas.', 'ok'); } catch (e) {
+          const sel = window.getSelection(); const r = document.createRange(); r.selectNodeContents(regras); sel.removeAllRanges(); sel.addRange(r);
+          UI.toast('Selecionei o texto: copie com Ctrl+C.', 'info');
+        }
+      }
+    }, 'Copiar regras');
+    const passo = function (n, titulo) { return h('li', h('strong', titulo), Array.prototype.slice.call(arguments, 2)); };
+    cont.appendChild(h('div.card',
+      h('h3', 'Passo a passo para ligar (uma vez só, de graça)'),
+      h('ol.passos-nuvem',
+        passo(1, 'Crie o projeto: ', 'entre em console.firebase.google.com com a sua conta Google › “Criar um projeto” (ex.: genesis-propostas). O Google Analytics pode ficar desativado. O plano gratuito (Spark) é suficiente.'),
+        passo(2, 'Ative o login com Google: ', 'menu Criação › Authentication › “Vamos começar” › Método de login › Google › Ativar › Salvar.'),
+        passo(3, 'Autorize este endereço: ', 'Authentication › Configurações › Domínios autorizados › Adicionar domínio: ', h('code', location.hostname || 'localhost'), '.'),
+        passo(4, 'Crie o banco: ', 'Criação › Firestore Database › Criar banco de dados › local ', h('code', 'southamerica-east1 (São Paulo)'), ' › iniciar no modo de produção.'),
+        passo(5, 'Proteja os dados: ', 'na aba Regras do Firestore, apague o texto, cole as regras abaixo (com o seu e-mail) e clique em Publicar.',
+          campoEmail, regras, h('div.barra-itens', copiar)),
+        passo(6, 'Copie a configuração: ', 'engrenagem ⚙️ › Configurações do projeto › Seus apps › ícone Web (</>) › dê um apelido e registre (sem Firebase Hosting). Copie o bloco firebaseConfig e cole no campo “Projeto Firebase” acima.'),
+        passo(7, 'Entre em cada aparelho: ', 'clique em “Entrar com Google” com a mesma conta no computador, no celular e no tablet. No primeiro login, tudo o que já está cadastrado no aparelho sobe para a nuvem e é mantido.')),
+      h('p.ajuda-sec', 'Se preferir não colar a configuração em cada aparelho, envie o bloco firebaseConfig para ser publicado no site: aí basta entrar com Google.')));
+
+    cont.appendChild(h('div.card.dica',
+      h('p', h('strong', 'Sincroniza: '), 'clientes, cadastros (equipamentos, concessionárias, localidades, pagamentos, serviços), propostas, propostas avulsas, contratos, projetos realizados (com fotos), dados da empresa, premissas, textos, modelo do contrato e numeração.'),
+      h('p', h('strong', 'Não sincroniza (fica em cada aparelho): '), 'a chave da API do Claude e o modelo escolhido (cadastre a chave em cada aparelho em que for usar a IA), o modo de leitura do datasheet e a configuração do Firebase colada aqui.'),
+      h('p', h('strong', 'Primeiro login: '), 'os registros já existentes neste aparelho são enviados e mantidos; se outro aparelho já tiver enviado os dele, as duas bases são somadas. Quando o mesmo registro foi alterado nos dois, vale a alteração mais recente.'),
+      h('p', h('strong', 'Sem internet: '), 'a plataforma continua funcionando; as alterações ficam na fila e são enviadas quando a conexão voltar. O backup .json (Backup e dados) continua disponível.'),
+      h('p', h('strong', 'Espaço: '), 'cada navegador guarda até ~5 MB; muitas fotos em Projetos realizados ocupam esse limite mais rápido. Na nuvem, o plano gratuito tem 1 GB.')));
+  });
+
   /* ------------------------------------------------------------ backup */
+
+  function emTodos() { return App.Nuvem && App.Nuvem.usuario ? ' — inclusive na nuvem e nos outros aparelhos conectados' : ''; }
 
   UI.rota('/dados', function (cont) {
     const kb = Math.round(S.uso() / 1024);
@@ -337,7 +449,7 @@
         if (!f) return;
         try {
           const dados = JSON.parse(await U.readFileAsText(f));
-          if (!(await UI.confirmar('Importar este backup substituirá TODOS os dados atuais. Continuar?', 'Importar', true))) return;
+          if (!(await UI.confirmar('Importar este backup substituirá TODOS os dados atuais' + emTodos() + '. Continuar?', 'Importar', true))) return;
           S.importar(dados);
           App.atualizarMarca();
           UI.toast('Backup importado com sucesso.', 'ok');
@@ -349,7 +461,9 @@
     });
     cont.appendChild(UI.cabecalho('Backup e dados', 'Os dados ficam salvos neste navegador (armazenamento local).'));
     cont.appendChild(h('div.card.dica',
-      h('p', h('strong', 'Importante: '), 'cada navegador/computador tem sua própria base. Para usar em outro computador ou não perder informações ao limpar o navegador, exporte o backup regularmente e importe no outro equipamento.'),
+      h('p', h('strong', 'Importante: '), App.Nuvem && App.Nuvem.usuario
+        ? 'a sincronização (nuvem) está ligada: os dados também ficam no Firebase e nos outros aparelhos conectados. O backup .json continua sendo uma cópia de segurança extra.'
+        : 'cada navegador/computador tem sua própria base. Para usar em vários aparelhos, ligue a ☁️ Sincronização (nuvem); ou exporte o backup regularmente e importe no outro equipamento.'),
       h('p', 'Uso atual: ', h('strong', U.fmt(kb, 0) + ' KB'), ' (limite típico do navegador: ~5.000 KB).')));
     cont.appendChild(h('div.grade-cards',
       h('div.card',
@@ -370,7 +484,7 @@
         h('p', 'Apaga todos os dados e recarrega os cadastros de exemplo.'),
         h('button.btn.perigo', {
           type: 'button', onclick: async function () {
-            if (await UI.confirmar('Apagar TODOS os dados (clientes, propostas e cadastros) e restaurar os padrões?', 'Apagar e restaurar', true)) {
+            if (await UI.confirmar('Apagar TODOS os dados (clientes, propostas e cadastros)' + emTodos() + ' e restaurar os padrões?', 'Apagar e restaurar', true)) {
               S.restaurarPadroes();
               App.atualizarMarca();
               UI.toast('Dados restaurados para o padrão.', 'ok');

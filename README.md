@@ -60,7 +60,14 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - Estruturas para telhado cerâmico, fibrocimento, metálico (trapezoidal, ondulado, zipado, sanduíche), laje, solo, shingle e carport, além de suportes e cabos específicos de microinversores.
 - Itens com dados parciais estão identificados nas observações; confira sempre o datasheet vigente.
 
-**Configurações**: dados da empresa e logotipo (inclusive dados do contrato e bancários, que ficam só no navegador), premissas técnicas/financeiras (PR, degradação, inflação, TMA/SELIC, cronograma do Fio B, disponibilidade, limites, parâmetros de baterias e BESS), textos padrão da proposta, modelo de contrato e backup/importação dos dados.
+**Sincronização (nuvem)** — os mesmos dados no computador, no celular e no tablet, com a conta Google e o **Firebase** (plano gratuito):
+- Login com Google e cópia no **Cloud Firestore**, atualizada **em tempo real** entre os aparelhos; sem internet, a plataforma continua funcionando e as alterações ficam na fila até a conexão voltar.
+- No **primeiro login**, os registros que já existem no aparelho são enviados e mantidos; se outro aparelho já tiver enviado os dele, as bases são somadas. Quando o mesmo registro é alterado em dois aparelhos, vale a alteração mais recente; exclusões ficam marcadas para não voltarem. A numeração de propostas e contratos guarda o maior número reservado em qualquer aparelho.
+- A **chave da API do Claude** e as preferências do aparelho **não** vão para a nuvem (cadastre a chave em cada aparelho que for usar a IA).
+- Registros grandes (fotos dos projetos) são divididos em partes (limite de 1 MiB por documento do Firestore). Importar um backup ou restaurar os padrões passa a valer em todos os aparelhos conectados.
+- Configuração única em **Configurações › Sincronização (nuvem)**: passo a passo do console do Firebase, regras de segurança prontas (acesso só da sua conta e do seu e-mail) e campo para colar o `firebaseConfig` — ou publicá-lo em `js/nuvem-config.js` para valer em todos os aparelhos. O indicador ☁️ no menu mostra a situação (sincronizado, enviando, sem internet, erro).
+
+**Configurações**: dados da empresa e logotipo (inclusive dados do contrato e bancários, que ficam só no navegador), premissas técnicas/financeiras (PR, degradação, inflação, TMA/SELIC, cronograma do Fio B, disponibilidade, limites, parâmetros de baterias e BESS), textos padrão da proposta, modelo de contrato, sincronização (nuvem) e backup/importação dos dados.
 
 ---
 
@@ -88,7 +95,7 @@ e acesse `http://localhost:8765/`.
 5. **Contrato**: na lista de propostas clique em ✍ (ou em Contratos › Novo contrato), confira os dados e as parcelas e baixe o contrato. Antes, preencha em **Configurações › Empresa** a razão social, endereço, contatos e dados bancários do contrato.
 6. **Serviços avulsos**: em Propostas avulsas, monte a proposta com os serviços do catálogo.
 
-> **Onde ficam os dados?** No armazenamento local do navegador (localStorage). Cada navegador/computador tem a sua base. Use **Configurações › Backup e dados** para exportar um `.json` regularmente e importá-lo em outro computador.
+> **Onde ficam os dados?** No armazenamento local do navegador (localStorage, ~5 MB). Com a **☁️ Sincronização (nuvem)** ligada, também no Firebase da sua conta Google e em todos os aparelhos conectados; sem ela, cada navegador/computador tem a sua base. O backup `.json` (**Configurações › Backup e dados**) continua disponível como cópia extra.
 
 ---
 
@@ -160,6 +167,8 @@ js/datasheet.js       Campos de datasheet de módulos, inversores, microinversor
 js/datasheet-local.js Leitura de datasheets no navegador, sem IA (PDF.js carregado sob demanda)
 js/ia.js              Leitura e pesquisa de datasheets com a API do Claude (SDK oficial carregado sob demanda)
 js/store.js           Persistência local, numeração e backup
+js/nuvem.js           Sincronização com o Firebase (login Google, Firestore em tempo real, fila sem internet)
+js/nuvem-config.js    firebaseConfig publicado para todos os aparelhos (opcional; em branco = colar na tela)
 js/energia.js         Tarifas (convencional, branca, verde, azul), contas, compensação, cenários e recomendação
 js/calc.js            Dimensionamento On-Grid/Híbrido/BESS, materiais, cenários, financeiro e pagamentos
 js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato (canvas → PNG)
@@ -180,4 +189,4 @@ tools/serve.ps1       Servidor local opcional (Windows/PowerShell)
 
 ## Testes
 
-Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; as regras dos dados de datasheet (Voc no frio e Vmp no calor pelo coeficiente do módulo, tensão máxima do sistema, fusível de string, área e degradação; strings e correntes por MPPT, microinversores, tensão e paralelismo do banco, eficiência de ciclo), o esquema da leitura por IA, a leitura no navegador (números, faixas, colunas de modelos, tabelas lado a lado e de pares) e a migração da base; o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.
+Abra `tests/index.html` no navegador. Os testes reproduzem a proposta de referência GE-20260929-012 (mesmas premissas daquele documento) e conferem geração, FDG, Fio B, contas mensais (regra do art. 655-I), parcelas e a lista de materiais; contas nas tarifas branca, verde e azul; os cenários de BESS e a recomendação; as regras dos dados de datasheet (Voc no frio e Vmp no calor pelo coeficiente do módulo, tensão máxima do sistema, fusível de string, área e degradação; strings e correntes por MPPT, microinversores, tensão e paralelismo do banco, eficiência de ciclo), o esquema da leitura por IA, a leitura no navegador (números, faixas, colunas de modelos, tabelas lado a lado e de pares), a migração da base e a sincronização (avisos do armazenamento, exclusões marcadas, numeração mesclada, importação, leitura do `firebaseConfig` e regras do Firestore); o contrato (parcelas, numeração das cláusulas, valores por extenso) e a proposta avulsa — além de gerar os .docx e PDFs para download.

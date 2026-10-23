@@ -793,5 +793,82 @@
   const num = App.Store.proximoNumero('2026-09-29');
   ok('número automático no formato PREFIXO-AAAAMMDD-NNN', /^[A-Z0-9]+-20260929-\d{3}$/.test(num.numero), num.numero);
 
+  // ---------------------------------------------------------------- sincronização (nuvem): ganchos do Store e configuração do Firebase
+  (function () {
+    const S = App.Store, N = App.Nuvem;
+    const copia = {};
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.indexOf('gsp.') === 0) copia[k] = localStorage.getItem(k); }
+    const ganchosAntes = S.ganchos;
+    const chamadas = [];
+    S.ganchos = {
+      aoSalvar: function (col, obj) { chamadas.push(['salvar', col, obj.id, obj.atualizadoEm]); },
+      aoRemover: function (col, id, ts) { chamadas.push(['remover', col, id, ts]); },
+      aoSalvarConfig: function (c) { chamadas.push(['config', c.atualizadoEm]); },
+      aoSubstituirTudo: function () { chamadas.push(['tudo']); }
+    };
+    try {
+      if (S.list('clientes') == null || !localStorage.getItem('gsp.v')) S.semear();
+      const cli = S.save('clientes', { nome: 'Teste Nuvem' });
+      ok('nuvem: salvar avisa a sincronização com a data da alteração', chamadas.length === 1 && chamadas[0][0] === 'salvar' && chamadas[0][1] === 'clientes' && chamadas[0][2] === cli.id && !!chamadas[0][3], JSON.stringify(chamadas));
+      S.remove('clientes', cli.id);
+      ok('nuvem: excluir avisa e marca a exclusão', chamadas[1] && chamadas[1][0] === 'remover' && !!S.excluidos('clientes')[cli.id]);
+      S.save('clientes', cli);
+      ok('nuvem: salvar de novo desfaz a marca de exclusão', !S.excluidos('clientes')[cli.id]);
+      chamadas.length = 0;
+      S.aplicarRemoto('clientes', { id: 'remoto-1', nome: 'Da nuvem', atualizadoEm: '2026-10-01T10:00:00.000Z' });
+      ok('nuvem: registro vindo da nuvem é gravado sem novo aviso e sem nova data',
+        chamadas.length === 0 && S.get('clientes', 'remoto-1') && S.get('clientes', 'remoto-1').atualizadoEm === '2026-10-01T10:00:00.000Z');
+      S.excluirRemoto('clientes', 'remoto-1', '2026-10-02T10:00:00.000Z');
+      ok('nuvem: exclusão vinda da nuvem', chamadas.length === 0 && !S.get('clientes', 'remoto-1') && S.excluidos('clientes')['remoto-1'] === '2026-10-02T10:00:00.000Z');
+      const emp = S.config().empresa;
+      S.salvarConfig('empresa', emp);
+      ok('nuvem: configuração salva leva data e avisa', chamadas.length === 1 && chamadas[0][0] === 'config' && !!S.configBruta().atualizadoEm);
+      S.reservarNumero('20261023', 9);
+      const base = S.configBruta();
+      const remota = JSON.parse(JSON.stringify(base)); remota.seq = { '20261023': 4, '20261024': 2 }; remota.atualizadoEm = '2030-01-01T00:00:00.000Z';
+      const adiantado = S.aplicarConfigRemota(remota);
+      ok('nuvem: numeração mescla o maior número de cada aparelho', adiantado === true && S.configBruta().seq['20261023'] === 9 && S.configBruta().seq['20261024'] === 2, JSON.stringify(S.configBruta().seq));
+      const remota2 = JSON.parse(JSON.stringify(S.configBruta())); remota2.seq['20261023'] = 12;
+      ok('nuvem: numeração remota maior não reenvia', S.aplicarConfigRemota(remota2) === false && S.configBruta().seq['20261023'] === 12);
+      chamadas.length = 0;
+      S.importar(S.exportar());
+      const datas = {};
+      S.COLECOES.forEach(function (c) { S.list(c).forEach(function (x) { datas[x.atualizadoEm] = true; }); });
+      ok('nuvem: importar carimba tudo como mais recente e espelha na nuvem', Object.keys(datas).length === 1 && chamadas.some(function (c) { return c[0] === 'tudo'; }) &&
+        !Object.keys(S.excluidos('clientes')).length, Object.keys(datas).length);
+    } catch (e) {
+      ok('nuvem: ganchos do Store', false, e && e.stack || String(e));
+    } finally {
+      S.ganchos = ganchosAntes;
+      Object.keys(localStorage).filter(function (k) { return k.indexOf('gsp.') === 0; }).forEach(function (k) { localStorage.removeItem(k); });
+      Object.keys(copia).forEach(function (k) { localStorage.setItem(k, copia[k]); });
+    }
+
+    const trecho = 'const firebaseConfig = {\n  apiKey: "AIzaSyX-1",\n  authDomain: "proj.firebaseapp.com",\n  projectId: "proj",\n  storageBucket: "proj.firebasestorage.app",\n' +
+      '  messagingSenderId: "42",\n  appId: "1:42:web:ab",\n  measurementId: "G-XYZ"\n};';
+    const cfg = N.lerConfig(trecho);
+    igual('nuvem: firebaseConfig colado do console', JSON.stringify(cfg), JSON.stringify({ apiKey: 'AIzaSyX-1', authDomain: 'proj.firebaseapp.com', projectId: 'proj', storageBucket: 'proj.firebasestorage.app', messagingSenderId: '42', appId: '1:42:web:ab' }));
+    igual('nuvem: firebaseConfig em JSON', N.lerConfig(JSON.stringify(cfg)).appId, '1:42:web:ab');
+    let erro = '';
+    try { N.lerConfig('apiKey: "x"'); } catch (e) { erro = e.message; }
+    ok('nuvem: configuração incompleta é recusada', /incompleta/.test(erro), erro);
+    const regras = N.regras('Fulano@Gmail.com ');
+    ok('nuvem: regras do Firestore limitadas à conta e ao e-mail', /match \/usuarios\/\{uid\}\/\{documento=\*\*\}/.test(regras) && /request\.auth\.uid == uid/.test(regras) &&
+      /request\.auth\.token\.email == "fulano@gmail\.com"/.test(regras), regras);
+    const siteAntes = App.NUVEM_CONFIG, localAntes = localStorage.getItem('gsp.nuvem');
+    try {
+      App.NUVEM_CONFIG = { apiKey: 'site', projectId: 'site-proj' };
+      localStorage.removeItem('gsp.nuvem');
+      ok('nuvem: configuração publicada no site', N.config().projectId === 'site-proj' && N.origemConfig() === 'site');
+      N.salvarConfig(cfg);
+      ok('nuvem: configuração colada no aparelho tem prioridade', N.config().projectId === 'proj' && N.origemConfig() === 'aparelho');
+      App.NUVEM_CONFIG = null; N.salvarConfig(null);
+      ok('nuvem: sem configuração', !N.configurada() && N.origemConfig() === null);
+    } finally {
+      App.NUVEM_CONFIG = siteAntes;
+      if (localAntes) localStorage.setItem('gsp.nuvem', localAntes); else localStorage.removeItem('gsp.nuvem');
+    }
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

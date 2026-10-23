@@ -3,7 +3,7 @@
   'use strict';
 
   /** Versão publicada — a mesma usada em ?v= no index.html (evita o navegador usar arquivos antigos em cache). */
-  App.VERSAO_APP = '2026.10.22.5';
+  App.VERSAO_APP = '2026.10.23.1';
 
   App.atualizarMarca = function () {
     const emp = App.Store.config().empresa;
@@ -31,6 +31,17 @@
     });
     window.addEventListener('hashchange', function () { App.UI.despachar(); });
     App.UI.despachar(true);
+    // sincronização com a nuvem (Firebase), quando configurada
+    const status = document.getElementById('nuvem-status');
+    if (App.Nuvem) {
+      App.Nuvem.observar(function (n) {
+        if (!status) return;
+        status.textContent = n.resumo();
+        status.className = 'nuvem-status ' + n.estado;
+        status.title = n.mensagem || (n.usuario ? 'Conta: ' + n.usuario.email : '');
+      });
+      App.Nuvem.iniciar();
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);

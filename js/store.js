@@ -47,6 +47,26 @@ window.App = window.App || {};
 
   const Store = {};
 
+  /*
+   * Ganchos da sincronização com a nuvem (App.Nuvem): chamados após cada alteração feita neste aparelho.
+   * aoSalvar(col, obj), aoRemover(col, id, ts), aoSalvarConfig(config), aoSubstituirTudo().
+   */
+  Store.ganchos = {};
+  function avisar(nome) {
+    const fn = Store.ganchos[nome];
+    if (!fn) return;
+    try { fn.apply(null, Array.prototype.slice.call(arguments, 1)); } catch (e) { console.error(e); }
+  }
+
+  /** Exclusões feitas neste aparelho (coleção → id → data), para não trazer de volta da nuvem o que foi excluído. */
+  Store.excluidos = function (col) { return (ler('sync.excluidos', {}) || {})[col] || {}; };
+  function marcarExcluido(col, id, ts) {
+    const ex = ler('sync.excluidos', {}) || {};
+    ex[col] = ex[col] || {};
+    if (ts) ex[col][id] = ts; else delete ex[col][id];
+    gravar('sync.excluidos', ex);
+  }
+
   Store.init = function () {
     const v = ler('v', null);
     if (v == null) Store.semear();
@@ -152,8 +172,7 @@ window.App = window.App || {};
     const ids = {};
     eqs.forEach(function (e) { ids[e.id] = true; });
     let n = 0;
-    lista.forEach(function (e) { if (!ids[e.id]) { e.ativo = false; eqs.push(e); n++; } });
-    gravar('col.equipamentos', eqs);
+    lista.forEach(function (e) { if (!ids[e.id]) { e.ativo = false; Store.save('equipamentos', e); n++; } });
     Store.descartarRemovidosV7();
     return n;
   };
@@ -228,8 +247,12 @@ window.App = window.App || {};
   Store.salvarConfig = function (parte, valor) {
     const c = configBruta();
     c[parte] = valor;
+    c.atualizadoEm = new Date().toISOString();
     gravar('config', c);
+    avisar('aoSalvarConfig', c);
   };
+
+  Store.configBruta = configBruta;
 
   Store.list = function (col) {
     return ler('col.' + col, []) || [];
@@ -247,11 +270,44 @@ window.App = window.App || {};
     const i = lista.findIndex(function (x) { return x.id === obj.id; });
     if (i >= 0) lista[i] = obj; else lista.push(obj);
     gravar('col.' + col, lista);
+    if (Store.excluidos(col)[obj.id]) marcarExcluido(col, obj.id, null);
+    avisar('aoSalvar', col, obj);
     return obj;
   };
 
   Store.remove = function (col, id) {
     gravar('col.' + col, Store.list(col).filter(function (x) { return x.id !== id; }));
+    const ts = new Date().toISOString();
+    marcarExcluido(col, id, ts);
+    avisar('aoRemover', col, id, ts);
+  };
+
+  /* Alterações vindas da nuvem: gravadas como chegaram (sem nova data) e sem disparar os ganchos. */
+  Store.aplicarRemoto = function (col, obj) {
+    const lista = Store.list(col);
+    const i = lista.findIndex(function (x) { return x.id === obj.id; });
+    if (i >= 0) lista[i] = obj; else lista.push(obj);
+    gravar('col.' + col, lista);
+    if (Store.excluidos(col)[obj.id]) marcarExcluido(col, obj.id, null);
+  };
+
+  Store.excluirRemoto = function (col, id, ts) {
+    gravar('col.' + col, Store.list(col).filter(function (x) { return x.id !== id; }));
+    marcarExcluido(col, id, ts);
+  };
+
+  /** Devolve true quando este aparelho tinha numeração mais adiantada (a configuração mesclada deve voltar à nuvem). */
+  Store.aplicarConfigRemota = function (c) {
+    const local = configBruta();
+    if (!c.seq) c.seq = {};
+    // numeração: preserva o maior número já reservado em qualquer aparelho
+    let adiantado = false;
+    Object.keys(local.seq || {}).forEach(function (k) {
+      if ((local.seq[k] || 0) > (c.seq[k] || 0)) { c.seq[k] = local.seq[k]; adiantado = true; }
+    });
+    if (adiantado) c.atualizadoEm = new Date().toISOString();
+    gravar('config', c);
+    return adiantado;
   };
 
   /**
@@ -280,7 +336,9 @@ window.App = window.App || {};
     const c = configBruta();
     const k = chave || dia;
     c.seq[k] = Math.max(c.seq[k] || 0, seq);
+    c.atualizadoEm = new Date().toISOString();
     gravar('config', c);
+    avisar('aoSalvarConfig', c);
   };
 
   Store.exportar = function () {
@@ -301,11 +359,29 @@ window.App = window.App || {};
     const vb = parseInt(dados.versao, 10) || 1;
     if (vb < VERSAO) Store.migrar(vb);
     else gravar('v', VERSAO);
+    carimbarTudo();
+    avisar('aoSubstituirTudo');
   };
 
   Store.restaurarPadroes = function () {
     Store.semear();
+    carimbarTudo();
+    avisar('aoSubstituirTudo');
   };
+
+  /** Importação e restauração substituem a base inteira: tudo passa a valer como a versão mais nova (inclusive na nuvem). */
+  function carimbarTudo() {
+    const ts = new Date().toISOString();
+    COLECOES.forEach(function (col) {
+      const lista = Store.list(col);
+      lista.forEach(function (x) { x.atualizadoEm = ts; });
+      gravar('col.' + col, lista);
+    });
+    const c = configBruta();
+    c.atualizadoEm = ts;
+    gravar('config', c);
+    gravar('sync.excluidos', {});
+  }
 
   Store.uso = function () {
     let total = 0;
