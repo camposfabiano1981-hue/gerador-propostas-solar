@@ -20,6 +20,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - Composição do preço: **valor total** (mão de obra calculada) ou **itens separados** (total calculado); valor do kit pela soma dos itens ou manual (cotação do distribuidor); **outros valores** com descrição própria (discriminados na proposta) e **valor da comissão**, que faz parte da mão de obra e aparece só no painel interno (uso gerencial), nunca na proposta nem no contrato.
 - Opções de pagamento: à vista, cartão com acréscimo fixo e financiamentos (BV, Solfácil…) por PMT.
 - **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
+- **Proposta objetiva para o cliente**: apresentação, projetos realizados, **passo a passo** do projeto (o cronograma de execução em linha do tempo ilustrada, com o prazo de cada etapa — editável em Configurações › Textos padrão), dados do cliente, armazenamento (cargas críticas e resumo do banco), comparativo de cenários, consumo × geração, análise financeira, projeção da conta, fluxo de caixa, pagamento, equipamentos com garantias, serviços e assinaturas. Os detalhes de engenharia (strings, FDG, HSP, PR, tensão do banco, balanço diário etc.) ficam no painel da proposta, fora do documento impresso.
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
 - Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
@@ -171,6 +172,7 @@ js/nuvem.js           Sincronização com o Firebase (login Google, Firestore em
 js/nuvem-config.js    firebaseConfig publicado para todos os aparelhos (opcional; em branco = colar na tela)
 js/energia.js         Tarifas (convencional, branca, verde, azul), contas, compensação, cenários e recomendação
 js/calc.js            Dimensionamento On-Grid/Híbrido/BESS, materiais, cenários, financeiro e pagamentos
+js/passos.js          "Passo a passo" da proposta: cronograma de execução em linha do tempo (canvas → PNG)
 js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato (canvas → PNG)
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)

@@ -146,19 +146,17 @@ window.App = window.App || {};
     let sec = 0;
     const projetos = r.projetos || [];
     // a seção de projetos realizados (quando houver) desloca o dimensionamento para o item 4
-    const secDimNum = projetos.length ? 4 : 3;
     const imagens = {};
 
     const vars = {
       empresa: emp.razao, empresaCurta: emp.nomeCurto || emp.razao, cidadeEmpresa: [emp.cidade, emp.uf].filter(Boolean).join('/'),
       registroTipo: emp.registroTipo || '', registro: emp.registro || '', concessionaria: conc || 'concessionária',
       inversor: inv ? inv.fabricante : '', modulo: mod ? mod.fabricante : '', bateria: bat ? bat.fabricante : '',
-      fdg: U.fmt(r.fdg, 3), fdgIcone: r.fdgOk ? '✅' : '⚠️', secDim: String(secDimNum), cliente: nomeCliente, cidade: r.cidade || ''
+      fdg: U.fmt(r.fdg, 3), fdgIcone: r.fdgOk ? '✅' : '⚠️', cliente: nomeCliente, cidade: r.cidade || ''
     };
     vars.fdi = vars.fdg; vars.fdiIcone = vars.fdgIcone; // marcadores antigos em textos personalizados
     const t = function (x) { return substituir(x, vars); };
     const rs = function (v) { return 'R$' + U.fmt(v, Math.max(2, decimais(v))); };
-    const nomeArm = r.bessAtivo ? 'BESS' : 'baterias';
 
     const b = [];
 
@@ -250,7 +248,20 @@ window.App = window.App || {};
       b.push(vazio());
     }
 
-    /* ---------- 2. DADOS DO CLIENTE */
+    /* ---------- PASSO A PASSO (cronograma de execução em linha do tempo ilustrada) */
+    const etapas = (textos.cronograma || []).filter(function (c) { return c && (c.etapa || c.prazo); })
+      .map(function (c) { return { etapa: t(c.etapa), prazo: t(c.prazo) }; });
+    if (etapas.length) {
+      b.push(titulo((++sec) + '. PASSO A PASSO'));
+      if (textos.passoIntro) b.push(T(t(textos.passoIntro), { keepNext: true, after: 100 }, { color: GRAFITE }));
+      const pa = App.Passos.imagem(etapas);
+      imagens.passos = pa.dataURL;
+      const tp = encaixar(1000, Math.round(1000 * pa.proporcao), Math.round(5943600 * k), Math.round(7600000 * k));
+      b.push(P(IMG('passos', tp.cx, tp.cy, 'Passo a passo do projeto'), { after: 120, jc: 'center' }));
+      b.push(vazio());
+    }
+
+    /* ---------- DADOS DO CLIENTE */
     b.push(titulo((++sec) + '. DADOS DO CLIENTE E DO PROJETO'));
     const ligTxt = C.LIG_LABEL[r.ligacao] + (p.ligacaoConfirmar ? ' (premissa a confirmar)' : '');
     const dados = [['Cliente', nomeCliente]];
@@ -289,70 +300,6 @@ window.App = window.App || {};
     b.push(kv([3000, 6360], dados));
     b.push(vazio());
 
-    /* ---------- 3. DIMENSIONAMENTO */
-    b.push(titulo((++sec) + '. DIMENSIONAMENTO TÉCNICO'));
-    const u = r.unidadeArm;
-    const linhaArm = temArm && bat ? cen.n + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') + ' — ' +
-      U.fmtSmart(arm.capInstalada, 2) + ' kWh' + (arm.potenciaArm ? ' / ' + U.fmtSmart(arm.potenciaArm, 2) + ' kW' : '') + (bat.quimica ? ' (' + bat.quimica + ')' : '') : '—';
-    const dim = [];
-    if (temFV) {
-      const ef = mod && mod.eficiencia ? 'Ef. ' + U.fmtSmart(mod.eficiencia, 2) + '%' : '';
-      const modExtra = [ef, mod && mod.detalhe ? String(mod.detalhe).toLowerCase() : ''].filter(Boolean).join(', ');
-      dim.push(
-        ['Potência Total do Sistema', U.kwp(r.kwp) + ' kWp'],
-        ['Módulos Fotovoltaicos', mod ? r.nModulos + ' módulos × ' + mod.potencia + ' Wp — ' + [mod.fabricante, mod.tecnologia, mod.modelo].filter(Boolean).join(' ') + (modExtra ? ' (' + modExtra + ')' : '') : '—'],
-        [hib ? 'Inversor Híbrido' : (r.micro ? 'Microinversores' : 'Inversor'), inv ? r.nInversores + ' × ' + [inv.fabricante, inv.modelo].filter(Boolean).join(' ') + ' — ' + C.specInversor(inv) : '—']
-      );
-      if (r.strings) {
-        const st = r.strings;
-        dim.push(['Arranjo Elétrico (strings)', st.nStrings + ' string(s) de até ' + st.porString + ' módulos — ' + st.porMppt + ' string(s) por MPPT' +
-          (st.iscMppt ? ' (Isc ' + U.fmtSmart(st.iscMppt, 2) + ' A por MPPT' + (inv && U.num(inv.iscMaxMppt) > 0 ? ' / máx. ' + U.fmtSmart(inv.iscMaxMppt, 2) + ' A' : '') + ')' : '') +
-          '; Voc da string no frio ' + U.fmt(st.vocFrioString, 0) + ' V (limite ' + U.fmt(st.vLimite, 0) + ' V' + (st.limitePeloModulo ? ', tensão máxima do sistema do módulo' : '') + ')']);
-      }
-      if (r.ramaisMicro) dim.push(['Circuitos CA dos Microinversores', r.ramaisMicro + ' ramal(is) — até ' + inv.maxPorRamal + ' microinversores por ramal (datasheet)']);
-      if (temArm) dim.push([r.bessAtivo ? 'Armazenamento (BESS)' : 'Banco de Baterias', linhaArm]);
-      dim.push(
-        ['FDG — Fator de Dimensionamento Global (Pcc/Pca)', U.fmt(r.fdg, 3) + (r.fdgOk ? ' ✅ — dentro da faixa recomendada (' + U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + ')' : ' ⚠️ — ver alerta técnico abaixo')],
-        ['Estrutura de Fixação', r.estruturaTexto || '—'],
-        ['Geração Mensal Estimada', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'],
-        ['Geração Anual Estimada (Ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh/ano']
-      );
-      const dx = r.dimensionamento;
-      if (dx && (dx.proprio || dx.perdas)) {
-        dim.push(['Consumo Considerado no Dimensionamento', U.fmt(dx.consumo, 0) + ' kWh/mês do cliente + ' + U.fmt(dx.proprio, 0) + ' kWh de consumo próprio do inversor' +
-          (dx.perdas ? ' + ' + U.fmt(dx.perdas, 0) + ' kWh de perdas da bateria' : '') + ' = ' + U.fmt(r.consumoDimensionamento, 0) + ' kWh/mês']);
-      }
-      dim.push(
-        ['Cobertura do Consumo', U.fmt(r.cobertura * 100, 1) + '% do consumo médio (' + U.fmt(r.consumoMedio, 0) + ' kWh/mês) ' + (r.cobertura >= 0.95 ? '✅' : '⚠️')],
-        ['Área Ocupada Aproximada', '~' + U.fmt(r.area, 0) + ' m² (' + r.nModulos + ' mód × ' + U.fmtSmart(r.areaModulo, 2) + ' m²)'],
-        ['HSP ' + [r.cidade, r.uf].filter(Boolean).join('/') + (r.localidade && r.localidade.fonte ? ' (' + r.localidade.fonte + ')' : ''), U.fmtSmart(r.hsp, 2) + ' kWh/m²/dia'],
-        ['Performance Ratio (PR)', U.fmt(prem.pr, 2)],
-        ['Simultaneidade Adotada', U.fmtSmart(s * 100, 1) + '% autoconsumo direto / ' + U.fmtSmart((1 - s) * 100, 1) + '% injetado na rede' +
-          (temArm && cen.id === 'ponta' ? ' (+ armazenamento diário nas baterias)' : '')],
-        ['Monitoramento', r.monitoramento]
-      );
-    } else {
-      dim.push(
-        ['Armazenamento (BESS)', linhaArm],
-        ['Capacidade Útil', temArm ? U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)' : '—'],
-        ['Eficiência de Ciclo', temArm ? U.fmtSmart(arm.eficiencia * 100, 1) + '%' : '—'],
-        ['Estratégia de Operação', cen ? cen.nome : '—'],
-        ['Recarga', 'Pela rede da concessionária, fora do horário de ponta']
-      );
-    }
-    b.push(kv([3800, 5560], dim, ['Parâmetro', 'Valor']));
-    b.push(vazio());
-    if (temFV && !r.fdgOk && inv) {
-      const msg = '⚠ Alerta técnico: FDG ' + U.fmt(r.fdg, 3) + ' (potência FV Pcc ÷ potência do inversor Pca) fora da faixa recomendada (' +
-        U.fmt(prem.fdgMin, 2) + '–' + U.fmt(prem.fdgMax, 2) + '). ' +
-        (r.fdg > prem.fdgMax
-          ? 'O inversor (' + U.fmtSmart(r.potInversores, 2) + ' kW) é menor que o gerador FV (' + U.kwp(r.kwp) + ' kWp) e poderá limitar a potência nos horários de maior irradiação (clipping); a geração real pode ficar ligeiramente abaixo da estimada.'
-          : 'O inversor (' + U.fmtSmart(r.potInversores, 2) + ' kW) está superdimensionado em relação ao gerador FV (' + U.kwp(r.kwp) + ' kWp), elevando o custo sem ganho de geração.');
-      b.push(T(msg, { after: 80 }, { color: VERMELHO, sz: 18 }));
-    } else {
-      b.push(vazio());
-    }
-
     /* ---------- ARMAZENAMENTO */
     if (temArm) {
       const backupCen = cen.id === 'backup';
@@ -388,55 +335,15 @@ window.App = window.App || {};
         b.push(tabela(cargasCols, cargasLin, { sz: 19 }));
         b.push(vazio());
       }
-      const fs = prem.hibrido.fatorSegurancaInversor;
-      const linhas = [];
-      if (arm.cargas.length) {
-        linhas.push(
-          ['Potência das Cargas Críticas', U.fmtSmart(arm.potCargas / 1000, 2) + ' kW'],
-          ['Energia Necessária no Backup', U.fmtSmart(arm.energiaBackup / 1000, 2) + ' kWh'],
-          ['Autonomia Desejada', U.fmtSmart(arm.autonomiaHoras, 1) + ' h'],
-          ['Capacidade Necessária', U.fmtSmart(arm.capNecessaria, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '% / eficiência ' + U.fmtSmart(arm.eficiencia * 100, 0) + '%)']
-        );
+      // resumo para o cliente; os parâmetros técnicos do banco ficam no painel da proposta
+      const resumoArm = [];
+      if (bat) {
+        resumoArm.push((r.bessAtivo ? 'Sistema de armazenamento: ' : 'Banco de baterias: ') + cen.n + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') +
+          ' — ' + U.fmtSmart(arm.capInstalada, 2) + ' kWh (' + U.fmtSmart(arm.capUtil, 2) + ' kWh úteis).');
       }
-      linhas.push(
-        [r.bessAtivo ? 'Sistema de Armazenamento' : 'Banco de Baterias', bat ? cen.n + ' × ' + [bat.fabricante, bat.modelo].filter(Boolean).join(' ') + ' — ' + U.fmtSmart(bat.energia, 2) + ' kWh = ' + U.fmtSmart(arm.capInstalada, 2) + ' kWh' : '—'],
-        ['Configuração', arm.configuracao || '—'],
-        ['Capacidade Útil', U.fmtSmart(arm.capUtil, 2) + ' kWh (DoD ' + U.fmtSmart(arm.dod * 100, 0) + '%)']
-      );
-      if (hib && arm.tensaoBanco && inv && (U.num(inv.vBatMin) > 0 || U.num(inv.vBatMax) > 0)) {
-        linhas.push(['Tensão do Banco', U.fmtSmart(arm.tensaoBanco, 1) + ' V — faixa do inversor ' + (inv.vBatMin || '…') + '–' + (inv.vBatMax || '…') + ' V']);
-      }
-      if (hib && inv && U.num(inv.tempoComutacao) > 0) linhas.push(['Tempo de Comutação para Backup', U.fmtSmart(inv.tempoComutacao, 0) + ' ms (datasheet do inversor)']);
-      if (!backupCen && arm.cargas.length) linhas.push(['Reserva para Backup', U.fmtSmart(arm.reservaUtil, 2) + ' kWh úteis (fora da ' + (cen.id === 'picos' ? 'redução de picos' : 'ciclagem diária') + ')']);
-      if (arm.potenciaArm && isFinite(arm.potenciaArm)) {
-        const potOk = !arm.cargas.length || arm.potenciaArm * 1000 + 1e-6 >= arm.potCargas * fs;
-        linhas.push(['Potência Contínua de Descarga', U.fmtSmart(arm.potenciaArm, 2) + ' kW' + (arm.cargas.length ? (potOk ? ' ✅ (≥ ' : ' ⚠️ (abaixo de ') + U.fmtSmart(fs, 2) + ' × cargas críticas)' : '')]);
-      }
-      if (arm.picoPartida > arm.potCargas) {
-        const surto = inv && U.num(inv.surtoKW) > 0 ? inv.surtoKW * Math.max(1, r.nInversores) : null;
-        linhas.push(['Pico de Partida (motores)', U.fmtSmart(arm.picoPartida / 1000, 2) + ' kW com o maior motor partindo a ' + U.fmtSmart(prem.hibrido.fatorPartida, 1) + '×' +
-          (surto ? ' — surto do inversor ' + U.fmtSmart(surto, 2) + ' kW ' + (surto * 1000 >= arm.picoPartida ? '✅' : '⚠️') : '')]);
-      }
-      if (hib && r.consumoProprio) linhas.push(['Consumo Próprio do Inversor', U.fmtSmart(r.consumoProprioW, 0) + ' W (≈ ' + U.fmt(r.consumoProprio, 0) + ' kWh/mês, incluído na conta com sistema)']);
-      const bl = r.balanco;
-      if (bl) {
-        if (bl.mes != null) {
-          linhas.push(['Balanço Diário (' + C.MESES_CURTOS[bl.mes] + ', mês de menor geração)', 'Excedente solar ' + U.fmtSmart(bl.excedenteDia, 1) + ' kWh | carga do banco ' +
-            U.fmtSmart(bl.capCiclo / arm.eficiencia, 1) + ' kWh | consumo noturno ' + U.fmtSmart(bl.noturnoDia, 1) + ' kWh']);
-        }
-        linhas.push(['Utilização do Banco na Ciclagem', U.fmt(bl.utilizacao * 100, 0) + '% ' + (bl.utilizacao + 1e-9 >= prem.hibrido.utilizacaoMin ? '✅' : '⚠️') +
-          ' (mínimo recomendado ' + U.fmt(prem.hibrido.utilizacaoMin * 100, 0) + '%)']);
-      }
-      if (arm.cargas.length) {
-        linhas.push(['Autonomia Estimada', arm.autonomiaEstimada != null ? '≈ ' + U.fmtSmart(arm.autonomiaEstimada, 1) + ' h com as cargas listadas ' + (arm.autonomiaEstimada + 1e-9 >= arm.autonomiaHoras ? '✅' : '⚠️') : '—']);
-        linhas.push([hib ? 'Potência de Backup do Inversor' : 'Potência de Backup', U.fmtSmart(arm.potBackup, 2) + ' kW ' + (arm.backupOk ? '✅ (≥ ' + U.fmtSmart(fs, 2) + ' × cargas críticas)' : '⚠️ (abaixo de ' + U.fmtSmart(fs, 2) + ' × cargas críticas)')]);
-      }
-      if (cen.fin.kwhDeslocadosAno1) linhas.push(['Energia Deslocada (ano 1)', U.fmt(cen.fin.kwhDeslocadosAno1, 0) + ' kWh/ano']);
-      if (cen.fin.reducaoKW1) linhas.push(['Redução de Demanda', U.fmtSmart(cen.fin.reducaoKW1, 1) + ' kW']);
-      linhas.push(['Vida Útil Estimada', U.fmtSmart(cen.vidaArmAnos, 1) + ' anos' + (r.trocaBateria ? ' (substituição prevista no ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ')' : '')]);
-      linhas.push(['Modo de Operação', cen.id === 'ponta' ? (tou ? 'Deslocamento para o horário de ponta (arbitragem tarifária)' : 'Backup + ciclagem diária (autoconsumo noturno)')
-        : (cen.id === 'picos' ? 'Redução de picos de demanda (peak shaving)' : 'Backup (armazenamento reservado para falta de energia)')]);
-      b.push(kv([3800, 5560], linhas, ['Parâmetro', 'Valor']));
+      if (arm.cargas.length && arm.autonomiaEstimada != null) resumoArm.push('Autonomia estimada de ≈ ' + U.fmtSmart(arm.autonomiaEstimada, 1) + ' h com as cargas listadas.');
+      if (cen.fin.reducaoKW1) resumoArm.push('Redução de demanda de ' + U.fmtSmart(cen.fin.reducaoKW1, 1) + ' kW.');
+      if (resumoArm.length) b.push(T('🔋 ' + resumoArm.join(' '), { left: { sz: 12, space: 4, color: AZUL }, shd: DESTAQUE, after: 80 }, { color: AZUL }));
       b.push(vazio());
     }
 
@@ -662,6 +569,7 @@ window.App = window.App || {};
       return [pg.label, pg.prazo, U.brl(pg.parcela), { t: U.brl(pg.total), b: true }];
     })));
     b.push(T(textos.notaPagamento, { after: 80 }, { color: CINZA, sz: 18 }));
+    if (p.condicoesObs) b.push(T('Observações: ' + p.condicoesObs, { after: 80 }, { color: GRAFITE, sz: 19 }));
     b.push(vazio());
 
     /* ---------- EQUIPAMENTOS */
@@ -675,6 +583,10 @@ window.App = window.App || {};
       eqLin.push([String(r.itens.length + 1), '—', (p.infraDescricao || textos.infraDescricao) + ' — ' + U.brl(r.infra), 'Conf. fabricante']);
     }
     b.push(tabela(eqCols, eqLin, { sz: 19 }));
+    if (textos.garantiaInstalacao) {
+      b.push(T('Garantia da instalação (' + (emp.nomeCurto || emp.razao) + '): ' + t(textos.garantiaInstalacao) + '. Equipamentos com a garantia do fabricante indicada na lista.',
+        { before: 60, after: 80 }, { color: GRAFITE, sz: 18 }));
+    }
     b.push(vazio());
 
     /* ---------- SERVIÇOS */
@@ -687,36 +599,6 @@ window.App = window.App || {};
       TR([TC(T('✅ Inclusos', null, { b: true, color: BRANCO }), { w: 4680, fill: AZUL }), TC(T('❌ Não Inclusos', null, { b: true, color: BRANCO }), { w: 4680, fill: AZUL })], true),
       TR([TC(T(inc.join('\n')), { w: 4680, fill: ZEBRA, vAlign: 'top' }), TC(T(ninc.join('\n')), { w: 4680, fill: BRANCO, vAlign: 'top' })])
     ]));
-    b.push(vazio());
-
-    /* ---------- CRONOGRAMA */
-    b.push(titulo((++sec) + '. CRONOGRAMA DE EXECUÇÃO'));
-    b.push(tabela([{ t: 'Etapa', w: 600, jc: 'center' }, { t: 'Descrição', w: 5560 }, { t: 'Prazo Estimado', w: 3200, jc: 'center' }],
-      (textos.cronograma || []).map(function (c, i) { return [{ t: String(i + 1), b: true }, t(c.etapa), t(c.prazo)]; })));
-    b.push(vazio());
-
-    /* ---------- CONDIÇÕES COMERCIAIS */
-    b.push(titulo((++sec) + '. CONDIÇÕES COMERCIAIS'));
-    const cond = [['Valor Total da Proposta', { t: U.brl(r.total), b: true }]];
-    if (r.incluiFV) cond.push([hib && temArm ? 'Kit Fotovoltaico (com inversor híbrido)' : 'Kit Fotovoltaico Completo', U.brl(r.kit)]);
-    if (temArm) cond.push(['Armazenamento (' + nomeArm + ') + Instalação', U.brl(r.kitArm + r.instalArm)]);
-    if (r.incluiFV && r.infra > 0) cond.push(['Infraestrutura Elétrica CA', U.brl(r.infra)]);
-    if (r.incluiFV) cond.push(['Mão de Obra + Projeto + Instalação + Homologação', U.brl(r.maoObra)]);
-    if (r.incluiFV && r.outros > 0) cond.push([r.outrosDescricao, U.brl(r.outros)]);
-    cond.push(['Validade da Proposta', (p.validadeDias || emp.validadeDias) + ' dias a partir da data de emissão']);
-    if (mod) cond.push(['Garantia Módulos ' + mod.fabricante, C.garantiaModulo(mod)]);
-    const garFab = function (e) { return U.num(e.garantia) > 0 ? e.garantia + ' anos (conforme fabricante)' : 'Conforme fabricante'; };
-    if (inv) cond.push(['Garantia Inversor ' + inv.fabricante, garFab(inv)]);
-    if (bat && temArm) cond.push([(r.bessAtivo ? 'Garantia BESS ' : 'Garantia Baterias ') + bat.fabricante, garFab(bat)]);
-    cond.push(['Garantia Instalação ' + (emp.nomeCurto || emp.razao), textos.garantiaInstalacao]);
-    if (p.condicoesObs) cond.push(['Observações', p.condicoesObs]);
-    b.push(kv([3600, 5760], cond));
-    b.push(vazio());
-
-    /* ---------- CONFORMIDADE */
-    b.push(titulo((++sec) + '. CONFORMIDADE LEGAL E TÉCNICA'));
-    const conf = (textos.conformidade || []).concat(r.bessAtivo ? textos.conformidadeBess || [] : (hib ? textos.conformidadeHibrido || [] : []));
-    b.push(kv([2800, 6560], conf.map(function (c) { return [t(c.norma), t(c.descricao)]; })));
     b.push(vazio());
 
     /* ---------- RESPONSÁVEL TÉCNICO */

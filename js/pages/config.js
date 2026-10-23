@@ -203,7 +203,7 @@
 
     cont.appendChild(UI.cabecalho('Textos padrão da proposta', 'Conteúdo das seções fixas do documento.'));
     cont.appendChild(h('div.card.dica', h('strong', 'Marcadores disponíveis: '),
-      '{empresa}, {empresaCurta}, {cidadeEmpresa}, {registroTipo}, {registro}, {concessionaria}, {inversor}, {modulo}, {bateria}, {cliente}, {cidade}, {fdg}, {fdgIcone}, {secDim}. ',
+      '{empresa}, {empresaCurta}, {cidadeEmpresa}, {registroTipo}, {registro}, {concessionaria}, {inversor}, {modulo}, {bateria}, {cliente}, {cidade}, {fdg}, {fdgIcone}. ',
       'Eles são substituídos pelos dados de cada proposta.'));
 
     cont.appendChild(h('div.card', h('h3', 'Apresentação e encerramento'), UI.grade([
@@ -232,20 +232,13 @@
       { k: 'avulsaNaoInclusos', label: '❌ Não inclusos', type: 'linhas', rows: 4 }
     ], tx, marcar)));
 
-    cont.appendChild(h('div.card', h('h3', 'Cronograma de execução'), UI.editorLinhas(tx.cronograma, [
-      { k: 'etapa', label: 'Descrição da etapa' },
-      { k: 'prazo', label: 'Prazo estimado', w: '30%' }
-    ], marcar, '+ Adicionar etapa', function () { return { etapa: '', prazo: '' }; })));
-
-    cont.appendChild(h('div.card', h('h3', 'Conformidade legal e técnica'), UI.editorLinhas(tx.conformidade, [
-      { k: 'norma', label: 'Norma / referência', w: '32%' },
-      { k: 'descricao', label: 'Descrição' }
-    ], marcar, '+ Adicionar norma', function () { return { norma: '', descricao: '' }; }),
-    h('h4.secao-form', 'Adicionais para sistemas híbridos'),
-    UI.editorLinhas(tx.conformidadeHibrido, [
-      { k: 'norma', label: 'Norma / referência', w: '32%' },
-      { k: 'descricao', label: 'Descrição' }
-    ], marcar, '+ Adicionar norma', function () { return { norma: '', descricao: '' }; })));
+    cont.appendChild(h('div.card', h('h3', 'Passo a passo (cronograma de execução)'),
+      h('p.ajuda-sec', 'Aparece logo após Projetos realizados, como linha do tempo ilustrada: cada etapa vira um passo numerado, com o prazo estimado.'),
+      UI.grade([{ k: 'passoIntro', label: 'Frase de abertura', type: 'textarea', rows: 2, cls: 'span2' }], tx, marcar),
+      UI.editorLinhas(tx.cronograma, [
+        { k: 'etapa', label: 'Descrição da etapa' },
+        { k: 'prazo', label: 'Prazo estimado', w: '30%' }
+      ], marcar, '+ Adicionar etapa', function () { return { etapa: '', prazo: '' }; })));
 
     cont.appendChild(rodapeSalvar(function () {
       S.salvarConfig('textos', tx);

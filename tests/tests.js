@@ -231,9 +231,10 @@
   perto('rateio do consumo 24 h: intermediário na branca (2 h)', App.Energia.ratear(100, 'branca', prT).i, 100 * 2 / 24 * 252 / 365, 1e-9);
   const txLim = textoModelo(App.Documento.montar(Object.assign(U.clone(pG), { cenarioEscolhido: 'ponta', cargas: [{ descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 4, motor: true }] }),
     rLim, ctxLim, ctxLim.clientes[0], { w: 1400, h: 752 })).join('\n');
-  ok('documento híbrido: consumo do dimensionamento, motor, pico, utilização e consumo próprio',
-    ['Consumo Considerado no Dimensionamento', 'Geladeira (motor)', 'Pico de Partida (motores)', 'Utilização do Banco na Ciclagem', 'Consumo Próprio do Inversor', 'Balanço Diário (jun']
-      .every(function (t) { return txLim.indexOf(t) >= 0; }));
+  ok('documento híbrido: cargas críticas e resumo do banco para o cliente', txLim.indexOf('Geladeira (motor)') >= 0 && /🔋 Banco de baterias: \d+ × .* kWh úteis\)\./.test(txLim));
+  ok('documento híbrido: sem a tabela de parâmetros técnicos do banco',
+    ['Consumo Considerado no Dimensionamento', 'Pico de Partida (motores)', 'Utilização do Banco na Ciclagem', 'Consumo Próprio do Inversor', 'Balanço Diário', 'Potência Contínua de Descarga', 'Tensão do Banco']
+      .every(function (t) { return txLim.indexOf(t) < 0; }));
   const txMes = textoModelo(App.Documento.montar(Object.assign(U.clone(p), { consumoMedio: 1000, nModulos: 9 }), rMes, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
   ok('documento: faixa da conta do ano 1', /a conta com sistema varia de R\$ [\d.,]+ \(dez\) a R\$ [\d.,]+ \(jun\)/.test(txMes));
 
@@ -304,7 +305,12 @@
   ok('proposta: outros valores discriminados com a descrição', txPreco.indexOf('Adequação do padrão de entrada') >= 0 && txPreco.indexOf('R$ 300,00') >= 0);
   ok('proposta: comissão não aparece', !/comiss[aã]o/i.test(txPreco) && txPreco.indexOf('R$ 500,00') < 0);
   ok('proposta: mão de obra exibida inclui a comissão', txPreco.indexOf(U.brl(rPreco.maoObra)) >= 0);
-  ok('proposta: FDG (Pcc/Pca) no documento', /FDG — Fator de Dimensionamento Global \(Pcc\/Pca\)/.test(txPreco) && !/FDI/.test(txPreco));
+  ok('proposta: sem a tabela de dimensionamento técnico (FDG, PR, HSP)', !/DIMENSIONAMENTO TÉCNICO|Fator de Dimensionamento|Performance Ratio|Simultaneidade Adotada/.test(txPreco));
+  ok('proposta: sem condições comerciais e conformidade legal no final', !/CONDIÇÕES COMERCIAIS|CONFORMIDADE LEGAL|CRONOGRAMA DE EXECUÇÃO|NBR 16690/.test(txPreco));
+  ok('proposta: garantia da instalação junto da lista de equipamentos', /Garantia da instalação \(.+\): 1 ano\. Equipamentos com a garantia do fabricante/.test(txPreco));
+  const txObs = textoModelo(App.Documento.montar(Object.assign(U.clone(pPreco), { condicoesObs: 'Preço válido para pagamento via PIX.' }), rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
+  ok('proposta: observações da proposta junto das opções de pagamento', txObs.indexOf('Observações: Preço válido para pagamento via PIX.') >= 0);
+  ok('proposta: validade continua na capa e nos dados do cliente', (txPreco.match(/^\d+ dias$/gm) || []).length >= 2);
   ok('proposta: tabela da conta compara disponibilidade × energia + Fio B', txPreco.indexOf('Custo Disponib.') >= 0 && txPreco.indexOf('Energia + Fio B') >= 0 && /art\. 655-I/.test(txPreco));
 
   // ---------------------------------------------------------------- BESS no grupo A (verde) — picos e horários estratégicos
@@ -432,8 +438,7 @@
   const cStr = ctxReferencia();
   cStr.equipamentos.push(modDS, invDS);
   const docStr = textoModelo(App.Documento.montar(Object.assign(propostaReferencia(cStr), { moduloId: 'mod-ds', inversorId: 'inv-ds', nModulos: 9 }), rStr, cStr, cStr.clientes[0], { w: 1400, h: 752 })).join('\n');
-  ok('documento: arranjo elétrico com strings por MPPT e Isc', docStr.indexOf('1 string(s) de até 9 módulos — 1 string(s) por MPPT (Isc 16,3 A por MPPT / máx. 20 A)') >= 0);
-  ok('documento: Voc da string no frio e limite', docStr.indexOf('Voc da string no frio 489 V (limite 600 V)') >= 0, (docStr.match(/Voc da string[^\n]*/) || [''])[0]);
+  ok('documento: arranjo de strings e Voc no frio ficam só no painel (fora da proposta impressa)', docStr.indexOf('string(s) de até') < 0 && docStr.indexOf('Voc da string') < 0);
   ok('strings: arranjo dentro do datasheet sem alertas', !rStr.alertas.some(function (a) { return /MPPT|strings para|curto-circuito|partida|limitação/.test(a.msg); }), rStr.alertas.map(function (a) { return a.msg; }).join(' | '));
   igual('strings: 1 string de 9 por MPPT, 2 entradas', [rStr.strings.nStrings, rStr.strings.porString, rStr.strings.porMppt, rStr.strings.entradas].join('/'), '1/9/1/2');
   perto('strings: Imp do módulo = Pmáx ÷ Vmp', rStr.strings.impMppt, 620 / 40.2, 1e-9);
@@ -490,7 +495,7 @@
   };
   const rHd = calcH({}, {});
   const docHd = textoModelo(App.Documento.montar(ultimoH.p, rHd, ultimoH.c, ultimoH.c.clientes[0], { w: 1400, h: 752 })).join('\n');
-  ok('documento: tensão do banco com a faixa do inversor', docHd.indexOf('48 V — faixa do inversor 40–60 V') >= 0);
+  ok('documento: tensão do banco fica só no painel (fora da proposta impressa)', docHd.indexOf('faixa do inversor') < 0 && /🔋 Banco de baterias: 4 × /.test(docHd));
   igual('híbrido: baterias de 12 V em série até a faixa do inversor (40–60 V)', rHd.hibrido.serie + ' × 12 V = ' + rHd.hibrido.tensaoBanco + ' V', '4 × 12 V = 48 V');
   perto('híbrido: η de ciclo = bateria 85% × inversor 95%', rHd.hibrido.eficiencia, 0.85 * 0.95, 1e-12);
   perto('híbrido: capacidade necessária usa a η dos datasheets', rHd.hibrido.capNecessaria, rHd.hibrido.energiaBackup / 1000 / (0.5 * 0.85 * 0.95), 1e-9);
@@ -700,12 +705,20 @@
   ok('projetos: 0 na configuração = sem seção e sem alerta', rP0.projetos.length === 0 && !alertaProj(rP0));
   const mP = App.Documento.montar(p, rP, ctxP, ctxP.clientes[0], { w: 1400, h: 752 });
   const txP = textoModelo(mP);
-  igual('projetos: seção 2, após a apresentação (dimensionamento passa ao item 4)',
+  igual('projetos: seção 2, após a apresentação; passo a passo logo depois',
     txP.filter(function (x) { return /^\d+\. [A-ZÇÃÕÉÍÓÚÊÂ ]+$/.test(x); }).slice(0, 4).join(' | '),
-    '1. APRESENTAÇÃO DA EMPRESA | 2. PROJETOS REALIZADOS | 3. DADOS DO CLIENTE E DO PROJETO | 4. DIMENSIONAMENTO TÉCNICO');
-  ok('projetos: conformidade cita o item 4', txP.some(function (x) { return /documentado \(item 4\)/.test(x); }));
-  ok('sem projetos: conformidade cita o item 3', textoModelo(App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 })).some(function (x) { return /documentado \(item 3\)/.test(x); }));
-  igual('projetos: 2 fotos por projeto no documento', Object.keys(mP.imagens).length, 8);
+    '1. APRESENTAÇÃO DA EMPRESA | 2. PROJETOS REALIZADOS | 3. PASSO A PASSO | 4. DADOS DO CLIENTE E DO PROJETO');
+  const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
+  igual('sem projetos: passo a passo logo após a apresentação',
+    textoModelo(mSemP).filter(function (x) { return /^\d+\. [A-ZÇÃÕÉÍÓÚÊÂ ]+$/.test(x); }).slice(0, 3).join(' | '),
+    '1. APRESENTAÇÃO DA EMPRESA | 2. PASSO A PASSO | 3. DADOS DO CLIENTE E DO PROJETO');
+  ok('passo a passo: linha do tempo em PNG com a frase de abertura', /^data:image\/png;base64,/.test(mSemP.imagens.passos || '') && textoModelo(mSemP).indexOf(D.textos.passoIntro) >= 0);
+  const pa6 = App.Passos.imagem(D.textos.cronograma), pa3 = App.Passos.imagem(D.textos.cronograma.slice(0, 3));
+  ok('passo a passo: altura cresce com o número de etapas', pa6.proporcao > pa3.proporcao * 1.6 && pa6.proporcao < 1.4, pa3.proporcao.toFixed(3) + ' / ' + pa6.proporcao.toFixed(3));
+  const ctxSemCron = U.clone(ctx); ctxSemCron.textos = U.clone(ctx.textos || D.textos); ctxSemCron.textos.cronograma = [];
+  const mSemCron = App.Documento.montar(p, r, ctxSemCron, ctx.clientes[0], { w: 1400, h: 752 });
+  ok('passo a passo: sem etapas, sem a seção', !mSemCron.imagens.passos && textoModelo(mSemCron).indexOf('2. PASSO A PASSO') < 0);
+  igual('projetos: 2 fotos por projeto no documento (+ passo a passo)', Object.keys(mP.imagens).length, 9);
   ok('projetos: ficha técnica com CO₂ evitado', txP.indexOf('Potência instalada') >= 0 && txP.indexOf('Geração média') >= 0 && txP.some(function (x) { return /^\d+(,\d)? t\/ano$/.test(x); }));
   const xmlP = App.Docx.serializar(mP);
   ok('projetos: fotos referenciadas no Word', /r:embed="rIdImg1"/.test(xmlP.documento) && /r:embed="rIdImg8"/.test(xmlP.documento));

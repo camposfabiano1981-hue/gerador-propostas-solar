@@ -195,6 +195,7 @@ window.App = window.App || {};
       'Ampliação futura do banco de baterias',
       'Separação de circuitos além das cargas críticas listadas'
     ],
+    passoIntro: 'Da aprovação da proposta ao sistema gerando energia: veja como conduzimos cada etapa e os prazos estimados.',
     cronograma: [
       { etapa: 'Projeto elétrico + emissão de ART', prazo: '5 dias úteis' },
       { etapa: 'Aquisição e entrega do kit fotovoltaico (itens disponíveis em estoque)', prazo: '15–30 dias úteis' },
