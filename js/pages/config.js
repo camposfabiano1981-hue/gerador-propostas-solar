@@ -416,8 +416,9 @@
       }
     }, 'Copiar regras');
     const passo = function (n, titulo) { return h('li', h('strong', titulo), Array.prototype.slice.call(arguments, 2)); };
-    cont.appendChild(h('div.card',
-      h('h3', 'Passo a passo para ligar (uma vez só, de graça)'),
+    // já configurado: o passo a passo fica recolhido (consulta)
+    cont.appendChild(h('details.card.passos-card', { open: !cfgAtual },
+      h('summary', h('h3', 'Passo a passo para ligar (uma vez só, de graça)')),
       h('ol.passos-nuvem',
         passo(1, 'Crie o projeto: ', 'entre em console.firebase.google.com com a sua conta Google › “Criar um projeto” (ex.: genesis-propostas). O Google Analytics pode ficar desativado. O plano gratuito (Spark) é suficiente.'),
         passo(2, 'Ative o login com Google: ', 'menu Criação › Authentication › “Vamos começar” › Método de login › Google › Ativar › Salvar.'),
@@ -427,7 +428,7 @@
           campoEmail, regras, h('div.barra-itens', copiar)),
         passo(6, 'Copie a configuração: ', 'engrenagem ⚙️ › Configurações do projeto › Seus apps › ícone Web (</>) › dê um apelido e registre (sem Firebase Hosting). Copie o bloco firebaseConfig e cole no campo “Projeto Firebase” acima.'),
         passo(7, 'Entre em cada aparelho: ', 'clique em “Entrar com Google” com a mesma conta no computador, no celular e no tablet. No primeiro login, tudo o que já está cadastrado no aparelho sobe para a nuvem e é mantido.')),
-      h('p.ajuda-sec', 'Se preferir não colar a configuração em cada aparelho, envie o bloco firebaseConfig para ser publicado no site: aí basta entrar com Google.')));
+      origem === 'site' ? null : h('p.ajuda-sec', 'Se preferir não colar a configuração em cada aparelho, envie o bloco firebaseConfig para ser publicado no site: aí basta entrar com Google.')));
 
     cont.appendChild(h('div.card.dica',
       h('p', h('strong', 'Sincroniza: '), 'clientes, cadastros (equipamentos, concessionárias, localidades, pagamentos, serviços), propostas, propostas avulsas, contratos, projetos realizados (com fotos), dados da empresa, premissas, textos, modelo do contrato e numeração.'),

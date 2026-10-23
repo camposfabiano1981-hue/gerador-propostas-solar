@@ -60,7 +60,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nuvem-status.ok { color: #A7F3D0; }
 .nuvem-status.erro { color: #FECACA; background: rgba(220,38,38,.18); }
 .nuvem-status.semInternet, .nuvem-status.enviando { color: #FDE68A; }
-.passos-nuvem { padding-left: 22px; line-height: 1.55; }
+.passos-card > summary { cursor: pointer; }
+.passos-card > summary h3 { display: inline; margin: 0; }
+.passos-nuvem { padding-left: 22px; line-height: 1.55; margin-top: 14px; }
 .passos-nuvem li { margin-bottom: 10px; }
 .passos-nuvem code { background: #EEF2FF; padding: 1px 5px; border-radius: 4px; }
 .regras-nuvem { margin: 10px 0 6px; }
