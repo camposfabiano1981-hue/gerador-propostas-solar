@@ -5,7 +5,7 @@
  * - Firebase (login e banco), API do Claude e demais endereços passam direto, sem cache.
  * A versão abaixo acompanha a do app (index.html e js/app.js): ao publicar, o navegador instala este arquivo novo e limpa o cache antigo.
  */
-const VERSAO = '2026.10.24.2';
+const VERSAO = '2026.10.24.3';
 const CACHE = 'propostas-solar-' + VERSAO;
 const CDNS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 

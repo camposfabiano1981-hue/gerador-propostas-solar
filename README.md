@@ -81,6 +81,7 @@ Acesse o endereço publicado (veja "Publicar no GitHub" abaixo).
 
 A plataforma é instalável (PWA): abre em janela própria, com o ícone **Propostas Solar** (o "G" com o sol e o raio da Gênesis), e funciona sem internet depois de aberta uma vez.
 
+- O botão **📲 Instalar aplicativo** fica no menu lateral enquanto o app não estiver instalado: quando o navegador permite, abre a instalação; senão, mostra o passo a passo do navegador em uso (inclusive quando o link foi aberto dentro de outro aplicativo, como WhatsApp ou Claude, que não instalam — é preciso abrir no Chrome ou no Safari).
 - **Computador (Chrome ou Edge)**: botão **📲 Instalar aplicativo** no menu lateral (ou o ícone de instalar na barra de endereço). O ícone vai para a área de trabalho, o menu Iniciar e a barra de tarefas; com o botão direito no ícone há atalhos para Nova proposta, Propostas e Contratos.
 - **Android (Chrome)**: **📲 Instalar aplicativo** no menu ☰ (ou menu ⋮ › *Instalar app*).
 - **iPhone/iPad (Safari)**: Compartilhar › **Adicionar à Tela de Início** (o botão do menu mostra o passo a passo). O app instalado no iPhone guarda os dados separado do Safari — entre com a conta Google em ☁️ Sincronização para trazer os cadastros.

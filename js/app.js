@@ -3,7 +3,7 @@
   'use strict';
 
   /** Versão publicada — a mesma usada em ?v= no index.html (evita o navegador usar arquivos antigos em cache). */
-  App.VERSAO_APP = '2026.10.24.2';
+  App.VERSAO_APP = '2026.10.24.3';
 
   App.atualizarMarca = function () {
     const emp = App.Store.config().empresa;
@@ -35,6 +35,62 @@
     return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
   }
 
+  /** Navegador e aparelho, para explicar a instalação quando o navegador não oferece o botão próprio. */
+  function ambiente() {
+    const ua = navigator.userAgent || '';
+    const ios = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const android = /android/i.test(ua);
+    // navegador embutido em outro aplicativo (Claude, WhatsApp, Instagram, Facebook…): não instala
+    const embutido = /; wv\)|FBAN|FBAV|Instagram|Line\/|WhatsApp|Claude/i.test(ua) || (ios && !/Safari\//.test(ua));
+    return {
+      ios: ios, android: android, embutido: embutido,
+      safari: ios && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua),
+      samsung: /SamsungBrowser/i.test(ua), edge: /Edg(A|iOS)?\//.test(ua), firefox: /Firefox|FxiOS/i.test(ua)
+    };
+  }
+
+  function passosInstalacao() {
+    const h = App.U.h;
+    const a = ambiente();
+    const link = location.origin + location.pathname;
+    if (a.embutido) {
+      return h('div',
+        h('p', 'A plataforma foi aberta dentro de outro aplicativo, que não permite instalar.'),
+        h('ol',
+          h('li', 'Toque no menu (⋮ ou ⋯) desta tela e escolha ', h('strong', a.ios ? 'Abrir no Safari' : 'Abrir no Chrome'), ' (ou “Abrir no navegador”).'),
+          h('li', 'Se não houver essa opção, copie o endereço abaixo e cole no ', h('strong', a.ios ? 'Safari' : 'Chrome'), '.'),
+          h('li', 'Lá, toque de novo em ', h('strong', '📲 Instalar aplicativo'), '.')),
+        h('p', h('code', link)));
+    }
+    if (a.ios) {
+      return h('div',
+        h('p', a.safari ? 'No iPhone e no iPad, a instalação é feita pelo Safari:' : 'No iPhone e no iPad, a instalação é feita pelo botão Compartilhar do navegador (no Safari é o caminho mais garantido):'),
+        h('ol',
+          h('li', 'Toque no botão ', h('strong', 'Compartilhar'), ' (quadrado com a seta para cima)' + (a.safari ? ' na barra do Safari.' : ', na barra de endereço.')),
+          h('li', 'Role as opções e escolha ', h('strong', 'Adicionar à Tela de Início'), '.'),
+          h('li', 'Toque em ', h('strong', 'Adicionar'), '. O ícone Propostas Solar aparece na tela inicial.')),
+        h('p.ajuda-sec', 'O aplicativo instalado guarda os dados separado do navegador: ao abrir pela primeira vez, entre com a conta Google em ☁️ Sincronização para trazer seus cadastros.'));
+    }
+    if (a.android) {
+      return h('div',
+        h('p', 'No Android:'),
+        h('ol', a.samsung
+          ? [h('li', 'Toque no menu ', h('strong', '≡'), ' do Samsung Internet.'), h('li', 'Escolha ', h('strong', 'Adicionar página a › Tela inicial'), '.')]
+          : [h('li', 'Toque no menu ', h('strong', '⋮'), ' do Chrome (canto superior direito).'), h('li', 'Escolha ', h('strong', 'Instalar app'), ' (ou ', h('strong', 'Adicionar à tela inicial › Instalar'), ').'),
+            h('li', 'Confirme. O ícone Propostas Solar aparece na tela inicial e na gaveta de aplicativos.')]),
+        h('p.ajuda-sec', 'Se a opção não aparecer, recarregue a página e aguarde alguns segundos.'));
+    }
+    if (a.firefox) {
+      return h('div', h('p', 'O Firefox no computador não instala aplicativos. Abra o endereço abaixo no ', h('strong', 'Chrome'), ' ou no ', h('strong', 'Edge'), ' e clique em 📲 Instalar aplicativo.'), h('p', h('code', link)));
+    }
+    return h('div',
+      h('p', 'No computador (' + (a.edge ? 'Edge' : 'Chrome') + '):'),
+      h('ol', a.edge
+        ? [h('li', 'Clique no ícone de instalar (quadrados com +) no lado direito da barra de endereço; ou'), h('li', 'menu ', h('strong', '⋯ › Aplicativos › Instalar este site como aplicativo'), '.')]
+        : [h('li', 'Clique no ícone de instalar (monitor com seta) no lado direito da barra de endereço; ou'), h('li', 'menu ', h('strong', '⋮ › Transmitir, salvar e compartilhar › Instalar página como app'), '.')]),
+      h('p.ajuda-sec', 'Se a opção não aparecer, atualize com Ctrl+F5 e aguarde alguns segundos. O ícone vai para a área de trabalho, o menu Iniciar e a barra de tarefas.'));
+  }
+
   function iniciarAplicativo() {
     // service worker: abre sem internet e atualiza os arquivos a cada versão publicada (não funciona em file://)
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
@@ -42,9 +98,8 @@
     }
     const btn = document.getElementById('btn-instalar');
     if (!btn) return;
-    // iPhone/iPad não têm o aviso de instalação: o botão mostra o passo a passo do Safari
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    if (pedidoInstalacao || (ios && !aplicativoAberto())) btn.hidden = false;
+    // fica visível enquanto o app não estiver instalado/aberto como aplicativo; sem o aviso do navegador, mostra o passo a passo
+    btn.hidden = aplicativoAberto();
     btn.addEventListener('click', async function (ev) {
       ev.preventDefault();
       document.body.classList.remove('menu-aberto');
@@ -56,18 +111,7 @@
         if (escolha && escolha.outcome === 'accepted') btn.hidden = true;
         return;
       }
-      const h = App.U.h;
-      App.UI.modal({
-        titulo: 'Instalar o aplicativo',
-        corpo: h('div',
-          h('p', 'No iPhone e no iPad, a instalação é feita pelo Safari:'),
-          h('ol',
-            h('li', 'Toque no botão ', h('strong', 'Compartilhar'), ' (quadrado com a seta para cima) na barra do Safari.'),
-            h('li', 'Escolha ', h('strong', 'Adicionar à Tela de Início'), '.'),
-            h('li', 'Toque em ', h('strong', 'Adicionar'), '. O ícone Propostas Solar aparece na tela inicial.')),
-          h('p.ajuda-sec', 'O aplicativo instalado guarda os dados separado do Safari: ao abrir pela primeira vez, entre com a conta Google em ☁️ Sincronização para trazer seus cadastros.')),
-        acoes: [{ label: 'Entendi', primario: true }]
-      });
+      App.UI.modal({ titulo: 'Instalar o aplicativo', corpo: passosInstalacao(), acoes: [{ label: 'Entendi', primario: true }] });
     });
   }
 
