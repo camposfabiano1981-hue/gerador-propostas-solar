@@ -77,6 +77,15 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 ### Online (GitHub Pages)
 Acesse o endereço publicado (veja "Publicar no GitHub" abaixo).
 
+### Como aplicativo (ícone no computador e no celular)
+
+A plataforma é instalável (PWA): abre em janela própria, com o ícone **Propostas Solar** (o "G" com o sol e o raio da Gênesis), e funciona sem internet depois de aberta uma vez.
+
+- **Computador (Chrome ou Edge)**: botão **📲 Instalar aplicativo** no menu lateral (ou o ícone de instalar na barra de endereço). O ícone vai para a área de trabalho, o menu Iniciar e a barra de tarefas; com o botão direito no ícone há atalhos para Nova proposta, Propostas e Contratos.
+- **Android (Chrome)**: **📲 Instalar aplicativo** no menu ☰ (ou menu ⋮ › *Instalar app*).
+- **iPhone/iPad (Safari)**: Compartilhar › **Adicionar à Tela de Início** (o botão do menu mostra o passo a passo). O app instalado no iPhone guarda os dados separado do Safari — entre com a conta Google em ☁️ Sincronização para trazer os cadastros.
+- As atualizações chegam sozinhas: a página vem sempre da versão publicada quando há internet; sem internet, abre a última cópia guardada (as alterações vão para a fila da sincronização).
+
 ### No computador
 Basta abrir o arquivo `index.html` no navegador (Chrome, Edge ou Firefox atualizados).
 
@@ -112,6 +121,7 @@ e acesse `http://localhost:8765/`.
 
 3. No GitHub: **Settings › Pages › Build and deployment › Source: Deploy from a branch**, branch `main`, pasta `/ (root)` › **Save**.
 4. Em 1–2 minutos a plataforma estará em `https://SEU-USUARIO.github.io/gerador-propostas-solar/`.
+5. A cada nova versão, atualize o número em `index.html` (`?v=`), `js/app.js` (`App.VERSAO_APP`) e `sw.js` (`VERSAO`): o aplicativo instalado troca o cache pela versão nova.
 
 > Os dados digitados na plataforma **não** vão para o GitHub — ficam no navegador de quem usa. O repositório contém apenas o código e os cadastros de exemplo.
 
@@ -162,6 +172,9 @@ A tarifa e a COSIP são reajustadas anualmente pelas taxas definidas em **Premis
 
 ```
 index.html            Aplicação (abre direto no navegador)
+manifest.webmanifest  Aplicativo instalável: nome, cores, ícones e atalhos
+sw.js                 Service worker: abre sem internet e atualiza o cache a cada versão
+assets/icones/        Ícone do aplicativo (SVG e PNG: 192, 512, adaptável do Android, Apple e favicon)
 css/app.css           Estilos
 js/util.js            Formatação pt-BR, números, datas, DOM
 js/defaults.js        Dados padrão (empresa, premissas, textos, catálogo de estruturas e materiais)

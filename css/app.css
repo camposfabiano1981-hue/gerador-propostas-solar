@@ -57,6 +57,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .versao-app { display: block; padding: 0 20px 18px; color: #8A98BC; font-size: 11px; }
 .nuvem-status { display: block; margin: 10px 10px 0; padding: 6px 10px; border-radius: 8px; font-size: 12px; color: #DCE3F3; text-decoration: none; background: rgba(255,255,255,.06); }
 .nuvem-status:empty { display: none; }
+.btn-instalar { display: block; margin: 8px 10px 0; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #1F2937; background: #F6A81C; text-decoration: none; text-align: center; }
+.btn-instalar:hover { background: #FBBF24; }
+.btn-instalar[hidden] { display: none; }
 .nuvem-status.ok { color: #A7F3D0; }
 .nuvem-status.erro { color: #FECACA; background: rgba(220,38,38,.18); }
 .nuvem-status.semInternet, .nuvem-status.enviando { color: #FDE68A; }
