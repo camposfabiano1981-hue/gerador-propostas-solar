@@ -42,7 +42,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 
 **Propostas avulsas (serviços complementares)**
 - Catálogo de serviços (Cadastros › Serviços) com categoria, unidade, preço e escopo.
-- Proposta com itens do catálogo ou avulsos, desconto, prazo, garantia, opções de pagamento e textos próprios, na mesma identidade visual da proposta solar (PDF e Word). Usa a mesma numeração das propostas solares.
+- Proposta com itens do catálogo ou avulsos, **materiais utilizados** (do cadastro de equipamentos e materiais ou avulsos; sem preço saem como "Incluso"), desconto, prazo, garantia, opções de pagamento e textos próprios, na mesma identidade visual da proposta solar (PDF e Word), com o quadro da capa centralizado. Valor total = serviços + materiais − desconto. Usa a mesma numeração das propostas solares.
 
 **Cadastros**: clientes (com busca de CEP), equipamentos (módulos, inversores on-grid, **microinversores**, inversores híbridos, baterias, BESS, estruturas e materiais com regras de quantidade), serviços, concessionárias e tarifas (B1/B2/B3, branca, verde, azul e TUSD Fio B), localidades (HSP, COSIP e sazonalidade mensal), condições de pagamento e projetos realizados (portfólio com fotos).
 

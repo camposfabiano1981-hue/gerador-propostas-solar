@@ -28,6 +28,7 @@ window.App = window.App || {};
       titulo: 'Serviços Complementares',
       localExecucao: '',
       itens: [],
+      materiais: [],
       desconto: '',
       prazo: 'A combinar',
       garantia: tx.avulsaGarantia || '',
@@ -48,13 +49,25 @@ window.App = window.App || {};
     };
   }
 
+  /** Material a partir de um item do cadastro de equipamentos e materiais. */
+  function itemDeMaterial(e) {
+    return {
+      id: U.uid(), equipamentoId: e.id, descricao: App.Calc.descEquip ? App.Calc.descEquip(e) : [e.fabricante, e.modelo].filter(Boolean).join(' '),
+      qtd: 1, unidade: e.unidade || 'un', precoUnit: U.numOr(e.preco, 0)
+    };
+  }
+
+  const somar = function (l) { return (l || []).reduce(function (s, i) { return s + U.numOr(i.qtd, 0) * U.numOr(i.precoUnit, 0); }, 0); };
+
+  /** Totais: serviços + materiais utilizados − desconto. */
   function calcular(a, ctx) {
-    const itens = a.itens || [];
-    const subtotal = itens.reduce(function (s, i) { return s + U.numOr(i.qtd, 0) * U.numOr(i.precoUnit, 0); }, 0);
+    const servicos = somar(a.itens);
+    const materiais = somar(a.materiais);
+    const subtotal = servicos + materiais;
     const desconto = Math.min(subtotal, Math.max(0, U.numOr(a.desconto, 0)));
     const total = subtotal - desconto;
     const pags = (ctx.pagamentos || []).filter(function (pg) { return !Array.isArray(a.pagamentosIds) || a.pagamentosIds.indexOf(pg.id) >= 0; });
-    return { subtotal: subtotal, desconto: desconto, total: total, pagamentos: App.Calc.pagamentos(total, pags) };
+    return { servicos: servicos, materiais: materiais, subtotal: subtotal, desconto: desconto, total: total, pagamentos: App.Calc.pagamentos(total, pags) };
   }
 
   function montar(a, ctx, cliente, logo) {
@@ -92,7 +105,7 @@ window.App = window.App || {};
       TR([capaCel(a.numero, false, true), capaCel(U.dataBR(a.data))]),
       TR([capaCel('Validade', true), capaCel('Valor Total', true)]),
       TR([capaCel((a.validadeDias || emp.validadeDias) + ' dias'), capaCel(U.brl(r.total), false, true)])
-    ]));
+    ], { jc: 'center' }));
     b.push(vazio(), vazio(), vazio(), vazio(), vazio(), vazio());
     b.push(T(emp.razao, { top: { sz: 6, space: 2, color: DOURADO }, after: 40, jc: 'center' }, { b: true, color: AZUL, sz: 22 }));
     b.push(T(['CNPJ: ' + emp.cnpj, emp.registro ? emp.registroTipo + ' ' + emp.registro : ''].filter(Boolean).join(' │ '), { after: 40, jc: 'center' }, { color: CINZA, sz: 18 }));
@@ -127,18 +140,42 @@ window.App = window.App || {};
       return [String(i + 1), it.descricao, U.fmtSmart(U.numOr(it.qtd, 0), 2), it.unidade || '', U.brl(U.numOr(it.precoUnit, 0)),
         { t: U.brl(U.numOr(it.qtd, 0) * U.numOr(it.precoUnit, 0)), b: true }];
     });
+    const mats = (a.materiais || []).filter(function (m) { return String(m.descricao || '').trim(); });
+    const linhaTotal = function () {
+      return TR([
+        TC(T('VALOR TOTAL', null, { b: true, color: BRANCO }), { w: 500 + 4260 + 800 + 700 + 1500, span: 5, fill: AZUL }),
+        TC(T(U.brl(r.total), { jc: 'right' }, { b: true, color: BRANCO }), { w: 1600, fill: AZUL })
+      ]);
+    };
     const totais = [];
-    if (r.desconto > 0) {
+    if (mats.length) {
+      totais.push(['', { t: 'Subtotal dos serviços', b: true }, '', '', '', { t: U.brl(r.servicos), b: true }]);
+    } else if (r.desconto > 0) {
       totais.push(['', { t: 'Subtotal', b: true }, '', '', '', U.brl(r.subtotal)]);
       totais.push(['', { t: 'Desconto', b: true }, '', '', '', '- ' + U.brl(r.desconto)]);
     }
     const tab = N.tabela(cols, lin.concat(totais), { sz: 19 });
-    tab.linhas.push(TR([
-      TC(T('VALOR TOTAL', null, { b: true, color: BRANCO }), { w: 500 + 4260 + 800 + 700 + 1500, span: 5, fill: AZUL }),
-      TC(T(U.brl(r.total), { jc: 'right' }, { b: true, color: BRANCO }), { w: 1600, fill: AZUL })
-    ]));
+    if (!mats.length) tab.linhas.push(linhaTotal());
     b.push(tab);
     b.push(vazio());
+
+    /* ---------- materiais utilizados */
+    if (mats.length) {
+      b.push(titulo((++sec) + '. MATERIAIS UTILIZADOS'));
+      const linM = mats.map(function (m, i) {
+        const pu = U.numOr(m.precoUnit, 0), q = U.numOr(m.qtd, 0);
+        // material sem preço: fornecido dentro do valor dos serviços
+        return [String(i + 1), m.descricao, U.fmtSmart(q, 2), m.unidade || '', pu > 0 ? U.brl(pu) : '—', pu > 0 ? { t: U.brl(q * pu), b: true } : { t: 'Incluso', color: CINZA }];
+      });
+      const totM = [['', { t: 'Subtotal dos materiais', b: true }, '', '', '', { t: U.brl(r.materiais), b: true }],
+        ['', { t: 'Subtotal dos serviços', b: true }, '', '', '', U.brl(r.servicos)]];
+      if (r.desconto > 0) totM.push(['', { t: 'Desconto', b: true }, '', '', '', '- ' + U.brl(r.desconto)]);
+      const tabM = N.tabela(cols, linM.concat(totM), { sz: 19 });
+      tabM.linhas.push(linhaTotal());
+      b.push(tabM);
+      if (mats.some(function (m) { return !(U.numOr(m.precoUnit, 0) > 0); })) b.push(T('Itens “Incluso”: fornecidos dentro do valor dos serviços.', { before: 40, after: 60 }, { color: CINZA, sz: 18 }));
+      b.push(vazio());
+    }
 
     /* ---------- escopo */
     const detalhados = (a.itens || []).filter(function (it) { return String(it.detalhes || '').trim(); });
@@ -242,5 +279,5 @@ window.App = window.App || {};
     return { blob: out.blob, nome: d.nomeBase + '.pdf', fonteOk: out.fonteOk };
   }
 
-  App.Avulsa = { novo: novo, itemDeServico: itemDeServico, calcular: calcular, montar: montar, preparar: preparar, gerarDocx: gerarDocx, gerarPdf: gerarPdf };
+  App.Avulsa = { novo: novo, itemDeServico: itemDeServico, itemDeMaterial: itemDeMaterial, UNIDADES_MATERIAL: ['un', 'pç', 'm', 'm²', 'cj', 'pt', 'kg', 'rl', 'cx', 'L', 'vb'], calcular: calcular, montar: montar, preparar: preparar, gerarDocx: gerarDocx, gerarPdf: gerarPdf };
 })(window.App);

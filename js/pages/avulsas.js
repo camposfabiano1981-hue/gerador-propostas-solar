@@ -190,10 +190,15 @@
     });
 
     const totaisEl = h('div.avulsa-totais');
+    let subMateriais = null;
     function atualizarTotais() {
       const r = A.calcular(a, ctx);
       totaisEl.innerHTML = '';
-      totaisEl.appendChild(h('span', 'Subtotal: ', h('strong', U.brl(r.subtotal))));
+      if (r.materiais > 0) {
+        totaisEl.appendChild(h('span', 'Serviços: ', h('strong', U.brl(r.servicos))));
+        totaisEl.appendChild(h('span', 'Materiais: ', h('strong', U.brl(r.materiais))));
+      } else totaisEl.appendChild(h('span', 'Subtotal: ', h('strong', U.brl(r.subtotal))));
+      if (subMateriais) subMateriais.textContent = 'Subtotal dos materiais: ' + U.brl(r.materiais);
       if (r.desconto > 0) totaisEl.appendChild(h('span', 'Desconto: ', h('strong', '- ' + U.brl(r.desconto))));
       totaisEl.appendChild(h('span', 'Total: ', h('strong', U.brl(r.total))));
     }
@@ -243,6 +248,54 @@
       atualizarTotais();
     });
 
+    secao('materiais', 'Materiais utilizados', function (c) {
+      if (!Array.isArray(a.materiais)) a.materiais = [];
+      c.appendChild(h('p.ajuda-sec', 'Materiais aplicados no serviço: entram no valor total e aparecem na proposta em uma tabela própria. Sem preço, o item sai como “Incluso” (fornecido dentro do valor dos serviços).'));
+      const tb = h('tbody');
+      a.materiais.forEach(function (m, i) {
+        const sub = h('td.num');
+        const atual = function () { sub.textContent = U.numOr(m.precoUnit, 0) > 0 ? U.brl(U.numOr(m.qtd, 0) * U.numOr(m.precoUnit, 0)) : 'Incluso'; mudou(); };
+        const unidades = A.UNIDADES_MATERIAL.indexOf(m.unidade) >= 0 || !m.unidade ? A.UNIDADES_MATERIAL : A.UNIDADES_MATERIAL.concat([m.unidade]);
+        tb.appendChild(h('tr',
+          h('td.num', String(i + 1)),
+          h('td', { style: { minWidth: '260px' } }, UI.campo({ k: 'descricao' }, m, atual)),
+          h('td', { style: { width: '80px' } }, UI.campo({ k: 'qtd', type: 'number' }, m, atual)),
+          h('td', { style: { width: '84px' } }, UI.campo({ k: 'unidade', type: 'select', options: unidades }, m, atual)),
+          h('td', { style: { width: '130px' } }, UI.campo({ k: 'precoUnit', type: 'money' }, m, atual)),
+          sub,
+          h('td.acoes-col', h('button.btn-icone.perigo', { type: 'button', title: 'Remover', 'aria-label': 'Remover material', onclick: function () { a.materiais.splice(i, 1); mudou(); desenhar('materiais'); } }, '×'))));
+        sub.textContent = U.numOr(m.precoUnit, 0) > 0 ? U.brl(U.numOr(m.qtd, 0) * U.numOr(m.precoUnit, 0)) : 'Incluso';
+      });
+      if (a.materiais.length) {
+        c.appendChild(h('div.tabela-rolagem', h('table.tabela.editavel.itens',
+          h('thead', h('tr', ['#', 'Material', 'Qtd.', 'Un.', 'Preço unit.', 'Subtotal', ''].map(function (t) { return h('th', t); }))), tb)));
+      } else {
+        c.appendChild(h('div.nota', 'Nenhum material. Adicione do cadastro de equipamentos e materiais ou um item avulso.'));
+      }
+      const selMat = h('select', h('option', { value: '' }, '+ Adicionar do cadastro de materiais…'));
+      const tiposMat = D.TIPOS_EQUIP.slice().sort(function (x, y) { return (x.id === 'material' ? -1 : 0) - (y.id === 'material' ? -1 : 0); });
+      tiposMat.forEach(function (tp) {
+        const og = h('optgroup', { label: tp.label });
+        ctx.equipamentos.filter(function (e) { return e.tipo === tp.id && e.ativo !== false; }).forEach(function (e) {
+          og.appendChild(h('option', { value: e.id }, C.nomeEquip(e) + (U.num(e.preco) > 0 ? ' — ' + U.brl(U.num(e.preco)) : '')));
+        });
+        if (og.children.length) selMat.appendChild(og);
+      });
+      selMat.addEventListener('change', function () {
+        const e = ctx.equipamentos.find(function (x) { return x.id === selMat.value; });
+        if (!e) return;
+        a.materiais.push(A.itemDeMaterial(e));
+        mudou();
+        desenhar('materiais');
+      });
+      subMateriais = h('span.total-itens');
+      c.appendChild(h('div.barra-itens', selMat,
+        h('button.btn.pequeno', { type: 'button', onclick: function () { a.materiais.push({ id: U.uid(), equipamentoId: null, descricao: 'Novo material', qtd: 1, unidade: 'un', precoUnit: 0 }); mudou(); desenhar('materiais'); } }, '+ Material avulso'),
+        h('a.btn.pequeno', { href: '#/equipamentos' }, 'Cadastro de materiais'),
+        subMateriais));
+      atualizarTotais();
+    });
+
     secao('condicoes', 'Prazo, garantia e pagamento', function (c) {
       c.appendChild(UI.grade([
         { k: 'prazo', label: 'Prazo de execução' },
@@ -283,6 +336,7 @@
       resumo.appendChild(h('div.kpis',
         h('div.kpi.grande', h('span', 'Valor total'), h('strong', U.brl(r.total))),
         h('div.kpi', h('span', 'Serviços'), h('strong', String(a.itens.length))),
+        (a.materiais || []).length ? h('div.kpi', h('span', 'Materiais'), h('strong', U.brl(r.materiais))) : null,
         h('div.kpi', h('span', 'Validade'), h('strong', (a.validadeDias || 0) + ' dias'))));
       resumo.appendChild(h('p.mini', cli ? cli.nome : 'Sem cliente'));
       resumo.appendChild(pend.length ? h('div.nota.aviso', h('ul', pend.map(function (x) { return h('li', x); }))) : h('div.nota.ok', 'Pronta para gerar.'));

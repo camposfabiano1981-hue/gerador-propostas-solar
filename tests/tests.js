@@ -728,6 +728,21 @@
   const mAv = Av.montar(av, ctx, ctx.clientes[0], { w: 1400, h: 752 });
   ok('avulsa: XML válido', !new DOMParser().parseFromString(App.Docx.serializar(mAv).documento, 'application/xml').querySelector('parsererror'));
   ok('avulsa: linha de total', textoModelo(mAv).indexOf('VALOR TOTAL') >= 0 && textoModelo(mAv).indexOf('R$ 2.375,00') >= 0);
+  ok('avulsa: quadro da capa centralizado', /<w:tblW w:w="6084" w:type="dxa"\/><w:jc w:val="center"\/>/.test(App.Docx.serializar(mAv).documento));
+  ok('avulsa sem materiais: sem a seção de materiais', textoModelo(mAv).indexOf('MATERIAIS UTILIZADOS') < 0);
+  const avM = Object.assign(U.clone(av), { materiais: [
+    { id: 'm1', descricao: 'Cabo solar 6 mm²', qtd: 20, unidade: 'm', precoUnit: 8 },
+    { id: 'm2', descricao: 'Conector MC4 (par)', qtd: 4, unidade: 'pt', precoUnit: '' }
+  ] });
+  const rAvM = Av.calcular(avM, ctx);
+  perto('avulsa com materiais: serviços', rAvM.servicos, 2475, 1e-9);
+  perto('avulsa com materiais: materiais', rAvM.materiais, 160, 1e-9);
+  perto('avulsa com materiais: total = serviços + materiais − desconto', rAvM.total, 2475 + 160 - 100, 1e-9);
+  const txAvM = textoModelo(Av.montar(avM, ctx, ctx.clientes[0], { w: 1400, h: 752 }));
+  ok('avulsa com materiais: seção, subtotais e total no documento', ['MATERIAIS UTILIZADOS', 'Cabo solar 6 mm²', 'Subtotal dos materiais', 'Subtotal dos serviços', 'R$ 160,00', 'R$ 2.535,00']
+    .every(function (x) { return txAvM.some(function (l) { return l.indexOf(x) >= 0; }); }));
+  ok('avulsa com materiais: item sem preço sai como incluso', txAvM.indexOf('Incluso') >= 0 && txAvM.some(function (l) { return /fornecidos dentro do valor dos serviços/.test(l); }));
+  ok('avulsa com materiais: material do cadastro', Av.itemDeMaterial({ id: 'mat-x', tipo: 'material', descricao: 'Disjuntor 20 A', unidade: 'un', preco: 35 }).precoUnit === 35);
 
   // ---------------------------------------------------------------- projetos realizados (portfólio) — fotos sintéticas de teste
   function fotoTeste(cor, rotulo) {
