@@ -23,6 +23,8 @@
     if (!Array.isArray(p.cargas)) p.cargas = [];
     if (p.incluirProjetos === undefined) p.incluirProjetos = true;
     if (!Array.isArray(p.itens)) p.itens = [];
+    // materiais das propostas avulsas que entraram sozinhos na lista: ficam só os do sistema
+    p.itens = p.itens.filter(function (i) { return !C.itemDeAvulsa(i, ctx); });
     return p;
   }
 
@@ -105,7 +107,7 @@
         localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
         modalidade: ['local', 'consumo', 'cenarios'], bessComFV: ['sistema', 'cenarios', 'materiais'],
         consumoModo: ['consumo'], clienteId: ['cliente'], precoModo: ['materiais'], kitManual: ['materiais'], data: ['ident'],
-        precificacao: ['materiais'], instalacaoFaixa: ['materiais'], lucroModo: ['materiais'],
+        precificacao: ['materiais'], instalacaoFaixa: ['materiais'], lucroModo: ['materiais'], valorNaProposta: ['materiais'],
         'cenarios.ativo': ['cenarios']
       };
       if (k === 'localidadeId') {
@@ -410,12 +412,14 @@
         c.appendChild(h('p.ajuda-sec', 'Sem sistema FV: o custo de cada cenário é o equipamento de armazenamento + a instalação (seção Armazenamento)' +
           (p.precificacao === 'margem' ? '; lucro e comissão incidem sobre o valor final.' : '.')));
         if (p.precificacao === 'margem') composicaoMargem(c, true);
+        valorNaProposta(c);
         infos.preco = h('div.info');
         c.appendChild(infos.preco);
         return;
       }
       if (p.precificacao === 'margem') {
         composicaoMargem(c);
+        valorNaProposta(c, 3);
         infos.preco = h('div.info');
         c.appendChild(infos.preco);
         return;
@@ -453,9 +457,25 @@
         { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço e discriminado na proposta.' },
         { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…' }
       ], p, mudou, 3));
+      valorNaProposta(c);
       infos.preco = h('div.info');
       c.appendChild(infos.preco);
     });
+
+    /** Como o investimento sai no PDF/Word: cada parcela e o total, ou só o valor final cheio. */
+    function valorNaProposta(c, n) {
+      const modo = p.valorNaProposta === 'total' ? 'total' : 'detalhado';
+      const partes = p.tipoSistema === 'bess' && p.bessComFV === false ? 'equipamento e instalação do armazenamento' : 'kit, infraestrutura, mão de obra + projeto + instalação + homologação';
+      c.appendChild(h('h5.sub-preco', (n ? n + '. ' : '') + 'Valor na proposta impressa'));
+      c.appendChild(h('div.opcoes-cartao.compacto', [
+        ['detalhado', 'Valor detalhado', 'Mostra ' + partes + ' e o total'],
+        ['total', 'Somente o valor final', 'Um único valor cheio, sem detalhamento']
+      ].map(function (o) {
+        return h('button.opcao' + (modo === o[0] ? '.ativa' : ''), {
+          type: 'button', onclick: function () { if (modo !== o[0]) { p.valorNaProposta = o[0]; mudou('valorNaProposta'); } }
+        }, h('strong', o[1]), h('small', o[2]));
+      })));
+    }
 
     /** Preço pela margem: custos (kit, instalação por módulo, infraestrutura, outros) + lucro + comissão em % do valor final. */
     function composicaoMargem(c, soArmazenamento) {
@@ -554,7 +574,7 @@
       const selAdd = h('select', h('option', { value: '' }, '+ Adicionar item do catálogo…'));
       D.TIPOS_EQUIP.forEach(function (t) {
         const og = h('optgroup', { label: t.label });
-        ctx.equipamentos.filter(function (e) { return e.tipo === t.id && e.ativo !== false; }).forEach(function (e) {
+        ctx.equipamentos.filter(function (e) { return e.tipo === t.id && e.ativo !== false && C.usoMaterial(e, ctx) !== 'avulsa'; }).forEach(function (e) {
           og.appendChild(h('option', { value: e.id }, C.nomeEquip(e)));
         });
         if (og.children.length) selAdd.appendChild(og);
@@ -762,7 +782,8 @@
             linhaInfo('Lucro' + (r.lucroModo === 'pct' ? ' (' + U.fmtSmart(r.lucroPct * 100, 2) + '% do valor final)' : ' (valor fixo)'), U.brl(r.lucro)),
             linhaInfo('Comissão (' + U.fmtSmart(r.comissaoPct * 100, 2) + '% do valor final — não sai na proposta)', U.brl(r.comissao)),
             linhaInfo(ehArm() && r.cen ? 'Valor final — ' + r.cen.nome : 'Valor final da proposta', U.brl(r.total), 'destaque'));
-          if (r.incluiFV) linhas.push(linhaInfo('Na proposta: mão de obra + projeto + instalação + homologação', U.brl(r.maoObra) + ' (instalação + lucro + comissão)'));
+          if (p.valorNaProposta === 'total') linhas.push(linhaInfo('Na proposta: somente o valor final', U.brl(r.total) + ' (sem detalhamento)'));
+          else if (r.incluiFV) linhas.push(linhaInfo('Na proposta: mão de obra + projeto + instalação + homologação', U.brl(r.maoObra) + ' (instalação + lucro + comissão)'));
           else if (r.kitArm) linhas.push(linhaInfo('Na proposta: instalação e integração do armazenamento', U.brl(r.instalArm) + ' (com lucro e comissão)'));
           if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
           if (r.contasMes && r.contasMes.max - r.contasMes.min > 0.5) {
@@ -782,6 +803,7 @@
         }
         if (r.kitArm || r.instalArm) linhas.push(linhaInfo('Armazenamento (equipamento)', U.brl(r.kitArm)), linhaInfo('Instalação do armazenamento', U.brl(r.instalArm)));
         linhas.push(linhaInfo(ehArm() && r.cen ? 'Investimento — ' + r.cen.nome : 'Valor total', U.brl(r.total), 'destaque'));
+        if (p.valorNaProposta === 'total') linhas.push(linhaInfo('Na proposta', 'somente o valor final (sem detalhamento)'));
         if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
         if (r.contasMes && r.contasMes.max - r.contasMes.min > 0.5) {
           linhas.push(linhaInfo('Conta c/ sistema no ano 1', U.brl(r.contasMes.min) + ' (' + C.MESES_CURTOS[r.contasMes.mesMin] + ') a ' + U.brl(r.contasMes.max) + ' (' + C.MESES_CURTOS[r.contasMes.mesMax] + ')'));

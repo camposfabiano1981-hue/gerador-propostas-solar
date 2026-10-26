@@ -7,7 +7,7 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 7;
+  const VERSAO = 8;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos'];
@@ -114,8 +114,27 @@ window.App = window.App || {};
       if (ler('col.projetos', null) == null) gravar('col.projetos', []);
     }
     if (v < 7) zerarCatalogoDatasheet();
+    if (v < 8) separarMateriaisAvulsas();
     gravar('v', VERSAO);
   };
+
+  /**
+   * Versão 8: cada material indica onde é usado (proposta solar, propostas avulsas ou as duas). Os criados pelo usuário e já
+   * usados em propostas avulsas entravam sozinhos na lista de materiais das propostas solares: passam a ser só das avulsas.
+   * Sem alterar a data de gravação: os aparelhos que receberem a versão antiga pela nuvem chegam ao mesmo resultado (App.Calc.usoMaterial).
+   */
+  function separarMateriaisAvulsas() {
+    const C = App.Calc;
+    if (!C || !C.usoMaterial) return;
+    const ctx = { avulsas: Store.list('avulsas') };
+    const eqs = Store.list('equipamentos');
+    eqs.forEach(function (e) {
+      if (e.tipo !== 'material' || e.uso) return;
+      e.uso = C.usoMaterial(e, ctx);
+      if (e.uso === 'avulsa') e.autoIncluir = false;
+    });
+    gravar('col.equipamentos', eqs);
+  }
 
   /**
    * Versão 7: módulos, inversores, microinversores, híbridos e baterias passam a ser cadastrados pelo datasheet. Os que não estão em

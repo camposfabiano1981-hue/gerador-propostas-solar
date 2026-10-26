@@ -143,6 +143,8 @@ window.App = window.App || {};
     const tou = r.modalidade.id !== 'conv';
     const grupoA = r.grupo === 'A';
     const regraMaior = prem.regraDisponibilidade !== 'disponibilidade';
+    // investimento detalhado (kit, infraestrutura, mão de obra…) ou só o valor final cheio
+    const detalhar = (p.valorNaProposta || emp.valorNaProposta) !== 'total';
     let sec = 0;
     const projetos = r.projetos || [];
     // a seção de projetos realizados (quando houver) desloca o dimensionamento para o item 4
@@ -437,18 +439,20 @@ window.App = window.App || {};
     const destaque = function (v) { return { t: v, b: true, color: AZUL, jc: 'right' }; };
     const sub = function (v) { return { t: v, jc: 'right' }; };
     const finLin = [[{ t: '💰 Investimento Total (CAPEX)', b: true }, destaque(U.brl(r.total))]];
-    if (r.incluiFV) {
-      finLin.push(['   ↳ Kit Fotovoltaico (módulos, inversor' + (hib ? ' híbrido' : '') + ', estrutura, cabos e conectores)', sub(U.brl(r.kit))]);
+    if (detalhar) {
+      if (r.incluiFV) {
+        finLin.push(['   ↳ Kit Fotovoltaico (módulos, inversor' + (hib ? ' híbrido' : '') + ', estrutura, cabos e conectores)', sub(U.brl(r.kit))]);
+      }
+      if (temArm) {
+        finLin.push(['   ↳ Armazenamento — ' + (r.bessAtivo ? 'BESS' : 'baterias') + ' (equipamento)', sub(U.brl(r.kitArm))],
+          ['   ↳ Instalação e integração do armazenamento', sub(U.brl(r.instalArm))]);
+      }
+      if (r.incluiFV && r.infra > 0) finLin.push(['   ↳ Infraestrutura Elétrica CA (DPS, disjuntores, aterramento)', sub(U.brl(r.infra))]);
+      if (r.incluiFV) finLin.push(['   ↳ Mão de Obra + Projeto + Instalação + Homologação', sub(U.brl(r.maoObra))]);
+      if (r.incluiFV && r.outros > 0) finLin.push(['   ↳ ' + r.outrosDescricao, sub(U.brl(r.outros))]);
     }
-    if (temArm) {
-      finLin.push(['   ↳ Armazenamento — ' + (r.bessAtivo ? 'BESS' : 'baterias') + ' (equipamento)', sub(U.brl(r.kitArm))],
-        ['   ↳ Instalação e integração do armazenamento', sub(U.brl(r.instalArm))]);
-    }
-    if (r.incluiFV && r.infra > 0) finLin.push(['   ↳ Infraestrutura Elétrica CA (DPS, disjuntores, aterramento)', sub(U.brl(r.infra))]);
-    if (r.incluiFV) finLin.push(['   ↳ Mão de Obra + Projeto + Instalação + Homologação', sub(U.brl(r.maoObra))]);
-    if (r.incluiFV && r.outros > 0) finLin.push(['   ↳ ' + r.outrosDescricao, sub(U.brl(r.outros))]);
     finLin.push(
-      [{ t: '📅 Economia Mensal Ano 1' + (temFV ? ' (sim. ' + U.fmtSmart(s * 100, 1) + '%)' : ''), b: true }, destaque(U.brl(f.economiaMes1))],
+      [{ t: '📅 Economia Mensal Ano 1', b: true }, destaque(U.brl(f.economiaMes1))],
       [{ t: '📅 Economia Anual Ano 1', b: true }, destaque(U.brl(f.economiaAno1))]
     );
     if (f.anos[0].beneficioBackup > 0) finLin.push([{ t: '🔋 Benefício de backup (prejuízos evitados/ano)', b: true }, destaque(U.brl(f.anos[0].beneficioBackup))]);
@@ -591,7 +595,7 @@ window.App = window.App || {};
     });
     if (r.incluiFV && r.infra > 0) {
       eqLin.push([{ t: '—', b: true }, '', { t: '── INFRAESTRUTURA ELÉTRICA (CA, PROTEÇÕES, ATERRAMENTO) ──', b: true }, '']);
-      eqLin.push([String(r.itens.length + 1), '—', (p.infraDescricao || textos.infraDescricao) + ' — ' + U.brl(r.infra), 'Conf. fabricante']);
+      eqLin.push([String(r.itens.length + 1), '—', (p.infraDescricao || textos.infraDescricao) + (detalhar ? ' — ' + U.brl(r.infra) : ''), 'Conf. fabricante']);
     }
     b.push(tabela(eqCols, eqLin, { sz: 19 }));
     if (textos.garantiaInstalacao) {

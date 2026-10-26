@@ -80,6 +80,11 @@
       { k: 'prefixo', label: 'Prefixo do nº da proposta', help: 'Formato: PREFIXO-AAAAMMDD-NNN' },
       { k: 'validadeDias', label: 'Validade padrão', type: 'int', suffix: 'dias' },
       { k: 'projetosNaProposta', label: 'Projetos realizados por proposta', type: 'int', help: 'Seção após a apresentação (Cadastros › Projetos realizados). 0 = não incluir.' },
+      {
+        k: 'valorNaProposta', label: 'Valor na proposta impressa (padrão)', type: 'select',
+        options: [{ v: 'detalhado', t: 'Detalhado (kit, infraestrutura, mão de obra… e o total)' }, { v: 'total', t: 'Somente o valor final, sem detalhamento' }],
+        help: 'Vale para as propostas novas; cada proposta pode escolher na composição do preço.'
+      },
       { k: 'papel', label: 'Tamanho do papel', type: 'select', options: [{ v: 'letter', t: 'Carta (igual ao modelo)' }, { v: 'a4', t: 'A4' }] },
       { el: logoBox },
       { secao: 'Contratos (dados ficam apenas neste navegador)' },

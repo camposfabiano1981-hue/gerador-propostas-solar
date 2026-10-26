@@ -276,7 +276,8 @@
       const tiposMat = D.TIPOS_EQUIP.slice().sort(function (x, y) { return (x.id === 'material' ? -1 : 0) - (y.id === 'material' ? -1 : 0); });
       tiposMat.forEach(function (tp) {
         const og = h('optgroup', { label: tp.label });
-        ctx.equipamentos.filter(function (e) { return e.tipo === tp.id && e.ativo !== false; }).forEach(function (e) {
+        // materiais só da proposta solar (cabos CC, conectores…) não aparecem aqui
+        ctx.equipamentos.filter(function (e) { return e.tipo === tp.id && e.ativo !== false && C.usoMaterial(e, ctx) !== 'solar'; }).forEach(function (e) {
           og.appendChild(h('option', { value: e.id }, C.nomeEquip(e) + (U.num(e.preco) > 0 ? ' — ' + U.brl(U.num(e.preco)) : '')));
         });
         if (og.children.length) selMat.appendChild(og);
@@ -291,7 +292,7 @@
       subMateriais = h('span.total-itens');
       c.appendChild(h('div.barra-itens', selMat,
         h('button.btn.pequeno', { type: 'button', onclick: function () { a.materiais.push({ id: U.uid(), equipamentoId: null, descricao: 'Novo material', qtd: 1, unidade: 'un', precoUnit: 0 }); mudou(); desenhar('materiais'); } }, '+ Material avulso'),
-        h('a.btn.pequeno', { href: '#/equipamentos' }, 'Cadastro de materiais'),
+        h('a.btn.pequeno', { href: '#/equipamentos?tipo=material&uso=avulsa' }, 'Cadastro de materiais'),
         subMateriais));
       atualizarTotais();
     });

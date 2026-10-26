@@ -369,6 +369,24 @@
     perto('margem híbrido: valor final = (FV + armazenamento) ÷ 0,8', rHm.total, custoH / 0.8, 1e-6);
     perto('margem híbrido: linhas da proposta somam o valor final', rHm.kit + rHm.kitArm + rHm.instalArm + rHm.infra + rHm.maoObra + rHm.outros, rHm.total, 1e-6);
     perto('margem híbrido: comissão = 5% do valor final', rHm.comissao, rHm.total * 0.05, 1e-6);
+
+    // valor na proposta impressa: detalhado (padrão) ou somente o valor final
+    const logo = { w: 1400, h: 752 };
+    const pD = Object.assign(U.clone(base), { infraValor: 1200 });
+    const rD = C.calcular(pD, ctx);
+    const txD = textoModelo(App.Documento.montar(pD, rD, ctx, ctx.clientes[0], logo)).join('\n');
+    ok('valor detalhado: kit, infraestrutura e mão de obra discriminados', /↳ Kit Fotovoltaico/.test(txD) && /↳ Mão de Obra \+ Projeto/.test(txD) &&
+      txD.indexOf(U.brl(rD.maoObra)) >= 0 && txD.indexOf(U.brl(rD.kit)) >= 0 && (txD.split(U.brl(1200)).length - 1) === 2);
+    const pT = Object.assign(U.clone(pD), { valorNaProposta: 'total' });
+    const txT = textoModelo(App.Documento.montar(pT, C.calcular(pT, ctx), ctx, ctx.clientes[0], logo)).join('\n');
+    ok('somente o valor final: total sem detalhamento', txT.indexOf(U.brl(rD.total)) >= 0 && txT.indexOf('↳') < 0 &&
+      txT.indexOf(U.brl(rD.kit)) < 0 && txT.indexOf(U.brl(rD.maoObra)) < 0 && txT.indexOf(U.brl(1200)) < 0);
+    ok('somente o valor final: infraestrutura continua na lista de equipamentos, sem o valor', txT.indexOf(pD.infraDescricao || ctx.textos.infraDescricao) >= 0);
+    const ctxTot = Object.assign({}, ctx, { empresa: Object.assign({}, ctx.empresa, { valorNaProposta: 'total' }) });
+    ok('valor na proposta: padrão da empresa vale para as novas', C.novaProposta(ctxTot).valorNaProposta === 'total' && C.novaProposta(ctx).valorNaProposta === 'detalhado');
+    const txPad = textoModelo(App.Documento.montar(pD, rD, ctxTot, ctx.clientes[0], logo)).join('\n');
+    ok('valor na proposta: proposta sem a escolha segue o padrão da empresa', txPad.indexOf('↳') < 0 && txPad.indexOf(U.brl(rD.total)) >= 0);
+    ok('economia mensal sem a simultaneidade entre parênteses', txD.indexOf('Economia Mensal Ano 1') >= 0 && !/\(sim\./.test(txD));
   })();
 
   // ---------------------------------------------------------------- BESS no grupo A (verde) — picos e horários estratégicos
@@ -584,7 +602,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base', localStorage.getItem('gsp.v'), '7');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '8');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -594,6 +612,47 @@
       igual('migração v7: cópia de segurança dos removidos', S.removidosV7().length, window.EQUIP_TESTE.length - nUso);
       igual('migração v7: restauração devolve os removidos', S.restaurarRemovidosV7(), window.EQUIP_TESTE.length - nUso);
       ok('migração v7: cópia descartada após restaurar', !S.removidosV7().length);
+    } finally {
+      chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
+    }
+  })();
+
+  // ---------------------------------------------------------------- materiais: proposta solar × propostas avulsas
+  (function () {
+    const tomada = { id: 'u-tomada', tipo: 'material', ativo: true, descricao: 'Tomada industrial 32A', regra: 'fixa', fator: 1, unidade: 'un', aplicaEm: 'ambos', autoIncluir: true, preco: 150 };
+    const disjuntor = Object.assign({}, tomada, { id: 'u-disjuntor', descricao: 'Disjuntor CC 2P 20A', preco: 90 });
+    const cm = Object.assign(ctxReferencia(), { avulsas: [{ id: 'av1', materiais: [{ id: 'm1', equipamentoId: 'u-tomada', descricao: 'Tomada industrial 32A', qtd: 2, unidade: 'un', precoUnit: 150 }] }] });
+    cm.equipamentos = cm.equipamentos.concat([tomada, disjuntor]);
+    const mc4 = cm.equipamentos.find(function (e) { return e.id === 'mat-mc4'; });
+    igual('materiais: criado pelo usuário e usado em avulsa → só avulsas', C.usoMaterial(tomada, cm), 'avulsa');
+    igual('materiais: criado pelo usuário sem avulsa → continua nas duas', C.usoMaterial(disjuntor, cm), 'ambas');
+    igual('materiais: catálogo inicial → proposta solar', C.usoMaterial(mc4, cm), 'solar');
+    igual('materiais: escolha do cadastro prevalece', C.usoMaterial(Object.assign({}, tomada, { uso: 'ambas' }), cm), 'ambas');
+    const rM = C.calcular(Object.assign(U.clone(p), { itens: [] }), cm);
+    ok('materiais: lista automática da solar sem os materiais das avulsas', !rM.itens.some(function (i) { return i.equipamentoId === 'u-tomada'; }) &&
+      rM.itens.some(function (i) { return i.equipamentoId === 'u-disjuntor'; }) && rM.itens.some(function (i) { return i.equipamentoId === 'mat-mc4'; }));
+    // lista gravada antes da correção: o material da avulsa entrou sozinho; outro foi adicionado à mão
+    const gravada = U.clone(rM.itens).concat([
+      { id: 'x1', equipamentoId: 'u-tomada', categoria: 'material', descricao: 'Tomada industrial 32A', qtd: 1, unidade: 'un', precoUnit: 150 },
+      { id: 'x2', equipamentoId: 'u-tomada', categoria: 'material', descricao: 'Tomada (incluída à mão)', qtd: 1, unidade: 'un', precoUnit: 150, manual: true }
+    ]);
+    const rG = C.calcular(Object.assign(U.clone(p), { itens: gravada, kitManual: false }), cm);
+    ok('materiais: lista gravada perde o que entrou sozinho e mantém o incluído à mão', !rG.itens.some(function (i) { return i.id === 'x1'; }) && rG.itens.some(function (i) { return i.id === 'x2'; }));
+    perto('materiais: soma do kit sem o material da avulsa', rG.kitFVSoma, C.calcular(Object.assign(U.clone(p), { itens: U.clone(rM.itens), kitManual: false }), cm).kitFVSoma + 150, 1e-9);
+    // migração v8: grava o uso dos materiais antigos
+    const S = App.Store;
+    const chaves = ['col.equipamentos', 'col.avulsas', 'v'];
+    const guardado = {};
+    chaves.forEach(function (k) { guardado[k] = localStorage.getItem('gsp.' + k); });
+    try {
+      const antigos = cm.equipamentos.map(function (e) { const c = U.clone(e); if (c.tipo === 'material') delete c.uso; return c; });
+      localStorage.setItem('gsp.col.equipamentos', JSON.stringify(antigos));
+      localStorage.setItem('gsp.col.avulsas', JSON.stringify(cm.avulsas));
+      S.migrar(7);
+      const uso = function (id) { return S.get('equipamentos', id).uso; };
+      ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
+      ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
+      igual('migração v8: versão da base', localStorage.getItem('gsp.v'), '8');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }

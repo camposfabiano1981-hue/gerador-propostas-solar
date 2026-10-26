@@ -13,6 +13,12 @@
   const APLICA_TXT = {};
   APLICA_EM.forEach(function (a) { APLICA_TXT[a.v] = a.t.replace(/^Somente (com )?/, ''); });
   const UF_OPTS = [{ v: '', t: '—' }].concat(U.UFS.map(function (u) { return { v: u, t: u }; }));
+  // materiais: em qual lista entram (proposta solar, propostas avulsas ou as duas)
+  const USO_TXT = {};
+  C.USOS_MATERIAL.forEach(function (u) { USO_TXT[u.id] = u.label; });
+  const USO_COR = { solar: 'ok', avulsa: 'ambar', ambas: 'cinza' };
+  let ctxUso = { avulsas: [] }; // propostas avulsas da página aberta (materiais antigos, gravados antes do campo "Usar em")
+  const UNIDADES_MATERIAL = ['un', 'm', 'pt', 'cj', 'kg'].concat(App.Avulsa.UNIDADES_MATERIAL.filter(function (u) { return ['un', 'm', 'pt', 'cj', 'kg'].indexOf(u) < 0; }));
 
   function usoEmPropostas(fn) {
     return S.list('propostas').filter(fn).length;
@@ -144,16 +150,25 @@
         { k: 'ativo', label: 'Ativo', type: 'checkbox' }
       ];
     },
-    material: function () {
+    material: function (e, desenhar) {
+      // material das propostas avulsas não tem regra de quantidade nem entra na lista da proposta solar
+      const soAvulsa = e.uso === 'avulsa';
+      const unidades = !e.unidade || UNIDADES_MATERIAL.indexOf(e.unidade) >= 0 ? UNIDADES_MATERIAL : UNIDADES_MATERIAL.concat([e.unidade]);
       return [
         { k: 'descricao', label: 'Descrição', required: true, cls: 'span2' },
-        { k: 'regra', label: 'Regra de quantidade', type: 'select', options: D.REGRAS_QTD.filter(function (r) { return r.id !== 'kitModulos'; }).map(function (r) { return { v: r.id, t: r.label }; }), cls: 'span2' },
-        { k: 'fator', label: 'Fator / quantidade', type: 'number' },
-        { k: 'unidade', label: 'Unidade', type: 'select', options: ['un', 'm', 'pt', 'cj', 'kg'] },
-        { k: 'aplicaEm', label: 'Aplica-se a', type: 'select', options: APLICA_EM },
+        {
+          k: 'uso', label: 'Usar em', type: 'select', required: true, cls: 'span2',
+          options: [{ v: '', t: '— escolha —' }].concat(C.USOS_MATERIAL.map(function (u) { return { v: u.id, t: u.label + ' — ' + u.desc.toLowerCase() }; })),
+          help: 'Proposta solar: entra na lista de materiais do sistema. Propostas avulsas: aparece só em "Materiais utilizados" das propostas de serviços.',
+          onChange: function () { if (e.uso === 'avulsa') e.autoIncluir = false; desenhar(); }
+        },
+        soAvulsa ? null : { k: 'regra', label: 'Regra de quantidade', type: 'select', options: D.REGRAS_QTD.filter(function (r) { return r.id !== 'kitModulos'; }).map(function (r) { return { v: r.id, t: r.label }; }), cls: 'span2' },
+        soAvulsa ? null : { k: 'fator', label: 'Fator / quantidade', type: 'number' },
+        { k: 'unidade', label: 'Unidade', type: 'select', options: unidades },
+        soAvulsa ? null : { k: 'aplicaEm', label: 'Aplica-se a', type: 'select', options: APLICA_EM },
         { k: 'garantia', label: 'Garantia', placeholder: 'Ex.: 5 anos' },
         { k: 'preco', label: 'Preço unitário', type: 'money' },
-        { k: 'autoIncluir', label: 'Incluir automaticamente nas propostas', type: 'checkbox', cls: 'span2' },
+        soAvulsa ? null : { k: 'autoIncluir', label: 'Incluir automaticamente na lista de materiais da proposta solar (pela regra de quantidade)', type: 'checkbox', cls: 'span2' },
         { k: 'ativo', label: 'Ativo', type: 'checkbox' }
       ];
     }
@@ -228,10 +243,11 @@
     ],
     material: [
       { t: 'Descrição', v: function (e) { return e.descricao; } },
-      { t: 'Regra', v: function (e) { return regraTxt(e); } },
-      { t: 'Aplica-se', v: function (e) { return APLICA_TXT[e.aplicaEm || 'ambos'] || e.aplicaEm; } },
+      { t: 'Usar em', v: function (e) { const u = C.usoMaterial(e, ctxUso); return UI.badge(USO_TXT[u], USO_COR[u]); } },
+      { t: 'Regra', v: function (e) { return C.usoMaterial(e, ctxUso) === 'avulsa' ? '—' : regraTxt(e); } },
+      { t: 'Aplica-se', v: function (e) { return C.usoMaterial(e, ctxUso) === 'avulsa' ? '—' : APLICA_TXT[e.aplicaEm || 'ambos'] || e.aplicaEm; } },
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)) + ' / ' + (e.unidade || 'un'); } },
-      { t: 'Auto', v: function (e) { return e.autoIncluir ? UI.badge('Sim', 'ok') : UI.badge('Não', 'cinza'); } },
+      { t: 'Auto (solar)', v: function (e) { return C.usoMaterial(e, ctxUso) === 'avulsa' ? '—' : (e.autoIncluir ? UI.badge('Sim', 'ok') : UI.badge('Não', 'cinza')); } },
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
     ]
   };
@@ -487,6 +503,9 @@
     let ctrl = null; // controle do cadastro, usado pela ação 🔄 das linhas
     const tipo = qs.get('tipo') || 'modulo';
     const def = D.TIPOS_EQUIP.find(function (t) { return t.id === tipo; }) || D.TIPOS_EQUIP[0];
+    ctxUso = { avulsas: S.list('avulsas') };
+    // vindo das propostas avulsas (Cadastro de materiais): os materiais novos já são das avulsas
+    const usoNovo = qs.get('uso') === 'avulsa' ? 'avulsa' : '';
     const abas = h('div.abas', D.TIPOS_EQUIP.map(function (t) {
       const n = S.list('equipamentos').filter(function (e) { return e.tipo === t.id; }).length;
       return h('a.aba' + (t.id === def.id ? '.ativa' : ''), { href: '#/equipamentos?tipo=' + t.id }, t.label, h('span.contagem', String(n)));
@@ -512,6 +531,7 @@
         delete e.revisar;
         if (e.ativo !== false) delete e.arquivado;
         if (e.tipo === 'micro' && U.num(e.modulosPorUnidade) > 0) e.mppts = Math.round(U.num(e.modulosPorUnidade));
+        if (e.tipo === 'material' && e.uso === 'avulsa') e.autoIncluir = false;
       },
       novo: function () {
         const base = { tipo: def.id, ativo: true, preco: 0 };
@@ -521,10 +541,11 @@
         if (def.id === 'bateria') Object.assign(base, { quimica: 'LiFePO4', dod: 90, garantia: 10, tipoBateria: 'LV' });
         if (def.id === 'bess') Object.assign(base, { quimica: 'LiFePO4', fases: 'Trifásico', dod: 90, eficiencia: 90, ciclos: 6000, garantia: 10 });
         if (def.id === 'estrutura') Object.assign(base, { regra: 'kitModulos', fator: 4, unidade: 'un', telhado: 'Fibrocimento', garantia: 'Vitalícia', autoIncluir: true });
-        if (def.id === 'material') Object.assign(base, { regra: 'fixa', fator: 1, unidade: 'un', aplicaEm: 'ambos', autoIncluir: true });
+        if (def.id === 'material') Object.assign(base, { uso: usoNovo, regra: 'fixa', fator: 1, unidade: 'un', aplicaEm: 'ambos', autoIncluir: usoNovo !== 'avulsa' });
         return base;
       },
       validar: function (e) {
+        if (def.id === 'material' && !e.uso) return 'Escolha onde o material é usado (proposta solar, propostas avulsas ou as duas).';
         if (def.id === 'estrutura' || def.id === 'material') return String(e.descricao || '').trim() ? null : 'Informe a descrição.';
         if (!String(e.fabricante || '').trim() || !String(e.modelo || '').trim()) return 'Informe fabricante e modelo.';
         if (def.id === 'bateria') return U.num(e.energia) > 0 ? null : 'Informe a energia nominal (kWh).';
@@ -539,9 +560,11 @@
         });
         return n ? 'Item usado em ' + n + ' proposta(s). Desative-o em vez de excluir.' : null;
       },
-      campos: function (e) {
+      campos: function (e, desenhar) {
         if (def.id === 'inversor' || def.id === 'hibrido' || def.id === 'micro') return CAMPOS_EQUIP.inversor(def.id, e);
-        return CAMPOS_EQUIP[def.id](e);
+        // material gravado antes do campo "Usar em": abre com o uso que já vinha sendo aplicado
+        if (def.id === 'material' && e.id && !e.uso) e.uso = C.usoMaterial(e, ctxUso);
+        return CAMPOS_EQUIP[def.id](e, desenhar);
       },
       acoesTopo: App.Datasheet.TIPOS.indexOf(def.id) >= 0 ? function (c) {
         return [
