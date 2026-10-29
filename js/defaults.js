@@ -513,31 +513,31 @@ window.App = window.App || {};
     estrutura('est-micro-suporte', 'Todos', 'Suporte de fixação do microinversor no perfil/trilho', 'Suportes de microinversor', 'porInversor', 1, true, { aplicaEm: 'micro' }),
 
     {
-      id: 'mat-cabo-vm', tipo: 'material', ativo: true, descricao: 'Cabo Solar 4,0mm² Vermelho — proteção UV 1,8 kVCC',
+      id: 'mat-cabo-vm', tipo: 'material', uso: 'solar', ativo: true, descricao: 'Cabo Solar 4,0mm² Vermelho — proteção UV 1,8 kVCC',
       regra: 'fixa', fator: 25, unidade: 'm', aplicaEm: 'string', garantia: '5 anos', preco: 0, autoIncluir: true
     },
     {
-      id: 'mat-cabo-pt', tipo: 'material', ativo: true, descricao: 'Cabo Solar 4,0mm² Preto — proteção UV 1,8 kVCC',
+      id: 'mat-cabo-pt', tipo: 'material', uso: 'solar', ativo: true, descricao: 'Cabo Solar 4,0mm² Preto — proteção UV 1,8 kVCC',
       regra: 'fixa', fator: 25, unidade: 'm', aplicaEm: 'string', garantia: '5 anos', preco: 0, autoIncluir: true
     },
     {
-      id: 'mat-mc4', tipo: 'material', ativo: true, descricao: 'Conector (par) MC4 4mm',
+      id: 'mat-mc4', tipo: 'material', uso: 'solar', ativo: true, descricao: 'Conector (par) MC4 4mm',
       regra: 'porMppt', fator: 2, unidade: 'pt', aplicaEm: 'string', garantia: '2 anos', preco: 0, autoIncluir: true
     },
     {
-      id: 'mat-micro-tronco', tipo: 'material', ativo: true, descricao: 'Cabo tronco CA p/ microinversores (1 conector por unidade)',
+      id: 'mat-micro-tronco', tipo: 'material', uso: 'solar', ativo: true, descricao: 'Cabo tronco CA p/ microinversores (1 conector por unidade)',
       regra: 'porInversor', fator: 1, unidade: 'un', aplicaEm: 'micro', garantia: 'Conforme fabricante', preco: 0, autoIncluir: true
     },
     {
-      id: 'mat-micro-terminal', tipo: 'material', ativo: true, descricao: 'Terminal de fim de linha do cabo tronco (1 por ramal de até 3 microinversores)',
+      id: 'mat-micro-terminal', tipo: 'material', uso: 'solar', ativo: true, descricao: 'Terminal de fim de linha do cabo tronco (1 por ramal de até 3 microinversores)',
       regra: 'porInversor', fator: 0.3333, unidade: 'un', aplicaEm: 'micro', garantia: 'Conforme fabricante', preco: 0, autoIncluir: true
     },
     {
-      id: 'mat-micro-dtu', tipo: 'material', ativo: true, descricao: 'Gateway/DTU de monitoramento dos microinversores (conforme fabricante)',
+      id: 'mat-micro-dtu', tipo: 'material', uso: 'solar', ativo: true, descricao: 'Gateway/DTU de monitoramento dos microinversores (conforme fabricante)',
       regra: 'fixa', fator: 1, unidade: 'un', aplicaEm: 'micro', garantia: 'Conforme fabricante', preco: 0, autoIncluir: true
     },
     {
-      id: 'mat-stringbox', tipo: 'material', ativo: true, descricao: 'String box CC c/ DPS 1000 V tipo II e chave seccionadora (quando o inversor não tiver DPS CC integrado)',
+      id: 'mat-stringbox', tipo: 'material', uso: 'solar', ativo: true, descricao: 'String box CC c/ DPS 1000 V tipo II e chave seccionadora (quando o inversor não tiver DPS CC integrado)',
       regra: 'porInversor', fator: 1, unidade: 'un', aplicaEm: 'string', garantia: 'Conforme fabricante', preco: 0, autoIncluir: false
     }
   ];

@@ -28,7 +28,8 @@ window.App = window.App || {};
       localidades: S.list('localidades'),
       pagamentos: S.list('pagamentos'),
       clientes: S.list('clientes'),
-      projetos: S.list('projetos')
+      projetos: S.list('projetos'),
+      avulsas: S.list('avulsas')
     };
   };
 
@@ -410,6 +411,47 @@ window.App = window.App || {};
     }
   }
 
+  /* ---------------------------------------------------------------- materiais: proposta solar × propostas avulsas */
+
+  C.USOS_MATERIAL = [
+    { id: 'solar', label: 'Proposta solar', desc: 'Lista de materiais do sistema fotovoltaico' },
+    { id: 'avulsa', label: 'Propostas avulsas', desc: 'Materiais utilizados nas propostas de serviços' },
+    { id: 'ambas', label: 'Proposta solar e avulsas', desc: 'Aparece nas duas listas' }
+  ];
+
+  const materiaisAvulsas = new WeakMap();
+  /** Ids dos materiais do cadastro já usados em propostas avulsas. */
+  function idsMateriaisAvulsas(avulsas) {
+    if (!Array.isArray(avulsas)) return {};
+    let ids = materiaisAvulsas.get(avulsas);
+    if (!ids) {
+      ids = {};
+      avulsas.forEach(function (a) { (a.materiais || []).forEach(function (m) { if (m.equipamentoId) ids[m.equipamentoId] = true; }); });
+      materiaisAvulsas.set(avulsas, ids);
+    }
+    return ids;
+  }
+
+  /**
+   * Onde o material do cadastro é usado: 'solar' (lista de materiais da proposta solar), 'avulsa' (propostas avulsas) ou 'ambas'.
+   * Materiais gravados antes desta escolha: os do catálogo inicial são da proposta solar; os criados pelo usuário e já usados
+   * em propostas avulsas ficam só nas avulsas (entravam sozinhos nas propostas solares).
+   */
+  C.usoMaterial = function (e, ctx) {
+    if (!e || e.tipo !== 'material') return 'solar';
+    if (e.uso === 'solar' || e.uso === 'avulsa' || e.uso === 'ambas') return e.uso;
+    const naAvulsa = !!idsMateriaisAvulsas(ctx && ctx.avulsas)[e.id];
+    if (/^mat-/.test(String(e.id))) return naAvulsa ? 'ambas' : 'solar';
+    return naAvulsa ? 'avulsa' : 'ambas';
+  };
+
+  /** Item da lista da proposta solar gerado a partir de um material das propostas avulsas (não pertence ao sistema). */
+  C.itemDeAvulsa = function (it, ctx) {
+    if (!it || it.manual || !it.equipamentoId) return false;
+    const eq = porId(ctx.equipamentos, it.equipamentoId);
+    return !!eq && eq.tipo === 'material' && C.usoMaterial(eq, ctx) === 'avulsa';
+  };
+
   /** Combinação de kits de estrutura (ex.: kits p/ 4 e p/ 2 módulos) cobrindo N módulos. */
   C.combinarKits = function (kits, nMod) {
     const ord = kits.slice().filter(function (k) { return pos(k.fator); }).sort(function (a, b) { return b.fator - a.fator; });
@@ -468,7 +510,7 @@ window.App = window.App || {};
     estruturas.filter(function (e) { return e.regra !== 'kitModulos'; })
       .forEach(function (e) { add(e, 'estrutura', qtdRegra(e.regra, e.fator, q)); });
 
-    ativos.filter(function (e) { return e.tipo === 'material' && aplica(e); })
+    ativos.filter(function (e) { return e.tipo === 'material' && aplica(e) && C.usoMaterial(e, ctx) !== 'avulsa'; })
       .forEach(function (e) { add(e, 'material', qtdRegra(e.regra, e.fator, q)); });
 
     return itens;
@@ -802,7 +844,8 @@ window.App = window.App || {};
 
     // Preço do sistema fotovoltaico (sem armazenamento)
     const catArm = ['bateria', 'bess'];
-    const itensP = Array.isArray(p.itens) ? p.itens : [];
+    // a lista gravada perde os materiais das propostas avulsas que tenham entrado sozinhos (ficam só os do sistema)
+    const itensP = (Array.isArray(p.itens) ? p.itens : []).filter(function (i) { return !C.itemDeAvulsa(i, ctx); });
     const itensFVP = itensP.filter(function (i) { return catArm.indexOf(i.categoria) < 0; });
     const itensFVGerados = r.permiteFV ? C.gerarItens(p, r, ctx, { armazenamento: 0, fv: true }) : [];
     const somaItens = function (l) { return l.reduce(function (s, it) { return s + U.numOr(it.qtd, 0) * U.numOr(it.precoUnit, 0); }, 0); };

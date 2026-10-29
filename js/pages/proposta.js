@@ -23,6 +23,8 @@
     if (!Array.isArray(p.cargas)) p.cargas = [];
     if (p.incluirProjetos === undefined) p.incluirProjetos = true;
     if (!Array.isArray(p.itens)) p.itens = [];
+    // materiais das propostas avulsas que entraram sozinhos na lista: ficam só os do sistema
+    p.itens = p.itens.filter(function (i) { return !C.itemDeAvulsa(i, ctx); });
     return p;
   }
 
@@ -448,9 +450,9 @@
         p.precoModo === 'separado'
           ? { k: 'maoObraValor', label: 'Mão de obra + projeto + homologação', type: 'money', required: true, help: 'Inclui a comissão, se houver.' }
           : { k: 'valorTotal', label: ehArm() ? 'Valor do sistema FV (sem armazenamento)' : 'Valor total da proposta', type: 'money', required: true },
-        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (lista de equipamentos)', cls: 'span2' },
+        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (contrato)', cls: 'span2' },
         { k: 'comissaoValor', label: 'Valor da comissão', type: 'money', help: 'Faz parte da mão de obra. Não aparece na proposta — uso gerencial.' },
-        { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço e discriminado na proposta.' },
+        { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço; na proposta entra no valor final.' },
         { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…' }
       ], p, mudou, 3));
       infos.preco = h('div.info');
@@ -483,8 +485,8 @@
       })));
       c.appendChild(UI.grade([
         { k: 'infraValor', label: 'Infraestrutura elétrica CA', type: 'money', help: 'Começa zerada: lance o valor desta obra (DPS, disjuntores, quadro, aterramento).' },
-        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (lista de equipamentos)', cls: 'span2' },
-        { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço e discriminado na proposta.' },
+        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (contrato)', cls: 'span2' },
+        { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço; na proposta entra no valor final.' },
         { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…', cls: 'span2' }
       ], p, mudou, 3));
     }
@@ -504,7 +506,7 @@
         modoLucro === 'pct'
           ? { k: 'lucroPct', label: 'Lucro', type: 'pct', suffix: '% do valor final', help: 'Padrão em Configurações › Premissas.' }
           : { k: 'lucroValor', label: 'Lucro', type: 'money' },
-        { k: 'comissaoPct', label: 'Comissão', type: 'pct', suffix: '% do valor final', help: 'Calculada automaticamente. Não aparece na proposta: é somada à mão de obra + instalação + homologação.' }
+        { k: 'comissaoPct', label: 'Comissão', type: 'pct', suffix: '% do valor final', help: 'Calculada automaticamente. Não aparece na proposta: entra no valor final.' }
       ], p, mudou, 3));
     }
 
@@ -554,7 +556,7 @@
       const selAdd = h('select', h('option', { value: '' }, '+ Adicionar item do catálogo…'));
       D.TIPOS_EQUIP.forEach(function (t) {
         const og = h('optgroup', { label: t.label });
-        ctx.equipamentos.filter(function (e) { return e.tipo === t.id && e.ativo !== false; }).forEach(function (e) {
+        ctx.equipamentos.filter(function (e) { return e.tipo === t.id && e.ativo !== false && C.usoMaterial(e, ctx) !== 'avulsa'; }).forEach(function (e) {
           og.appendChild(h('option', { value: e.id }, C.nomeEquip(e)));
         });
         if (og.children.length) selAdd.appendChild(og);
@@ -762,8 +764,7 @@
             linhaInfo('Lucro' + (r.lucroModo === 'pct' ? ' (' + U.fmtSmart(r.lucroPct * 100, 2) + '% do valor final)' : ' (valor fixo)'), U.brl(r.lucro)),
             linhaInfo('Comissão (' + U.fmtSmart(r.comissaoPct * 100, 2) + '% do valor final — não sai na proposta)', U.brl(r.comissao)),
             linhaInfo(ehArm() && r.cen ? 'Valor final — ' + r.cen.nome : 'Valor final da proposta', U.brl(r.total), 'destaque'));
-          if (r.incluiFV) linhas.push(linhaInfo('Na proposta: mão de obra + projeto + instalação + homologação', U.brl(r.maoObra) + ' (instalação + lucro + comissão)'));
-          else if (r.kitArm) linhas.push(linhaInfo('Na proposta: instalação e integração do armazenamento', U.brl(r.instalArm) + ' (com lucro e comissão)'));
+          linhas.push(linhaInfo('Na proposta', 'somente o valor final (sem detalhamento)'));
           if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
           if (r.contasMes && r.contasMes.max - r.contasMes.min > 0.5) {
             linhas.push(linhaInfo('Conta c/ sistema no ano 1', U.brl(r.contasMes.min) + ' (' + C.MESES_CURTOS[r.contasMes.mesMin] + ') a ' + U.brl(r.contasMes.max) + ' (' + C.MESES_CURTOS[r.contasMes.mesMax] + ')'));
@@ -782,6 +783,7 @@
         }
         if (r.kitArm || r.instalArm) linhas.push(linhaInfo('Armazenamento (equipamento)', U.brl(r.kitArm)), linhaInfo('Instalação do armazenamento', U.brl(r.instalArm)));
         linhas.push(linhaInfo(ehArm() && r.cen ? 'Investimento — ' + r.cen.nome : 'Valor total', U.brl(r.total), 'destaque'));
+        linhas.push(linhaInfo('Na proposta', 'somente o valor final (sem detalhamento)'));
         if (wp > 0) linhas.push(linhaInfo('Preço por Wp', 'R$ ' + U.fmt(r.total / wp, 2) + '/Wp'));
         if (r.contasMes && r.contasMes.max - r.contasMes.min > 0.5) {
           linhas.push(linhaInfo('Conta c/ sistema no ano 1', U.brl(r.contasMes.min) + ' (' + C.MESES_CURTOS[r.contasMes.mesMin] + ') a ' + U.brl(r.contasMes.max) + ' (' + C.MESES_CURTOS[r.contasMes.mesMax] + ')'));
