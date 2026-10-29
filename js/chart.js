@@ -217,14 +217,15 @@ window.App = window.App || {};
    *   marca: texto do balão no ano do retorno; final: rótulo do saldo do último ano
    */
   function saldoDataURL(d) {
-    const W = 1800, H = 640;
+    const W = 1800, H = 690;
     const cv = document.createElement('canvas');
     cv.width = W;
     cv.height = H;
     const g = cv.getContext('2d');
     g.fillStyle = '#FFFFFF';
     g.fillRect(0, 0, W, H);
-    const m = { l: 170, r: 30, t: 40, b: 80 };
+    // faixa no alto (m.t) para o rótulo do saldo final, acima da última barra
+    const m = { l: 170, r: 30, t: 96, b: 80 };
     const vs = d.pontos.map(function (p) { return p.v; });
     const max = Math.max.apply(null, vs.concat([1])), min = Math.min.apply(null, vs.concat([0]));
     const passo = passoBonito(max - Math.min(0, min), 4);
@@ -286,9 +287,9 @@ window.App = window.App || {};
     }
     if (d.final) {
       g.fillStyle = '#15803D';
-      g.font = 'bold 28px ' + FONTE;
+      g.font = 'bold 38px ' + FONTE;
       g.textAlign = 'right';
-      g.fillText(d.final, W - m.r, Math.max(m.t + 120, y(max) - 26));
+      g.fillText(d.final, W - m.r, Math.min(m.t / 2, y(max) - 34));
     }
     return { dataURL: cv.toDataURL('image/png'), proporcao: H / W };
   }

@@ -967,7 +967,8 @@
     // conta dos próximos anos: ano a ano, valores arredondados e total
     const somaEco = f.anos.reduce(function (s0, a) { return s0 + a.economiaMes * 12; }, 0);
     const reais = function (v) { return U.brl(Math.round(v)).replace(/,00$/, ''); };
-    ok('conta nos próximos anos: formato com Fio B ano a ano, amigável, com o total', f.anos.length === 25 && f.anos.every(function (a) {
+    ok('conta nos próximos anos: formato com Fio B nos anos da projeção (2026–2031, 2035, 2040, 2045 e 2050), amigável, com o total',
+      f.projecao.map(function (a) { return a.ano; }).join(',') === '2026,2027,2028,2029,2030,2031,2035,2040,2045,2050' && f.projecao.every(function (a) {
       return [String(a.ano), U.fmtSmart(a.pctFioB * 100, 0) + '%', reais(a.contaSem), reais(a.custoDisp), reais(a.energiaGD), reais(a.cosip), reais(a.contaCom), reais(a.economiaMes)].every(function (x) { return tx.indexOf(x) >= 0; });
     }) && ['Fio B', 'Mínimo', 'disponibilidade', 'Energia + Fio B', 'COSIP', 'Com energia solar', 'Você economiza', 'o que vale está em negrito', 'Somando os 25 anos, a economia na conta de luz chega a ', reais(somaEco)]
       .every(function (x) { return txt.indexOf(x) >= 0; }) && txt.indexOf('Economia no mês') < 0, reais(a1.contaSem) + ' / ' + reais(somaEco));

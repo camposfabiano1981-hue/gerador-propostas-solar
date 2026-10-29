@@ -653,7 +653,8 @@ window.App = window.App || {};
         { w: w, fill: 'FFFBEB', borda: { sz: 6, cor: 'FDE68A' }, mar: { t: 120, b: 120, l: 180, r: 140 }, vAlign: 'top' });
     }));
     b.push(subtitulo('Sua conta de luz nos próximos anos', 200));
-    // projeção ano a ano no formato da conta com Fio B (Lei 14.300/2022), em versão amigável: média mensal, valores arredondados e uma cor por coluna
+    // projeção no formato da conta com Fio B (Lei 14.300/2022), em versão amigável: os 6 primeiros anos e depois de 5 em 5 (f.projecao),
+    // média mensal, valores arredondados e uma cor por coluna; o total soma todos os anos
     const regraMaior = prem.regraDisponibilidade !== 'disponibilidade';
     b.push(T(!temFV
       ? 'A tarifa sobe quase todo ano (aqui, ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano). Valores mensais médios, com impostos' + (r.cosip > 0 ? ' e a COSIP' : '') + ':'
@@ -692,16 +693,15 @@ window.App = window.App || {};
     colsT[colsT.length - 1].w += 9360 - colsT.reduce(function (s0, c) { return s0 + c.w; }, 0);
     const LCT = colsT.map(function (c) { return c.w; });
     const linhasT = [TR(colsT.map(function (c) {
-      return TC([T(c.t, { jc: c.jc || 'right', after: 0 }, { b: true, color: BRANCO, sz: 16 }), T(c.sub, { jc: c.jc || 'right' }, { color: 'E2E8F0', sz: 13 })],
-        { w: c.w, fill: c.cor, borda: { sz: 4, cor: c.cor }, mar: { t: 60, b: 60, l: 100, r: 100 } });
+      return TC([T(c.t, { jc: c.jc || 'right', after: 0 }, { b: true, color: BRANCO, sz: 17 }), T(c.sub, { jc: c.jc || 'right' }, { color: 'E2E8F0', sz: 14 })],
+        { w: c.w, fill: c.cor, borda: { sz: 4, cor: c.cor }, mar: { t: 80, b: 80, l: 100, r: 100 } });
     }), true)];
-    let somaEco = 0;
-    f.anos.forEach(function (a, i) {
-      somaEco += a.economiaMes * 12;
+    const somaEco = f.anos.reduce(function (s0, a) { return s0 + a.economiaMes * 12; }, 0);
+    f.projecao.forEach(function (a, i) {
       linhasT.push(TR(colsT.map(function (c) {
         const x = c.v(a);
-        return TC(T(x[0], { jc: c.jc || 'right' }, Object.assign({ sz: 17 }, x[1])),
-          { w: c.w, fill: c.verde ? (i % 2 ? 'E7F8EE' : 'F0FDF4') : (i % 2 ? 'F8FAFC' : BRANCO), borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 22, b: 22, l: 100, r: 100 } });
+        return TC(T(x[0], { jc: c.jc || 'right' }, Object.assign({ sz: 20 }, x[1])),
+          { w: c.w, fill: c.verde ? (i % 2 ? 'E7F8EE' : 'F0FDF4') : (i % 2 ? 'F8FAFC' : BRANCO), borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 75, b: 75, l: 100, r: 100 } });
       }), false, { naoQuebrar: true }));
     });
     linhasT.push(TR([TC(P([R('Somando os ' + f.anos.length + ' anos, a economia na conta de luz chega a ', { color: BRANCO, sz: 20 }), R(valorCurto(somaEco), { b: true, color: BRANCO, sz: 24 })], { jc: 'center' }),
