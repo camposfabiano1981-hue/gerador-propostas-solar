@@ -20,7 +20,22 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - **Composição do preço pela margem**: custos diretos — kit (soma dos itens ou valor manual da cotação), **instalação por módulo** (faixa 1 de R$ 80,00/módulo aplicada automaticamente ou faixa 2, ambas em Configurações › Premissas), **infraestrutura CA** (começa zerada e é lançada em cada proposta) e **outros valores** — mais **lucro** (% do valor final ou valor em R$) e **comissão** (5% do valor final, automática). Valor final = (custos + lucro em R$) ÷ (1 − % lucro − % comissão); no híbrido/BESS, sobre o valor final de cada cenário (FV + armazenamento). Lucro e comissão aparecem só no painel; na proposta e no contrato entram na linha de **mão de obra + projeto + instalação + homologação**. Propostas gravadas antes desta versão mantêm o valor informado, com botão para passar ao novo cálculo.
 - Opções de pagamento: à vista, cartão com acréscimo fixo e financiamentos (BV, Solfácil…) por PMT.
 - **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
-- **Proposta objetiva para o cliente**: apresentação, projetos realizados, **passo a passo** do projeto (o cronograma de execução em linha do tempo ilustrada, com o prazo de cada etapa — editável em Configurações › Textos padrão), dados do cliente, armazenamento (cargas críticas e resumo do banco), comparativo de cenários, consumo × geração, análise financeira, projeção da conta, fluxo de caixa, pagamento, equipamentos com garantias, serviços e assinaturas. Os detalhes de engenharia (strings, FDG, HSP, PR, tensão do banco, balanço diário etc.) ficam no painel da proposta, fora do documento impresso.
+- **Proposta amigável para o cliente**, em linguagem simples e com o resultado em destaque:
+  - **capa** com a redução da conta em %, os números principais (potência, geração, economia por mês) e a data de validade;
+  - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, como pagar e o contato pelo WhatsApp;
+  - apresentação da empresa, dados do cliente, projetos realizados e **passo a passo** (cronograma em linha do tempo ilustrada, com o prazo de cada etapa — editável em Configurações › Textos padrão);
+  - **como a energia solar funciona** (ilustração própria, com ou sem baterias) e os benefícios para o cliente;
+  - **seu sistema**: números do projeto, gráfico de produção mês a mês, equipamentos com garantia e um glossário curto;
+  - armazenamento (cargas críticas e resumo do banco) e comparativo de cenários, quando houver;
+  - **o que está incluso** e o que não está, as garantias e o que acontece depois da instalação;
+  - lista de equipamentos e materiais;
+  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?", a conta nos próximos anos);
+  - **retorno do investimento** (tempo de retorno, TIR × SELIC, quantas vezes o valor volta, custo do kWh solar e gráfico do saldo acumulado);
+  - investimento e formas de pagamento (com a sobra no mês: economia − parcela);
+  - **próximos passos** (aprovação, contrato, vistoria), considerações, cartão de contato e assinaturas;
+  - anexo com as premissas do cálculo e o fluxo de caixa de 25 anos.
+
+  Telefone (usado como WhatsApp), e-mail e endereço vêm de Configurações › Empresa. Os detalhes de engenharia (strings, FDG, HSP, PR, tensão do banco, balanço diário etc.) ficam no painel da proposta, fora do documento impresso.
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
 - Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
@@ -188,7 +203,8 @@ js/nuvem-config.js    firebaseConfig publicado para todos os aparelhos (opcional
 js/energia.js         Tarifas (convencional, branca, verde, azul), contas, compensação, cenários e recomendação
 js/calc.js            Dimensionamento On-Grid/Híbrido/BESS, materiais, cenários, financeiro e pagamentos
 js/passos.js          "Passo a passo" da proposta: cronograma de execução em linha do tempo (canvas → PNG)
-js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato (canvas → PNG)
+js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato e gráfico do saldo acumulado (canvas → PNG)
+js/arte.js            Artes da proposta: faixa da capa e ilustração "Como funciona" (canvas → PNG)
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)

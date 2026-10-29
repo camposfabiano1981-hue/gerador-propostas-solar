@@ -307,11 +307,12 @@
   ok('proposta: mão de obra exibida inclui a comissão', txPreco.indexOf(U.brl(rPreco.maoObra)) >= 0);
   ok('proposta: sem a tabela de dimensionamento técnico (FDG, PR, HSP)', !/DIMENSIONAMENTO TÉCNICO|Fator de Dimensionamento|Performance Ratio|Simultaneidade Adotada/.test(txPreco));
   ok('proposta: sem condições comerciais e conformidade legal no final', !/CONDIÇÕES COMERCIAIS|CONFORMIDADE LEGAL|CRONOGRAMA DE EXECUÇÃO|NBR 16690/.test(txPreco));
-  ok('proposta: garantia da instalação junto da lista de equipamentos', /Garantia da instalação \(.+\): 1 ano\. Equipamentos com a garantia do fabricante/.test(txPreco));
+  ok('proposta: garantia da instalação nos cartões de garantia', /Instalação\n1 ano\npela .+: mão de obra e conexões/.test(txPreco));
   const txObs = textoModelo(App.Documento.montar(Object.assign(U.clone(pPreco), { condicoesObs: 'Preço válido para pagamento via PIX.' }), rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
   ok('proposta: observações da proposta junto das opções de pagamento', txObs.indexOf('Observações: Preço válido para pagamento via PIX.') >= 0);
-  ok('proposta: validade continua na capa e nos dados do cliente', (txPreco.match(/^\d+ dias$/gm) || []).length >= 2);
-  ok('proposta: tabela da conta compara disponibilidade × energia + Fio B', txPreco.indexOf('Custo Disponib.') >= 0 && txPreco.indexOf('Energia + Fio B') >= 0 && /art\. 655-I/.test(txPreco));
+  ok('proposta: validade com data na capa, no resumo e nos próximos passos; prazo nos dados do cliente', (txPreco.match(/04\/10\/2026/g) || []).length >= 3 && /^5 dias$/m.test(txPreco));
+  ok('proposta: conta dos próximos anos em linguagem simples; regra técnica (art. 655-I) no anexo', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('Economia no mês') >= 0 &&
+    txPreco.indexOf('Custo Disponib.') < 0 && txPreco.indexOf('Anexo — premissas e fluxo de caixa') >= 0 && /art\. 655-I/.test(txPreco.slice(txPreco.indexOf('Anexo — premissas'))));
 
   // ---------------------------------------------------------------- fluxo de caixa pela conta anual e indicadores de retorno
   (function () {
@@ -359,7 +360,7 @@
     const rAlto = C.calcular(Object.assign(U.clone(base), { lucroPct: 0.8, comissaoPct: 0.05 }), ctx);
     ok('margem: lucro + comissão excessivos geram erro', rAlto.alertas.some(function (a) { return a.nivel === 'erro' && /inviabilizam/.test(a.msg); }));
     const txm = textoModelo(App.Documento.montar(Object.assign(U.clone(base), { infraValor: 1200 }), rInfra, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
-    ok('margem: comissão e lucro não aparecem na proposta', !/comiss[aã]o|lucro/i.test(txm) && txm.indexOf(U.brl(rInfra.comissao)) < 0 && txm.indexOf(U.brl(rInfra.lucro)) < 0);
+    ok('margem: comissão e lucro não aparecem na proposta', !/comiss[aã]o|Lucro \(|lucro em/i.test(txm) && txm.indexOf(U.brl(rInfra.comissao)) < 0 && txm.indexOf(U.brl(rInfra.lucro)) < 0);
     ok('margem: proposta mostra a mão de obra com lucro e comissão', txm.indexOf(U.brl(rInfra.maoObra)) >= 0 && txm.indexOf(U.brl(rInfra.total)) >= 0);
     perto('proposta antiga (valor total) não muda', r.total, 12700, 1e-9);
     // híbrido: lucro e comissão sobre o valor final do cenário (FV + armazenamento)
@@ -781,25 +782,25 @@
   ok('projetos: 0 na configuração = sem seção e sem alerta', rP0.projetos.length === 0 && !alertaProj(rP0));
   const mP = App.Documento.montar(p, rP, ctxP, ctxP.clientes[0], { w: 1400, h: 752 });
   const txP = textoModelo(mP);
-  igual('projetos: seção 2, após a apresentação; passo a passo logo depois',
-    txP.filter(function (x) { return /^\d+\. [A-ZÇÃÕÉÍÓÚÊÂ ]+$/.test(x); }).slice(0, 4).join(' | '),
-    '1. APRESENTAÇÃO DA EMPRESA | 2. PROJETOS REALIZADOS | 3. PASSO A PASSO | 4. DADOS DO CLIENTE E DO PROJETO');
+  const titulos = function (tx) { return tx.filter(function (x) { return /^\d+   \S/.test(x); }).map(function (x) { return x.replace(/   /, ' '); }); };
+  igual('ordem: resumo, apresentação, dados, projetos e passo a passo', titulos(txP).slice(0, 5).join(' | '),
+    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Dados do cliente e do projeto | 4 Projetos realizados | 5 Passo a passo');
   const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
-  igual('sem projetos: passo a passo logo após a apresentação',
-    textoModelo(mSemP).filter(function (x) { return /^\d+\. [A-ZÇÃÕÉÍÓÚÊÂ ]+$/.test(x); }).slice(0, 3).join(' | '),
-    '1. APRESENTAÇÃO DA EMPRESA | 2. PASSO A PASSO | 3. DADOS DO CLIENTE E DO PROJETO');
+  igual('sem projetos: seções na ordem da proposta amigável', titulos(textoModelo(mSemP)).join(' | '),
+    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Dados do cliente e do projeto | 4 Passo a passo | 5 Como a energia solar funciona na sua casa | 6 Seu sistema solar | ' +
+    '7 O que está incluso | 8 Lista de equipamentos e materiais | 9 Quanto você economiza | 10 Retorno do investimento | 11 Investimento e formas de pagamento | 12 Próximos passos');
   ok('passo a passo: linha do tempo em PNG com a frase de abertura', /^data:image\/png;base64,/.test(mSemP.imagens.passos || '') && textoModelo(mSemP).indexOf(D.textos.passoIntro) >= 0);
   const pa6 = App.Passos.imagem(D.textos.cronograma), pa3 = App.Passos.imagem(D.textos.cronograma.slice(0, 3));
   ok('passo a passo: altura cresce com o número de etapas', pa6.proporcao > pa3.proporcao * 1.6 && pa6.proporcao < 1.4, pa3.proporcao.toFixed(3) + ' / ' + pa6.proporcao.toFixed(3));
   const ctxSemCron = U.clone(ctx); ctxSemCron.textos = U.clone(ctx.textos || D.textos); ctxSemCron.textos.cronograma = [];
   const mSemCron = App.Documento.montar(p, r, ctxSemCron, ctx.clientes[0], { w: 1400, h: 752 });
   ok('passo a passo: sem etapas, sem a seção', !mSemCron.imagens.passos && textoModelo(mSemCron).indexOf('2. PASSO A PASSO') < 0);
-  igual('projetos: 2 fotos por projeto no documento (+ passo a passo)', Object.keys(mP.imagens).length, 9);
+  igual('projetos: 2 fotos por projeto no documento (+ passo a passo, capa, como funciona e saldo)', Object.keys(mP.imagens).length, 12);
   ok('projetos: ficha técnica com CO₂ evitado', txP.indexOf('Potência instalada') >= 0 && txP.indexOf('Geração média') >= 0 && txP.some(function (x) { return /^\d+(,\d)? t\/ano$/.test(x); }));
   const xmlP = App.Docx.serializar(mP);
   ok('projetos: fotos referenciadas no Word', /r:embed="rIdImg1"/.test(xmlP.documento) && /r:embed="rIdImg8"/.test(xmlP.documento));
   ok('projetos: XML do Word válido', !new DOMParser().parseFromString(xmlP.documento, 'application/xml').querySelector('parsererror'));
-  ok('capa: quadro de identificação centralizado', /<w:tblW w:w="6084" w:type="dxa"\/><w:jc w:val="center"\/>/.test(xmlP.documento));
+  ok('capa: faixa da marca e quadro azul com o cliente, o número e a validade', mP.imagens.capa && /PREPARADA PARA/.test(xmlP.documento) && /Válida até/.test(xmlP.documento));
 
   // ---------------------------------------------------------------- docx
   async function testarDocx() {
@@ -881,6 +882,49 @@
   // ---------------------------------------------------------------- numeração automática (somente leitura do armazenamento)
   const num = App.Store.proximoNumero('2026-09-29');
   ok('número automático no formato PREFIXO-AAAAMMDD-NNN', /^[A-Z0-9]+-20260929-\d{3}$/.test(num.numero), num.numero);
+
+  // ---------------------------------------------------------------- proposta amigável: seções novas
+  (function () {
+    const m = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
+    const tx = textoModelo(m), txt = tx.join('\n'), f = r.fin, a1 = f.anos[0];
+    ok('capa: manchete com a redução da conta', /^conta de luz \d+% menor$/m.test(txt) && txt.indexOf('Energia do sol,') >= 0);
+    ok('resumo: investimento, economia no 1º ano, retorno e economia em 25 anos', ['Investimento', 'Economia no 1º ano', 'O investimento volta em', 'Economia em 25 anos', U.brl(r.total), U.anosMeses(f.paybackSimples)]
+      .every(function (x) { return txt.indexOf(x) >= 0; }));
+    ok('resumo: conta de hoje × com energia solar', txt.indexOf('Sua conta de luz por mês') >= 0 && txt.indexOf(U.brl(a1.contaSem)) >= 0 && txt.indexOf(U.brl(a1.contaCom)) >= 0);
+    ok('resumo: o que você recebe e como pagar', txt.indexOf('O que você recebe') >= 0 && /9 módulos .* de 625 Wp/.test(txt) && txt.indexOf('Como pagar') >= 0);
+    ok('como funciona: ilustração e 5 passos', !!m.imagens.comoFunciona && txt.indexOf('Painéis no telhado captam a luz do sol') >= 0 && txt.indexOf('À noite e em dias nublados você usa a rede') >= 0);
+    ok('benefícios personalizados com os números do cliente', txt.indexOf('Por que vale a pena para você') >= 0 && new RegExp('De R\\$ [\\d.]+ para cerca de R\\$ [\\d.]+ por mês').test(txt));
+    ok('seu sistema: faixa de indicadores, gráfico e equipamentos com garantia', txt.indexOf('geração média/mês') >= 0 && txt.indexOf('Geração estimada mês a mês') >= 0 && /Garantia: /.test(txt));
+    ok('o que está incluso: inclusos, não inclusos, garantias e pós-instalação', ['Está incluso', 'Não está incluso', 'Projeto elétrico completo + ART/CFT-BR', 'Troca do padrão de entrada (medidor)', 'Garantias', 'Depois da instalação: ']
+      .every(function (x) { return txt.indexOf(x) >= 0; }));
+    ok('quanto você economiza: quadros, explicações e tabela dos anos', ['Conta hoje', 'Você economiza', 'Por que a conta não zera?', 'O que é o Fio B?', 'Sua conta de luz nos próximos anos'].every(function (x) { return txt.indexOf(x) >= 0; }));
+    ok('retorno: tempo, TIR, vezes, custo do kWh e saldo acumulado', !!m.imagens.saldo && ['Tempo de retorno', 'Rentabilidade (TIR)', 'vezes', 'Custo da sua energia solar', '/kWh'].every(function (x) { return txt.indexOf(x) >= 0; }));
+    ok('pagamento: composição do investimento e sobra no mês', txt.indexOf('Composição do investimento') >= 0 && txt.indexOf('Sobra no mês*') >= 0 && txt.indexOf('Valor total da proposta') >= 0);
+    ok('próximos passos: 3 passos, validade com data, contato e assinatura', ['Aprovação', 'Contrato e pagamento', 'Vistoria e projeto', 'Considerações importantes', 'Contratante — de acordo'].every(function (x) { return txt.indexOf(x) >= 0; }) &&
+      /válida até\n?04\/10\/2026/.test(txt.replace(/e é válida até /, 'válida até')));
+    ok('anexo: premissas e fluxo de caixa no fim', txt.lastIndexOf('Anexo — premissas e fluxo de caixa') > txt.indexOf('Próximos passos') && txt.indexOf('Premissas do cálculo:') > 0 && txt.indexOf('Fluxo de caixa — 25 anos') > 0);
+    const xml = App.Docx.serializar(m).documento;
+    ok('Word: XML válido e sem tabelas encostadas (que o Word fundiria)', !new DOMParser().parseFromString(xml, 'application/xml').querySelector('parsererror') && xml.indexOf('</w:tbl><w:tbl>') < 0);
+    ok('Word: seções principais começam em página nova', (xml.match(/<w:pageBreakBefore\/>/g) || []).length >= 6);
+    // com o telefone da empresa: WhatsApp na capa, no resumo e no contato
+    const ctxF = U.clone(ctx); ctxF.empresa.telefone = '(67) 99999-0000';
+    const txF = textoModelo(App.Documento.montar(p, r, ctxF, ctxF.clientes[0], { w: 1400, h: 752 })).join('\n');
+    ok('telefone da empresa: WhatsApp na capa, no resumo e no contato', (txF.match(/\(67\) 99999-0000/g) || []).length >= 3);
+    // híbrido: baterias na ilustração, nos equipamentos e nas garantias
+    const mH = App.Documento.montar(pH, rH, ctxH, ctxH.clientes[0], { w: 1400, h: 752 });
+    const txH = textoModelo(mH).join('\n');
+    ok('híbrido: baterias em "como funciona", equipamentos e garantias', txH.indexOf('As baterias guardam energia') >= 0 && /🔋  Baterias/.test(txH) && /Baterias\n\d+ anos|Baterias\nconforme fabricante/.test(txH));
+    ok('híbrido: XML do Word válido', !new DOMParser().parseFromString(App.Docx.serializar(mH).documento, 'application/xml').querySelector('parsererror'));
+    // BESS sem FV (grupo A): sem "como funciona" nem "seu sistema"; conta com demanda
+    const mA = App.Documento.montar(pA, rA, ctxA, ctxA.clientes[0], { w: 1400, h: 752 });
+    const txA = textoModelo(mA).join('\n');
+    ok('BESS sem FV: proposta sem como funciona e sem seu sistema, com a explicação da demanda', txA.indexOf('Como a energia solar funciona') < 0 && txA.indexOf('Seu sistema solar') < 0 &&
+      txA.indexOf('demanda contratada continua sendo cobrada') >= 0 && txA.indexOf('O que é o Fio B?') < 0 && !mA.imagens.comoFunciona);
+    ok('BESS sem FV: XML do Word válido', !new DOMParser().parseFromString(App.Docx.serializar(mA).documento, 'application/xml').querySelector('parsererror'));
+    // artes
+    const fx = App.Arte.faixaCapa(), cf = App.Arte.comoFunciona({ bateria: true });
+    ok('artes: faixa da capa e ilustração em PNG', /^data:image\/png/.test(fx.dataURL) && /^data:image\/png/.test(cf.dataURL) && cf.proporcao > 0.4 && cf.proporcao < 0.5);
+  })();
 
   // ---------------------------------------------------------------- sincronização (nuvem): ganchos do Store e configuração do Firebase
   (function () {

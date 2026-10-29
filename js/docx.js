@@ -105,6 +105,7 @@ window.App = window.App || {};
     o = o || {};
     let s = '';
     if (o.keepNext) s += '<w:keepNext/>';
+    if (o.quebra) s += '<w:pageBreakBefore/>';
     if (o.top || o.bottom || o.left) {
       s += '<w:pBdr>' + (o.top ? borda('top', o.top) : '') + (o.left ? borda('left', o.left) : '') + (o.bottom ? borda('bottom', o.bottom) : '') + '</w:pBdr>';
     }

@@ -210,5 +210,88 @@ window.App = window.App || {};
     return cv.toDataURL('image/png');
   }
 
-  App.Chart = { desenharProducao: desenharProducao, producaoDataURL: producaoDataURL, dadosProducao: dadosProducao };
+  /**
+   * Gráfico do saldo acumulado (proposta): barra vermelha enquanto o investimento não se pagou e verde depois,
+   * com a marcação do ano em que ele se paga e o saldo final.
+   * @param {{pontos: {rot: string, v: number}[], marca: string, sub: string, final: string}} d
+   *   marca: texto do balão no ano do retorno; final: rótulo do saldo do último ano
+   */
+  function saldoDataURL(d) {
+    const W = 1800, H = 640;
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#FFFFFF';
+    g.fillRect(0, 0, W, H);
+    const m = { l: 170, r: 30, t: 40, b: 80 };
+    const vs = d.pontos.map(function (p) { return p.v; });
+    const max = Math.max.apply(null, vs.concat([1])), min = Math.min.apply(null, vs.concat([0]));
+    const passo = passoBonito(max - Math.min(0, min), 4);
+    const topo = Math.ceil(max / passo) * passo, base = Math.min(0, min * 1.5);
+    const pw = W - m.l - m.r, ph = H - m.t - m.b, bw = pw / d.pontos.length;
+    const y = function (v) { return m.t + (topo - v) / (topo - base) * ph; };
+    const rotulo = function (v) {
+      if (v === 0) return '0';
+      if (Math.abs(v) >= 1e6) return U.fmt(v / 1e6, 1) + ' mi';
+      return U.fmt(v / 1000, 0) + ' mil';
+    };
+    g.textBaseline = 'middle';
+    for (let v = 0; v <= topo + 1; v += passo) {
+      g.strokeStyle = v === 0 ? '#94A3B8' : '#E5E7EB';
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(m.l, y(v)); g.lineTo(W - m.r, y(v)); g.stroke();
+      g.fillStyle = '#6B7280';
+      g.font = '26px ' + FONTE;
+      g.textAlign = 'right';
+      g.fillText(rotulo(v), m.l - 14, y(v));
+    }
+    let iPay = -1;
+    d.pontos.forEach(function (p, i) {
+      if (iPay < 0 && i > 0 && p.v >= 0) iPay = i;
+      const x = m.l + i * bw + bw * 0.16, w = bw * 0.68, y0 = y(0), y1 = y(p.v);
+      g.fillStyle = p.v < 0 ? '#EF4444' : (i === iPay ? '#F6A81C' : '#22C55E');
+      g.fillRect(x, Math.min(y0, y1), w, Math.max(3, Math.abs(y1 - y0)));
+      const ultimo = i === d.pontos.length - 1;
+      if ((i % 4 === 0 && i < d.pontos.length - 2) || ultimo) {
+        g.fillStyle = '#475569';
+        g.font = '24px ' + FONTE;
+        g.textAlign = 'center';
+        g.fillText(p.rot, x + w / 2, H - m.b + 40);
+      }
+    });
+    if (iPay > 0 && d.marca) {
+      const xp = m.l + iPay * bw + bw / 2;
+      g.save();
+      g.setLineDash([10, 10]);
+      g.strokeStyle = '#F6A81C';
+      g.lineWidth = 4;
+      g.beginPath(); g.moveTo(xp, y(0) - 12); g.lineTo(xp, m.t + 70); g.stroke();
+      g.restore();
+      g.font = 'bold 28px ' + FONTE;
+      const wb = Math.max(g.measureText(d.marca).width, (function () { g.font = '25px ' + FONTE; return g.measureText(d.sub || '').width; })()) + 44;
+      const xb = Math.min(xp + 14, W - m.r - wb);
+      g.fillStyle = '#FFF7E6';
+      g.strokeStyle = '#F6A81C';
+      g.lineWidth = 3;
+      g.beginPath();
+      if (g.roundRect) g.roundRect(xb, m.t + 6, wb, 92, 18); else g.rect(xb, m.t + 6, wb, 92);
+      g.fill(); g.stroke();
+      g.textAlign = 'left';
+      g.fillStyle = '#92400E';
+      g.font = 'bold 28px ' + FONTE;
+      g.fillText(d.marca, xb + 22, m.t + 38);
+      g.font = '25px ' + FONTE;
+      g.fillText(d.sub || '', xb + 22, m.t + 74);
+    }
+    if (d.final) {
+      g.fillStyle = '#15803D';
+      g.font = 'bold 28px ' + FONTE;
+      g.textAlign = 'right';
+      g.fillText(d.final, W - m.r, Math.max(m.t + 120, y(max) - 26));
+    }
+    return { dataURL: cv.toDataURL('image/png'), proporcao: H / W };
+  }
+
+  App.Chart = { desenharProducao: desenharProducao, producaoDataURL: producaoDataURL, dadosProducao: dadosProducao, saldoDataURL: saldoDataURL };
 })(window.App);

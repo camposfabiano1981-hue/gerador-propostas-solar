@@ -577,6 +577,11 @@ window.App = window.App || {};
         this.y = this.tabela(no, true);
         continue;
       }
+      if (no.po.quebra) {
+        // quebra de página: o parágrafo marcador não ocupa espaço
+        if (this.y > this.topoConteudo() + 1) this.novaPagina();
+        if (!no.filhos.length) continue;
+      }
       const med = this.medirParagrafo(no, this.cw);
       if (no.po.keepNext) {
         // soma a sequência de parágrafos "manter com o próximo" (ex.: título + subtítulo) e o início do bloco seguinte
