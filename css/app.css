@@ -97,6 +97,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .card { background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: var(--sombra); padding: 18px 20px; margin-bottom: 16px; }
 .card.sem-pad { padding: 0; overflow: hidden; }
 .card h3 { font-size: 16px; color: var(--azul); margin-bottom: 12px; }
+.card h4 { font-size: 14px; color: var(--azul); margin: 18px 0 4px; }
 .card-topo { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--borda); }
 .card-topo h3 { margin: 0; }
 .card.dica { background: #FFFBEB; border-color: #FDE68A; color: #78350F; }

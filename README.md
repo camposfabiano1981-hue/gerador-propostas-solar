@@ -23,15 +23,16 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - **Proposta amigável para o cliente**, em linguagem simples e com o resultado em destaque:
   - **capa** com a redução da conta em %, os números principais (potência, geração, economia por mês) e a data de validade;
   - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, como pagar e o contato pelo WhatsApp;
-  - apresentação da empresa, dados do cliente, projetos realizados e **passo a passo** (cronograma em linha do tempo ilustrada, com o prazo de cada etapa — editável em Configurações › Textos padrão);
+  - **apresentação da empresa**: o texto de apresentação, os cartões "Por que escolher" (diferenciais editáveis em Configurações › Textos padrão) e o cartão do responsável técnico ("Quem cuida do seu projeto");
+  - projetos realizados;
+  - **passo a passo** (cronograma em linha do tempo ilustrada, com o prazo de cada etapa): fica fora da proposta até ser ligado em Configurações › Textos padrão;
   - **como a energia solar funciona** (ilustração própria, com ou sem baterias) e os benefícios para o cliente;
   - **seu sistema**: números do projeto, gráfico de produção mês a mês, equipamentos com garantia e um glossário curto;
   - armazenamento (cargas críticas e resumo do banco) e comparativo de cenários, quando houver;
   - **o que está incluso** e o que não está, as garantias e o que acontece depois da instalação;
-  - lista de equipamentos e materiais;
-  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?", a conta nos próximos anos);
+  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?" e a conta nos próximos anos em tabela amigável: 1º, 5º, 10º, 15º, 20º e 25º ano, valores arredondados e o total da economia);
   - **retorno do investimento** (tempo de retorno, TIR × SELIC, quantas vezes o valor volta, custo do kWh solar e gráfico do saldo acumulado);
-  - investimento e formas de pagamento (com a sobra no mês: economia − parcela);
+  - investimento (só o valor total e o que está incluído, sem a composição de custos) e formas de pagamento (com a sobra no mês: economia − parcela);
   - **próximos passos** (aprovação, contrato, vistoria), considerações, cartão de contato e assinaturas;
   - anexo com as premissas do cálculo e o fluxo de caixa de 25 anos.
 

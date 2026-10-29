@@ -218,13 +218,20 @@
       'Eles são substituídos pelos dados de cada proposta.'));
 
     cont.appendChild(h('div.card', h('h3', 'Apresentação e encerramento'), UI.grade([
-      { k: 'apresentacao', label: 'Apresentação da empresa (seção 1)', type: 'textarea', rows: 4, cls: 'span2' },
+      { k: 'apresentacao', label: 'Apresentação da empresa', type: 'textarea', rows: 4, cls: 'span2' },
       { k: 'projetosIntro', label: 'Introdução da seção Projetos realizados', type: 'textarea', rows: 2, cls: 'span2' },
       { k: 'slogan', label: 'Frase final (slogan)', cls: 'span2' },
       { k: 'garantiaInstalacao', label: 'Garantia da instalação' },
       { k: 'infraDescricao', label: 'Descrição padrão da infraestrutura CA' },
       { k: 'notaPagamento', label: 'Nota abaixo das opções de pagamento', cls: 'span2' }
-    ], tx, marcar)));
+    ], tx, marcar),
+    h('h4', 'Por que escolher a empresa (diferenciais)'),
+    h('p.ajuda-sec', 'Cartões da Apresentação da empresa, abaixo do texto. O ícone é opcional (um emoji). Logo depois vem o cartão do responsável técnico (Configurações › Empresa).'),
+    UI.editorLinhas(tx.diferenciais, [
+      { k: 'icone', label: 'Ícone', w: '9%' },
+      { k: 'titulo', label: 'Título', w: '28%' },
+      { k: 'texto', label: 'Descrição' }
+    ], marcar, '+ Adicionar diferencial', function () { return { icone: '', titulo: '', texto: '' }; })));
 
     cont.appendChild(h('div.card', h('h3', 'Serviços (um por linha)'), UI.grade([
       { k: 'inclusos', label: '✅ Inclusos', type: 'linhas', rows: 9 },
@@ -244,8 +251,11 @@
     ], tx, marcar)));
 
     cont.appendChild(h('div.card', h('h3', 'Passo a passo (cronograma de execução)'),
-      h('p.ajuda-sec', 'Aparece logo após Projetos realizados, como linha do tempo ilustrada: cada etapa vira um passo numerado, com o prazo estimado.'),
-      UI.grade([{ k: 'passoIntro', label: 'Frase de abertura', type: 'textarea', rows: 2, cls: 'span2' }], tx, marcar),
+      h('p.ajuda-sec', 'Linha do tempo ilustrada logo após Projetos realizados: cada etapa vira um passo numerado, com o prazo estimado. Fica fora da proposta até você marcar a opção abaixo.'),
+      UI.grade([
+        { k: 'passoNaProposta', label: 'Incluir o passo a passo na proposta', type: 'checkbox', cls: 'span2' },
+        { k: 'passoIntro', label: 'Frase de abertura', type: 'textarea', rows: 2, cls: 'span2' }
+      ], tx, marcar),
       UI.editorLinhas(tx.cronograma, [
         { k: 'etapa', label: 'Descrição da etapa' },
         { k: 'prazo', label: 'Prazo estimado', w: '30%' }

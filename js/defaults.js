@@ -169,6 +169,14 @@ window.App = window.App || {};
   D.textos = {
     projetosIntro: 'Alguns projetos executados pela {empresaCurta}, com a ficha técnica de cada instalação.',
     apresentacao: 'A {empresa} é especializada em energia solar fotovoltaica, automação e engenharia elétrica em {cidadeEmpresa}. Executamos o ciclo completo: dimensionamento técnico, fornecimento, instalação certificada, homologação {concessionaria} e suporte pós-venda. Equipe registrada no {registroTipo}.',
+    diferenciais: [
+      { icone: '📐', titulo: 'Engenharia própria', texto: 'Projeto elétrico e ART com responsável técnico registrado no {registroTipo}.' },
+      { icone: '🔧', titulo: 'Do projeto à ligação', texto: 'Dimensionamento, fornecimento, instalação e homologação na {concessionaria}: você fala com uma empresa só.' },
+      { icone: '✅', titulo: 'Instalação dentro das normas', texto: 'Execução conforme as normas técnicas da ABNT e da {concessionaria}, com comissionamento e testes.' },
+      { icone: '🤝', titulo: 'Suporte pós-venda', texto: 'Acompanhamos a geração e seguimos atendendo você depois da instalação.' },
+      { icone: '📍', titulo: 'Empresa local', texto: 'Atendimento em {cidadeEmpresa}: perto de você quando precisar.' },
+      { icone: '⚡', titulo: 'Além da energia solar', texto: 'Atuamos também em projetos elétricos e automação.' }
+    ],
     slogan: '"Sua conta de luz vira investimento, seu imóvel valoriza e o planeta agradece."',
     inclusos: [
       'Projeto elétrico completo + ART/{registroTipo}',
@@ -197,6 +205,7 @@ window.App = window.App || {};
       'Ampliação futura do banco de baterias',
       'Separação de circuitos além das cargas críticas listadas'
     ],
+    passoNaProposta: false, // linha do tempo fora da proposta por enquanto (liga em Configurações › Textos padrão)
     passoIntro: 'Da aprovação da proposta ao sistema gerando energia: veja como conduzimos cada etapa e os prazos estimados.',
     cronograma: [
       { etapa: 'Projeto elétrico + emissão de ART', prazo: '5 dias úteis' },

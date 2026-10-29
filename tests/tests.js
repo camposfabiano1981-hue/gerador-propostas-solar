@@ -302,16 +302,17 @@
   const rSep = C.calcular(Object.assign(U.clone(pPreco), { precoModo: 'separado', maoObraValor: 3000 }), ctx);
   perto('itens separados: total = kit + infra + mão de obra + outros (comissão dentro da mão de obra)', rSep.total, 8177.08 + 1500 + 3000 + 300, 1e-9);
   const txPreco = textoModelo(App.Documento.montar(pPreco, rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
-  ok('proposta: outros valores discriminados com a descrição', txPreco.indexOf('Adequação do padrão de entrada') >= 0 && txPreco.indexOf('R$ 300,00') >= 0);
+  ok('proposta: só o valor final, sem a composição do investimento', txPreco.indexOf('Composição do investimento') < 0 && txPreco.indexOf('Investimento total') >= 0 &&
+    txPreco.indexOf(U.brl(rPreco.total)) >= 0 && txPreco.indexOf('Adequação do padrão de entrada') < 0);
   ok('proposta: comissão não aparece', !/comiss[aã]o/i.test(txPreco) && txPreco.indexOf('R$ 500,00') < 0);
-  ok('proposta: mão de obra exibida inclui a comissão', txPreco.indexOf(U.brl(rPreco.maoObra)) >= 0);
+  ok('proposta: valores internos (kit e mão de obra) fora do documento', txPreco.indexOf(U.brl(rPreco.maoObra)) < 0 && txPreco.indexOf(U.brl(rPreco.kit)) < 0);
   ok('proposta: sem a tabela de dimensionamento técnico (FDG, PR, HSP)', !/DIMENSIONAMENTO TÉCNICO|Fator de Dimensionamento|Performance Ratio|Simultaneidade Adotada/.test(txPreco));
   ok('proposta: sem condições comerciais e conformidade legal no final', !/CONDIÇÕES COMERCIAIS|CONFORMIDADE LEGAL|CRONOGRAMA DE EXECUÇÃO|NBR 16690/.test(txPreco));
   ok('proposta: garantia da instalação nos cartões de garantia', /Instalação\n1 ano\npela .+: mão de obra e conexões/.test(txPreco));
   const txObs = textoModelo(App.Documento.montar(Object.assign(U.clone(pPreco), { condicoesObs: 'Preço válido para pagamento via PIX.' }), rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
   ok('proposta: observações da proposta junto das opções de pagamento', txObs.indexOf('Observações: Preço válido para pagamento via PIX.') >= 0);
-  ok('proposta: validade com data na capa, no resumo e nos próximos passos; prazo nos dados do cliente', (txPreco.match(/04\/10\/2026/g) || []).length >= 3 && /^5 dias$/m.test(txPreco));
-  ok('proposta: conta dos próximos anos em linguagem simples; regra técnica (art. 655-I) no anexo', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('Economia no mês') >= 0 &&
+  ok('proposta: validade com data na capa, no resumo e nos próximos passos', (txPreco.match(/04\/10\/2026/g) || []).length >= 3);
+  ok('proposta: conta dos próximos anos em linguagem simples; regra técnica (art. 655-I) no anexo', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('25º ano') >= 0 &&
     txPreco.indexOf('Custo Disponib.') < 0 && txPreco.indexOf('Anexo — premissas e fluxo de caixa') >= 0 && /art\. 655-I/.test(txPreco.slice(txPreco.indexOf('Anexo — premissas'))));
 
   // ---------------------------------------------------------------- fluxo de caixa pela conta anual e indicadores de retorno
@@ -361,7 +362,7 @@
     ok('margem: lucro + comissão excessivos geram erro', rAlto.alertas.some(function (a) { return a.nivel === 'erro' && /inviabilizam/.test(a.msg); }));
     const txm = textoModelo(App.Documento.montar(Object.assign(U.clone(base), { infraValor: 1200 }), rInfra, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
     ok('margem: comissão e lucro não aparecem na proposta', !/comiss[aã]o|Lucro \(|lucro em/i.test(txm) && txm.indexOf(U.brl(rInfra.comissao)) < 0 && txm.indexOf(U.brl(rInfra.lucro)) < 0);
-    ok('margem: proposta mostra a mão de obra com lucro e comissão', txm.indexOf(U.brl(rInfra.maoObra)) >= 0 && txm.indexOf(U.brl(rInfra.total)) >= 0);
+    ok('margem: proposta mostra só o valor final (sem a mão de obra com lucro e comissão)', txm.indexOf(U.brl(rInfra.maoObra)) < 0 && txm.indexOf(U.brl(rInfra.total)) >= 0);
     perto('proposta antiga (valor total) não muda', r.total, 12700, 1e-9);
     // híbrido: lucro e comissão sobre o valor final do cenário (FV + armazenamento)
     const pHm = Object.assign(U.clone(pH), { precificacao: 'margem', instalacaoFaixa: 1, lucroModo: 'pct', lucroPct: 0.15, comissaoPct: 0.05, infraValor: '', valorTotal: '' });
@@ -783,19 +784,23 @@
   const mP = App.Documento.montar(p, rP, ctxP, ctxP.clientes[0], { w: 1400, h: 752 });
   const txP = textoModelo(mP);
   const titulos = function (tx) { return tx.filter(function (x) { return /^\d+   \S/.test(x); }).map(function (x) { return x.replace(/   /, ' '); }); };
-  igual('ordem: resumo, apresentação, dados, projetos e passo a passo', titulos(txP).slice(0, 5).join(' | '),
-    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Dados do cliente e do projeto | 4 Projetos realizados | 5 Passo a passo');
+  igual('ordem: resumo, apresentação, projetos e como funciona', titulos(txP).slice(0, 4).join(' | '),
+    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Projetos realizados | 4 Como a energia solar funciona na sua casa');
   const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
   igual('sem projetos: seções na ordem da proposta amigável', titulos(textoModelo(mSemP)).join(' | '),
-    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Dados do cliente e do projeto | 4 Passo a passo | 5 Como a energia solar funciona na sua casa | 6 Seu sistema solar | ' +
-    '7 O que está incluso | 8 Lista de equipamentos e materiais | 9 Quanto você economiza | 10 Retorno do investimento | 11 Investimento e formas de pagamento | 12 Próximos passos');
-  ok('passo a passo: linha do tempo em PNG com a frase de abertura', /^data:image\/png;base64,/.test(mSemP.imagens.passos || '') && textoModelo(mSemP).indexOf(D.textos.passoIntro) >= 0);
+    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Como a energia solar funciona na sua casa | 4 Seu sistema solar | ' +
+    '5 O que está incluso | 6 Quanto você economiza | 7 Retorno do investimento | 8 Investimento e formas de pagamento | 9 Próximos passos');
+  ok('passo a passo: fora da proposta por padrão', D.textos.passoNaProposta === false && !mSemP.imagens.passos && textoModelo(mSemP).indexOf(D.textos.passoIntro) < 0);
+  const ctxPassos = U.clone(ctxP); ctxPassos.textos = Object.assign(U.clone(ctxP.textos || D.textos), { passoNaProposta: true });
+  const mPassos = App.Documento.montar(p, rP, ctxPassos, ctxP.clientes[0], { w: 1400, h: 752 });
+  ok('passo a passo ligado: linha do tempo em PNG com a frase de abertura, logo após os projetos', /^data:image\/png;base64,/.test(mPassos.imagens.passos || '') &&
+    textoModelo(mPassos).indexOf(D.textos.passoIntro) >= 0 && titulos(textoModelo(mPassos)).slice(2, 4).join(' | ') === '3 Projetos realizados | 4 Passo a passo');
   const pa6 = App.Passos.imagem(D.textos.cronograma), pa3 = App.Passos.imagem(D.textos.cronograma.slice(0, 3));
   ok('passo a passo: altura cresce com o número de etapas', pa6.proporcao > pa3.proporcao * 1.6 && pa6.proporcao < 1.4, pa3.proporcao.toFixed(3) + ' / ' + pa6.proporcao.toFixed(3));
-  const ctxSemCron = U.clone(ctx); ctxSemCron.textos = U.clone(ctx.textos || D.textos); ctxSemCron.textos.cronograma = [];
+  const ctxSemCron = U.clone(ctx); ctxSemCron.textos = U.clone(ctx.textos || D.textos); ctxSemCron.textos.cronograma = []; ctxSemCron.textos.passoNaProposta = true;
   const mSemCron = App.Documento.montar(p, r, ctxSemCron, ctx.clientes[0], { w: 1400, h: 752 });
   ok('passo a passo: sem etapas, sem a seção', !mSemCron.imagens.passos && textoModelo(mSemCron).indexOf('2. PASSO A PASSO') < 0);
-  igual('projetos: 2 fotos por projeto no documento (+ passo a passo, capa, como funciona e saldo)', Object.keys(mP.imagens).length, 12);
+  igual('projetos: 2 fotos por projeto no documento (+ capa, como funciona e saldo)', Object.keys(mP.imagens).length, 11);
   ok('projetos: ficha técnica com CO₂ evitado', txP.indexOf('Potência instalada') >= 0 && txP.indexOf('Geração média') >= 0 && txP.some(function (x) { return /^\d+(,\d)? t\/ano$/.test(x); }));
   const xmlP = App.Docx.serializar(mP);
   ok('projetos: fotos referenciadas no Word', /r:embed="rIdImg1"/.test(xmlP.documento) && /r:embed="rIdImg8"/.test(xmlP.documento));
@@ -899,7 +904,21 @@
       .every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('quanto você economiza: quadros, explicações e tabela dos anos', ['Conta hoje', 'Você economiza', 'Por que a conta não zera?', 'O que é o Fio B?', 'Sua conta de luz nos próximos anos'].every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('retorno: tempo, TIR, vezes, custo do kWh e saldo acumulado', !!m.imagens.saldo && ['Tempo de retorno', 'Rentabilidade (TIR)', 'vezes', 'Custo da sua energia solar', '/kWh'].every(function (x) { return txt.indexOf(x) >= 0; }));
-    ok('pagamento: composição do investimento e sobra no mês', txt.indexOf('Composição do investimento') >= 0 && txt.indexOf('Sobra no mês*') >= 0 && txt.indexOf('Valor total da proposta') >= 0);
+    ok('pagamento: valor total com o que está incluído e sobra no mês (sem a composição)', ['Investimento total', 'Tudo incluído:', 'Formas de pagamento', 'Sobra no mês*'].every(function (x) { return txt.indexOf(x) >= 0; }) &&
+      txt.indexOf('Composição do investimento') < 0 && txt.indexOf('Valor total da proposta') < 0);
+    ok('seções retiradas: dados do cliente, lista de equipamentos e passo a passo', ['Dados do cliente e do projeto', 'Lista de equipamentos e materiais', 'Passo a passo', 'Tipo de Telhado'].every(function (x) { return txt.indexOf(x) < 0; }));
+    // conta dos próximos anos: marcos de 5 em 5 anos, valores arredondados e total
+    const somaEco = f.anos.reduce(function (s0, a) { return s0 + a.economiaMes * 12; }, 0);
+    const reais = function (v) { return U.brl(Math.round(v)).replace(/,00$/, ''); };
+    ok('conta nos próximos anos: tabela amigável com marcos e total', ['Quando', 'Você economiza', '1º ano', '5º ano', '10º ano', '15º ano', '20º ano', '25º ano', reais(a1.contaSem), reais(a1.contaCom),
+      reais(a1.economiaMes) + ' por mês', reais(a1.economiaMes * 12) + ' no ano', 'Somando os 25 anos, a economia na conta de luz chega a ', reais(somaEco)].every(function (x) { return txt.indexOf(x) >= 0; }) &&
+      txt.indexOf('Economia no mês') < 0, reais(a1.contaSem) + ' / ' + reais(somaEco));
+    // apresentação: texto, diferenciais e o responsável técnico
+    ok('apresentação: diferenciais da empresa', txt.indexOf('Por que escolher a ' + (ctx.empresa.nomeCurto || ctx.empresa.razao)) >= 0 && D.textos.diferenciais.length === 6 &&
+      D.textos.diferenciais.every(function (d) { return txt.indexOf(d.titulo) >= 0; }) && txt.indexOf('{registroTipo}') < 0 && txt.indexOf('{concessionaria}') < 0);
+    ok('apresentação: cartão de quem cuida do projeto', txt.indexOf('Quem cuida do seu projeto') >= 0 && txt.indexOf('Responsável pelo projeto, pela ART') >= 0 &&
+      tx.indexOf(ctx.empresa.responsavel) >= 0 && /^[A-Z]{2}$/m.test(txt));
+    ok('considerações: sem o passo a passo, prazos combinados após a aprovação', txt.indexOf('Após a aprovação, combinamos com você as datas de cada etapa') >= 0);
     ok('próximos passos: 3 passos, validade com data, contato e assinatura', ['Aprovação', 'Contrato e pagamento', 'Vistoria e projeto', 'Considerações importantes', 'Contratante — de acordo'].every(function (x) { return txt.indexOf(x) >= 0; }) &&
       /válida até\n?04\/10\/2026/.test(txt.replace(/e é válida até /, 'válida até')));
     ok('anexo: premissas e fluxo de caixa no fim', txt.lastIndexOf('Anexo — premissas e fluxo de caixa') > txt.indexOf('Próximos passos') && txt.indexOf('Premissas do cálculo:') > 0 && txt.indexOf('Fluxo de caixa — 25 anos') > 0);
