@@ -23,7 +23,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
 - **Proposta amigável para o cliente**, em linguagem simples e com o resultado em destaque:
   - **capa** com a redução da conta em %, os números principais (potência, geração, economia por mês) e a data de validade;
-  - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, **como pagar** (cartões com o à vista, o cartão e o financiamento mais longo, com a nota de pagamento e as observações), a validade e o contato pelo WhatsApp;
+  - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, **como pagar** (todas as opções de pagamento em cartões: parcelas, taxa, total pago e o aviso quando a parcela é menor que a economia do mês, com a nota de pagamento e as observações), a validade e o contato pelo WhatsApp;
   - **apresentação da empresa**: o texto de apresentação, os cartões "Por que escolher" (diferenciais editáveis em Configurações › Textos padrão) e o cartão do responsável técnico ("Quem cuida do seu projeto");
   - projetos realizados;
   - **passo a passo** (cronograma em linha do tempo ilustrada, com o prazo de cada etapa): fica fora da proposta até ser ligado em Configurações › Textos padrão;

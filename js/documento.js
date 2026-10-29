@@ -130,11 +130,13 @@ window.App = window.App || {};
 
   function espaco(w) { return TC(P([], { after: 0 }), { w: w, semBorda: true }); }
 
-  /** Cartão de indicador: rótulo, valor em destaque e complemento (tom: azul, verde ou ouro). */
+  /** Cartão de indicador: rótulo, valor em destaque, complemento e nota em verde opcional (tom: azul, verde ou ouro). */
   function cartao(c, w) {
     const tom = TONS[c.tom || 'azul'];
-    return TC([T(c.rot, { after: 20 }, { color: CINZA, sz: 17 }), T(c.valor, { after: 20 }, { b: true, color: tom[2], sz: c.sz || 34 }),
-      c.sub ? T(c.sub, null, { color: '475569', sz: 16 }) : P([])],
+    const filhos = [T(c.rot, { after: 20 }, { color: CINZA, sz: 17 }), T(c.valor, { after: 20 }, { b: true, color: tom[2], sz: c.sz || 34 }),
+      c.sub ? T(c.sub, c.nota ? { after: 20 } : null, { color: '475569', sz: 16 }) : P([])];
+    if (c.nota) filhos.push(T(c.nota, null, { b: true, color: '15803D', sz: 15 }));
+    return TC(filhos,
     { w: w, fill: tom[0], borda: { sz: 6, cor: tom[1] }, mar: { t: 120, b: 120, l: 200, r: 140 }, vAlign: 'top' });
   }
 
@@ -336,16 +338,21 @@ window.App = window.App || {};
     b.push(listaMarcada(recebe, '✓', '15803D', 2));
     const pFin = pags.filter(function (pg) { return !/cart/i.test(pg.label) && pg.prazo !== '1x'; })
       .sort(function (x, y) { return (parseInt(y.prazo, 10) || 0) - (parseInt(x.prazo, 10) || 0); })[0];
-    // como pagar: à vista, cartão e o financiamento mais longo em cartões
-    const pAvista = pags.find(function (pg) { return pg.prazo === '1x'; });
-    const pCartao = pags.find(function (pg) { return /cart/i.test(pg.label) && pg.prazo !== '1x'; });
-    const comoPagar = [];
-    if (pAvista) comoPagar.push({ rot: 'À vista', valor: U.brl(pAvista.total), sub: 'melhor preço', sz: 26 });
-    if (pCartao) comoPagar.push({ rot: pCartao.label.replace(/ — .*$/, ''), valor: pCartao.prazo.replace('x', '') + ' × ' + U.brl(pCartao.parcela), sub: Math.abs(pCartao.total - r.total) < 1 ? 'sem acréscimo' : 'total ' + U.brl(pCartao.total), sz: 26 });
-    if (pFin) comoPagar.push({ rot: pFin.label.replace(/ — .*$/, ''), valor: pFin.prazo.replace('x', '') + ' × ' + U.brl(pFin.parcela), sub: f.economiaMes1 > pFin.parcela ? 'parcela menor que a economia do mês' : 'total ' + U.brl(pFin.total), sz: 26 });
+    // como pagar: todas as opções em cartões, na ordem cadastrada (rótulo antes do " — " e o detalhe, como a taxa, no complemento)
+    const comoPagar = pags.map(function (pg) {
+      const partes = String(pg.label || '').split(' — ');
+      const detalhe = partes.slice(1).join(' — ');
+      if (pg.prazo === '1x') return { rot: partes[0], valor: U.brl(pg.total), sub: [detalhe, 'melhor preço'].filter(Boolean).join(' · '), sz: 26 };
+      const semAcrescimo = Math.abs(pg.total - r.total) < 1;
+      return {
+        rot: partes[0], valor: (parseInt(pg.prazo, 10) || 1) + ' × ' + U.brl(pg.parcela), sz: 26,
+        sub: [detalhe, semAcrescimo ? (/sem acr/i.test(detalhe) ? '' : 'sem acréscimo') : 'total ' + U.brl(pg.total)].filter(Boolean).join(' · '),
+        nota: f.economiaMes1 > pg.parcela ? 'parcela menor que a economia do mês' : ''
+      };
+    });
     if (comoPagar.length) {
       b.push(subtitulo('Como pagar', 200));
-      b.push(grade(comoPagar, comoPagar.length === 1 ? 2 : comoPagar.length, cartao));
+      b.push(grade(comoPagar, comoPagar.length === 1 ? 2 : (comoPagar.length === 4 ? 2 : Math.min(3, comoPagar.length)), cartao));
     }
     const notas = [];
     if (comoPagar.length && textos.notaPagamento) notas.push([textos.notaPagamento, CINZA, 15]);
