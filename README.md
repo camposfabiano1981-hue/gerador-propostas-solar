@@ -23,15 +23,15 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
 - **Proposta amigável para o cliente**, em linguagem simples e com o resultado em destaque:
   - **capa** com a redução da conta em %, os números principais (potência, geração, economia por mês) e a data de validade;
-  - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, **como pagar** (todas as opções de pagamento em cartões: parcelas, taxa, total pago e o aviso quando a parcela é menor que a economia do mês, com a nota de pagamento e as observações), a validade e o contato pelo WhatsApp;
   - **apresentação da empresa**: o texto de apresentação, os cartões "Por que escolher" (diferenciais editáveis em Configurações › Textos padrão) e o cartão do responsável técnico ("Quem cuida do seu projeto");
   - projetos realizados;
   - **passo a passo** (cronograma em linha do tempo ilustrada, com o prazo de cada etapa): fica fora da proposta até ser ligado em Configurações › Textos padrão;
   - **como a energia solar funciona** (ilustração própria, com ou sem baterias) e os benefícios para o cliente;
   - **seu sistema**: números do projeto, gráfico de produção mês a mês, equipamentos com garantia e um glossário curto;
   - armazenamento (cargas críticas e resumo do banco) e comparativo de cenários, quando houver;
+  - **seu investimento**: valor, economia no 1º ano, retorno e economia em 25 anos, **como pagar** (todas as opções de pagamento em cartões: parcelas, taxa, total pago e o aviso quando a parcela é menor que a economia do mês, com a nota de pagamento e as observações), a validade e o contato pelo WhatsApp;
   - **o que está incluso** e o que não está, as garantias e o que acontece depois da instalação;
-  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?" e a conta nos próximos anos em tabela amigável: 1º, 5º, 10º, 15º, 20º e 25º ano, valores arredondados e o total da economia);
+  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?" e a conta nos próximos anos em tabela amigável ano a ano, com valores arredondados e o total da economia; quando a conta varia ao longo do ano, a faixa aparece no quadro da conta com o sistema);
   - **retorno do investimento** (tempo de retorno, TIR × SELIC, quantas vezes o valor volta, custo do kWh solar e gráfico do saldo acumulado);
   - **próximos passos** (aprovação, contrato, vistoria), considerações, cartão de contato e assinaturas.
 

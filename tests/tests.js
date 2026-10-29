@@ -236,7 +236,7 @@
     ['Consumo Considerado no Dimensionamento', 'Pico de Partida (motores)', 'Utilização do Banco na Ciclagem', 'Consumo Próprio do Inversor', 'Balanço Diário', 'Potência Contínua de Descarga', 'Tensão do Banco']
       .every(function (t) { return txLim.indexOf(t) < 0; }));
   const txMes = textoModelo(App.Documento.montar(Object.assign(U.clone(p), { consumoMedio: 1000, nModulos: 9 }), rMes, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
-  ok('documento: faixa da conta do ano 1', /a conta com sistema varia de R\$ [\d.,]+ \(dez\) a R\$ [\d.,]+ \(jun\)/.test(txMes));
+  ok('documento: faixa da conta do ano 1 no quadro da conta com sistema', /por mês · ao longo do ano, varia de R\$ [\d.,]+ \(dez\) a R\$ [\d.,]+ \(jun\)/.test(txMes));
 
   // ---------------------------------------------------------------- tarifas grupo A / branca
   const E = App.Energia;
@@ -830,17 +830,17 @@
   const mP = App.Documento.montar(p, rP, ctxP, ctxP.clientes[0], { w: 1400, h: 752 });
   const txP = textoModelo(mP);
   const titulos = function (tx) { return tx.filter(function (x) { return /^\d+   \S/.test(x); }).map(function (x) { return x.replace(/   /, ' '); }); };
-  igual('ordem: resumo, apresentação, projetos e como funciona', titulos(txP).slice(0, 4).join(' | '),
-    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Projetos realizados | 4 Como a energia solar funciona na sua casa');
+  igual('ordem: apresentação, projetos, como funciona e seu sistema', titulos(txP).slice(0, 4).join(' | '),
+    '1 Apresentação da empresa | 2 Projetos realizados | 3 Como a energia solar funciona na sua casa | 4 Seu sistema solar');
   const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
   igual('sem projetos: seções na ordem da proposta amigável', titulos(textoModelo(mSemP)).join(' | '),
-    '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Como a energia solar funciona na sua casa | 4 Seu sistema solar | ' +
+    '1 Apresentação da empresa | 2 Como a energia solar funciona na sua casa | 3 Seu sistema solar | 4 Seu investimento | ' +
     '5 O que está incluso | 6 Quanto você economiza | 7 Retorno do investimento | 8 Próximos passos');
   ok('passo a passo: fora da proposta por padrão', D.textos.passoNaProposta === false && !mSemP.imagens.passos && textoModelo(mSemP).indexOf(D.textos.passoIntro) < 0);
   const ctxPassos = U.clone(ctxP); ctxPassos.textos = Object.assign(U.clone(ctxP.textos || D.textos), { passoNaProposta: true });
   const mPassos = App.Documento.montar(p, rP, ctxPassos, ctxP.clientes[0], { w: 1400, h: 752 });
   ok('passo a passo ligado: linha do tempo em PNG com a frase de abertura, logo após os projetos', /^data:image\/png;base64,/.test(mPassos.imagens.passos || '') &&
-    textoModelo(mPassos).indexOf(D.textos.passoIntro) >= 0 && titulos(textoModelo(mPassos)).slice(2, 4).join(' | ') === '3 Projetos realizados | 4 Passo a passo');
+    textoModelo(mPassos).indexOf(D.textos.passoIntro) >= 0 && titulos(textoModelo(mPassos)).slice(1, 3).join(' | ') === '2 Projetos realizados | 3 Passo a passo');
   const pa6 = App.Passos.imagem(D.textos.cronograma), pa3 = App.Passos.imagem(D.textos.cronograma.slice(0, 3));
   ok('passo a passo: altura cresce com o número de etapas', pa6.proporcao > pa3.proporcao * 1.6 && pa6.proporcao < 1.4, pa3.proporcao.toFixed(3) + ' / ' + pa6.proporcao.toFixed(3));
   const ctxSemCron = U.clone(ctx); ctxSemCron.textos = U.clone(ctx.textos || D.textos); ctxSemCron.textos.cronograma = []; ctxSemCron.textos.passoNaProposta = true;
@@ -941,9 +941,10 @@
     ok('capa: manchete com a redução da conta', /^conta de luz \d+% menor$/m.test(txt) && txt.indexOf('Energia do sol,') >= 0);
     ok('resumo: investimento, economia no 1º ano, retorno e economia em 25 anos', ['Investimento', 'Economia no 1º ano', 'O investimento volta em', 'Economia em 25 anos', U.brl(r.total), U.anosMeses(f.paybackSimples)]
       .every(function (x) { return txt.indexOf(x) >= 0; }));
-    ok('resumo: conta de hoje × com energia solar', txt.indexOf('Sua conta de luz por mês') >= 0 && txt.indexOf(U.brl(a1.contaSem)) >= 0 && txt.indexOf(U.brl(a1.contaCom)) >= 0);
-    ok('resumo: o que você recebe e como pagar', txt.indexOf('O que você recebe') >= 0 && /9 módulos .* de 625 Wp/.test(txt) && txt.indexOf('Como pagar') >= 0 &&
-      txt.indexOf('Como pagar') < txt.indexOf('Apresentação da empresa'));
+    ok('seu investimento: sem as barras da conta e sem "o que você recebe"', ['Sua proposta em uma página', 'Sua conta de luz por mês', 'O que você recebe'].every(function (x) { return txt.indexOf(x) < 0; }));
+    ok('seu investimento: depois de "seu sistema" e antes de "o que está incluso", com como pagar e a validade', txt.indexOf('Seu investimento') > txt.indexOf('Seu sistema solar') &&
+      txt.indexOf('Como pagar') > txt.indexOf('Seu investimento') && txt.indexOf('Como pagar') < txt.indexOf('O que está incluso') &&
+      txt.indexOf('Proposta válida até') > txt.indexOf('Seu investimento') && txt.indexOf('Proposta válida até') < txt.indexOf('O que está incluso'));
     // como pagar: todas as opções em cartões
     const pgs = r.pagamentos;
     ok('resumo: todas as opções de pagamento em cartões, com a nota de pagamento', pgs.length >= 3 && pgs.every(function (pg) {
@@ -961,12 +962,15 @@
     ok('retorno: tempo, TIR, vezes, custo do kWh e saldo acumulado', !!m.imagens.saldo && ['Tempo de retorno', 'Rentabilidade (TIR)', 'vezes', 'Custo da sua energia solar', '/kWh'].every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('seção de investimento e pagamento retirada (valor e pagamento ficam no resumo)', ['Investimento e formas de pagamento', 'Investimento total', 'Tudo incluído:', 'Composição do investimento'].every(function (x) { return txt.indexOf(x) < 0; }));
     ok('seções retiradas: dados do cliente, lista de equipamentos e passo a passo', ['Dados do cliente e do projeto', 'Lista de equipamentos e materiais', 'Passo a passo', 'Tipo de Telhado'].every(function (x) { return txt.indexOf(x) < 0; }));
-    // conta dos próximos anos: marcos de 5 em 5 anos, valores arredondados e total
+    // conta dos próximos anos: ano a ano, valores arredondados e total
     const somaEco = f.anos.reduce(function (s0, a) { return s0 + a.economiaMes * 12; }, 0);
     const reais = function (v) { return U.brl(Math.round(v)).replace(/,00$/, ''); };
-    ok('conta nos próximos anos: tabela amigável com marcos e total', ['Quando', 'Você economiza', '1º ano', '5º ano', '10º ano', '15º ano', '20º ano', '25º ano', reais(a1.contaSem), reais(a1.contaCom),
-      reais(a1.economiaMes) + ' por mês', reais(a1.economiaMes * 12) + ' no ano', 'Somando os 25 anos, a economia na conta de luz chega a ', reais(somaEco)].every(function (x) { return txt.indexOf(x) >= 0; }) &&
+    ok('conta nos próximos anos: tabela amigável ano a ano com o total', f.anos.length === 25 && f.anos.every(function (a, k) {
+      return tx.indexOf(a.ano + '  ' + (k + 1) + 'º ano') >= 0 && tx.indexOf(reais(a.contaSem)) >= 0 && tx.indexOf(reais(a.contaCom)) >= 0 && tx.indexOf(reais(a.economiaMes)) >= 0 && tx.indexOf(reais(a.economiaMes * 12)) >= 0;
+    }) && ['Você economiza', 'por mês', 'no ano', 'Somando os 25 anos, a economia na conta de luz chega a ', reais(somaEco)].every(function (x) { return txt.indexOf(x) >= 0; }) &&
       txt.indexOf('Economia no mês') < 0, reais(a1.contaSem) + ' / ' + reais(somaEco));
+    ok('valores acima de 1 milhão por extenso', /^R\$ \d+,\d\d milh(ão|ões)$/.test((function () { const x = App.Documento.montar(p, Object.assign({}, r, { fin: Object.assign({}, f, { economiaTotal: 2234567 }) }), ctx, ctx.clientes[0], { w: 1400, h: 752 });
+      return textoModelo(x).find(function (y) { return /milh/.test(y); }) || ''; })()));
     // apresentação: texto, diferenciais e o responsável técnico
     ok('apresentação: diferenciais da empresa', txt.indexOf('Por que escolher a ' + (ctx.empresa.nomeCurto || ctx.empresa.razao)) >= 0 && D.textos.diferenciais.length === 6 &&
       D.textos.diferenciais.every(function (d) { return txt.indexOf(d.titulo) >= 0; }) && txt.indexOf('{registroTipo}') < 0 && txt.indexOf('{concessionaria}') < 0);
