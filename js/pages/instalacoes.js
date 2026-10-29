@@ -119,12 +119,70 @@
 
   function normalizar(inst, ctx) {
     const base = I.nova(ctx);
+    // instalações gravadas antes do checklist e dos equipamentos instalados: completa pela proposta de origem
+    if (inst.placas === undefined || inst.checklistInstalacao === undefined) {
+      const prop = inst.propostaId ? S.get('propostas', inst.propostaId) : null;
+      const ref = prop ? I.deProposta(prop, ctx) : base;
+      if (inst.placas === undefined) inst.placas = ref.placas;
+      if (inst.checklistInstalacao === undefined) inst.checklistInstalacao = ref.checklistInstalacao;
+    }
     Object.keys(base).forEach(function (k) { if (inst[k] === undefined) inst[k] = U.clone(base[k]); });
     inst.equipamentos = Object.assign(U.clone(base.equipamentos), inst.equipamentos || {});
+    const pv = I.placasVazias();
+    inst.placas.modulo = Object.assign(pv.modulo, inst.placas.modulo || {});
+    inst.placas.inversor = Object.assign(pv.inversor, inst.placas.inversor || {});
+    ['modulo', 'inversor'].forEach(function (k) { if (!Array.isArray(inst.placas[k].fotos)) inst.placas[k].fotos = []; });
+    inst.checklistInstalacao.forEach(function (g) { if (!Array.isArray(g.itens)) g.itens = []; });
     if (!Array.isArray(inst.etapas)) inst.etapas = [];
     if (!Array.isArray(inst.historico)) inst.historico = [];
     inst.etapas.forEach(function (e) { if (!Array.isArray(e.checklist)) e.checklist = []; if (!e.id) e.id = 'et-' + U.uid(); });
     return inst;
+  }
+
+  const MAX_FOTOS = 6;
+
+  /** Fotos das etiquetas: miniaturas (deste aparelho ou da nuvem), tirar/escolher foto, ampliar e remover. */
+  function campoFotos(rotulo, lista, aoMudar) {
+    const F = App.Fotos;
+    const grade = h('div.fotos-grade');
+    function desenhar() {
+      grade.innerHTML = '';
+      lista.forEach(function (fid, i) {
+        const aviso = h('span.foto-aviso', 'carregando…');
+        const img = h('img', { alt: rotulo + ' ' + (i + 1), hidden: true });
+        F.obter(fid).then(function (f) {
+          if (f) { img.src = f.dataURL; img.hidden = false; aviso.remove(); } else aviso.textContent = 'foto na nuvem — entre na sincronização para ver';
+        });
+        img.addEventListener('click', function () {
+          UI.modal({ titulo: rotulo, largo: true, corpo: h('img.foto-ampliada', { src: img.src, alt: rotulo }), acoes: [{ label: 'Fechar' }] });
+        });
+        grade.appendChild(h('div.foto-mini', aviso, img, h('button.btn-icone.perigo.foto-remover', {
+          type: 'button', title: 'Remover foto', 'aria-label': 'Remover foto', onclick: async function () {
+            if (!(await UI.confirmar('Remover esta foto?', 'Remover', true))) return;
+            await F.remover(fid);
+            lista.splice(lista.indexOf(fid), 1);
+            aoMudar();
+            desenhar();
+          }
+        }, '×')));
+      });
+      if (lista.length < MAX_FOTOS) {
+        const input = h('input', {
+          type: 'file', accept: 'image/*', multiple: true, onchange: async function () {
+            const arqs = Array.prototype.slice.call(input.files, 0, MAX_FOTOS - lista.length);
+            input.value = '';
+            for (const a of arqs) {
+              try { lista.push(await F.salvar(await F.preparar(a))); } catch (e) { console.error(e); UI.toast('Não foi possível ler a imagem. Use JPG ou PNG.', 'erro'); }
+            }
+            aoMudar();
+            desenhar();
+          }
+        });
+        grade.appendChild(h('label.foto-add', input, h('span', '📷'), h('small', lista.length ? 'Mais uma foto' : 'Foto da etiqueta')));
+      }
+    }
+    desenhar();
+    return h('div.campo', h('label', rotulo), grade);
   }
 
   function formulario(cont, id, qs) {
@@ -300,6 +358,49 @@
         h('button.btn.pequeno', { type: 'button', onclick: function () { I.preverDatas(inst); mudou(); desenhar('etapas'); UI.toast('Previsões recalculadas.'); } }, '↻ Recalcular previsões')));
     });
 
+    /* ---------- equipamentos instalados (marca, modelo e fotos das etiquetas) */
+    secao('equipamentos', 'Equipamentos instalados', function (c) {
+      c.appendChild(h('p.ajuda-sec', 'Marca e modelo do que foi instalado (vêm da proposta; confira na obra) e as fotos das etiquetas. ',
+        'As fotos ficam neste aparelho e na nuvem, sem ocupar o armazenamento do app.'));
+      const pl = inst.placas;
+      const fotoMudou = function () { mudou(); if (inst.id) salvar(false); };
+      c.appendChild(h('div.equip-instalado', h('h3', '☀️ Módulos fotovoltaicos'), UI.grade([
+        { k: 'marca', label: 'Marca' }, { k: 'modelo', label: 'Modelo', cls: 'span2' }, { k: 'quantidade', label: 'Quantidade', type: 'int' },
+        { k: 'potencia', label: 'Potência', type: 'number', suffix: 'Wp' }
+      ], pl.modulo, mudou, 4), campoFotos('Fotos da etiqueta do módulo', pl.modulo.fotos, fotoMudou)));
+      c.appendChild(h('div.equip-instalado', h('h3', '🔌 Inversor (ou microinversores)'), UI.grade([
+        { k: 'marca', label: 'Marca' }, { k: 'modelo', label: 'Modelo', cls: 'span2' }, { k: 'quantidade', label: 'Quantidade', type: 'int' },
+        { k: 'potencia', label: 'Potência', type: 'number', suffix: 'kW' }, { k: 'serie', label: 'Nº de série', cls: 'span2' }
+      ], pl.inversor, mudou, 4), campoFotos('Fotos da etiqueta do inversor', pl.inversor.fotos, fotoMudou)));
+    });
+
+    /* ---------- checklist da instalação (três grupos) */
+    secao('checklist', 'Checklist da instalação', function (c) {
+      c.appendChild(h('p.ajuda-sec', 'Itens padrão em Configurações › Textos padrão › Checklist da instalação. Use a observação para anotar medições (ex.: Voc da string 1 = 412 V).'));
+      inst.checklistInstalacao.forEach(function (g) {
+        const feitos = g.itens.filter(function (x) { return x.ok; }).length;
+        const completo = g.itens.length && feitos === g.itens.length;
+        const card = h('div.checklist-grupo' + (g.naoSeAplica ? '.na' : (completo ? '.completo' : '')));
+        card.appendChild(h('div.checklist-grupo-topo', h('h3', g.titulo),
+          g.naoSeAplica ? UI.badge('Não se aplica', 'cinza') : UI.badge(feitos + '/' + g.itens.length, completo ? 'ok' : 'cinza'),
+          UI.campo({ k: 'naoSeAplica', label: 'Não se aplica nesta obra', type: 'checkbox' }, g, function () { mudou(); desenhar('checklist'); })));
+        if (!g.naoSeAplica) {
+          g.itens.forEach(function (it, j) {
+            const cb = h('input', { type: 'checkbox', onchange: function () { I.marcarItem(inst, g, it, cb.checked); mudou(); desenhar('checklist'); desenhar('historico'); } });
+            cb.checked = !!it.ok;
+            card.appendChild(h('div.check-linha' + (it.ok ? '.ok' : ''),
+              h('label', cb, h('span', it.texto)),
+              h('input.check-obs', { type: 'text', value: it.obs || '', placeholder: 'medição / observação', 'aria-label': 'Observação do item', oninput: function (ev) { it.obs = ev.target.value; mudou(); } }),
+              h('button.btn-icone.perigo', { type: 'button', title: 'Remover item', 'aria-label': 'Remover item', onclick: function () { g.itens.splice(j, 1); mudou(); desenhar('checklist'); } }, '×')));
+          });
+          const novo = h('input', { type: 'text', placeholder: 'Novo item de ' + g.titulo.toLowerCase(), onkeydown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); add(); } } });
+          const add = function () { const tx = novo.value.trim(); if (!tx) return; g.itens.push({ texto: tx, ok: false, obs: '' }); mudou(); desenhar('checklist'); };
+          card.appendChild(h('div.checklist-novo', novo, h('button.btn.pequeno', { type: 'button', onclick: add }, '+ Item')));
+        }
+        c.appendChild(card);
+      });
+    });
+
     /* ---------- dados da obra */
     secao('dados', 'Dados da obra', function (c) {
       c.appendChild(UI.grade([
@@ -315,11 +416,20 @@
         { k: 'kwp', label: 'Potência FV', type: 'number', suffix: 'kWp' },
         { k: 'kwh', label: 'Armazenamento', type: 'number', suffix: 'kWh' },
         { k: 'valor', label: 'Valor da obra', type: 'money' },
-        { k: 'equipamentos.modulos', label: 'Módulos', cls: 'span2' },
-        { k: 'equipamentos.inversor', label: 'Inversor', cls: 'span2' },
         { k: 'equipamentos.armazenamento', label: 'Baterias / BESS', cls: 'span2' },
         { k: 'equipamentos.estrutura', label: 'Estrutura / telhado', cls: 'span2' }
       ], inst, mudou, 2));
+    });
+
+    /* ---------- ordens de serviço */
+    secao('ordens', 'Ordens de serviço', function (c) {
+      if (!inst.id) { c.appendChild(h('p.ajuda-sec', 'Salve a instalação para abrir ordens de serviço ligadas a ela.')); return; }
+      const lista = S.list('ordens').filter(function (o) { return o.instalacaoId === inst.id; })
+        .sort(function (a, b) { return String(b.numero).localeCompare(String(a.numero)); });
+      c.appendChild(h('div.barra-itens', h('a.btn.pequeno.primario', { href: '#/ordem/nova?instalacao=' + inst.id }, '+ Nova ordem de serviço'),
+        h('span.ajuda-sec', 'Manutenção, limpeza, visita técnica, garantia e outras demandas desta instalação.')));
+      if (!lista.length) { c.appendChild(h('p.ajuda-sec', 'Nenhuma ordem de serviço para esta instalação.')); return; }
+      c.appendChild(App.tabelaOrdens(lista, null, true));
     });
 
     /* ---------- histórico */
@@ -357,7 +467,13 @@
         kpi('Etapa atual', st === 'concluida' ? 'Todas concluídas' : (atual ? (inst.etapas.indexOf(atual) + 1) + '. ' + atual.titulo : '—')),
         kpi(st === 'concluida' ? 'Concluída em' : 'Previsão de conclusão', U.dataBR(I.previsaoConclusao(inst)) || '—'),
         kpi('Sistema', [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh' : ''].filter(Boolean).join(' + ') || '—'),
-        kpi('Valor', inst.valor ? U.brl(inst.valor) : '—')));
+        kpi('Valor', inst.valor ? U.brl(inst.valor) : '—'),
+        (function () { const pc = I.progressoChecklist(inst); return kpi('Checklist', pc.total ? pc.feitos + ' de ' + pc.total + ' itens' : '—'); })(),
+        kpi('Ordens de serviço', inst.id ? (function () {
+          const os = S.list('ordens').filter(function (o) { return o.instalacaoId === inst.id; });
+          const ab = os.filter(App.Ordem.aberta).length;
+          return os.length ? ab + ' em aberto · ' + os.length + ' no total' : 'nenhuma';
+        })() : '—')));
       if (atraso.length && st !== 'pausada') {
         resumo.appendChild(h('ul.alertas', atraso.map(function (e) {
           return h('li.erro', 'Atrasada: ' + (inst.etapas.indexOf(e) + 1) + '. ' + e.titulo + ' (previsto para ' + U.dataBR(e.previsto) + ')');
@@ -390,7 +506,7 @@
       const novo = !inst.id;
       S.save('instalacoes', inst);
       sujo = false;
-      if (novo) { id = inst.id; UI.substituirHash('#/instalacao/' + inst.id); }
+      if (novo) { id = inst.id; UI.substituirHash('#/instalacao/' + inst.id); desenhar('ordens'); }
       atualizarTopo();
       desenharResumo();
       if (avisar) UI.toast('Instalação salva.', 'ok');

@@ -398,3 +398,30 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 .historico li { display: grid; grid-template-columns: 120px 1fr; gap: 10px; font-size: 13px; padding-bottom: 8px; border-bottom: 1px dashed var(--borda); }
 .historico time { color: var(--muted); white-space: nowrap; }
 @media (max-width: 700px) { .historico li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* ---------- equipamentos instalados, fotos das etiquetas e checklist */
+.equip-instalado { border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.equip-instalado h3 { margin: 0; font-size: 15px; color: var(--azul); }
+.fotos-grade { display: flex; flex-wrap: wrap; gap: 10px; }
+.foto-mini, .foto-add { position: relative; width: 132px; height: 100px; border-radius: 8px; border: 1px solid var(--borda); background: #F8FAFC; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.foto-mini img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+.foto-aviso { font-size: 11px; color: var(--muted); padding: 6px; text-align: center; }
+.foto-remover { position: absolute; top: 4px; right: 4px; background: rgba(255, 255, 255, .92); }
+.foto-add { flex-direction: column; gap: 2px; border-style: dashed; border-color: var(--azul-borda); color: var(--azul-2); cursor: pointer; }
+.foto-add:hover { background: var(--azul-claro); }
+.foto-add input { display: none; }
+.foto-add span { font-size: 24px; }
+.foto-add small { font-size: 12px; font-weight: 600; }
+.foto-ampliada { display: block; max-width: 100%; max-height: 75vh; margin: 0 auto; }
+.checklist-grupo { border: 1px solid var(--borda); border-left: 5px solid var(--borda-forte); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.checklist-grupo.completo { border-left-color: #16A34A; }
+.checklist-grupo.na { opacity: .7; }
+.checklist-grupo-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.checklist-grupo-topo h3 { margin: 0; font-size: 15px; color: var(--azul); }
+.checklist-grupo-topo .campo { margin: 0 0 0 auto; }
+.check-linha { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 32%) auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--borda); }
+.check-linha label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 14px; }
+.check-linha label input { margin-top: 3px; }
+.check-linha.ok label span { color: #15803D; }
+.check-obs { min-height: 32px; border: 1px solid var(--borda); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+@media (max-width: 700px) { .check-linha { grid-template-columns: minmax(0, 1fr) auto; } .check-obs { grid-column: 1 / 2; } }

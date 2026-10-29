@@ -67,7 +67,7 @@
       h('div.card.kpi-card', h('span', 'Valor em aberto'), h('strong', U.brl(soma(abertas, 'total'))), h('small', U.kwp(soma(abertas, 'kwp')) + ' kWp')),
       h('div.card.kpi-card.ok', h('span', 'Aprovadas'), h('strong', U.brl(soma(aprovadas, 'total'))), h('small', aprovadas.length + ' proposta(s) · ' + U.kwp(soma(aprovadas, 'kwp')) + ' kWp')),
       h('div.card.kpi-card', h('span', 'Clientes'), h('strong', String(S.list('clientes').length)), h('small', h('a', { href: '#/clientes' }, 'Ver cadastro'))),
-      cartaoInstalacoes()));
+      cartaoInstalacoes(), cartaoOrdens()));
 
     const avisos = [];
     const semInstalacao = App.aprovadasSemInstalacao ? App.aprovadasSemInstalacao() : [];
@@ -99,6 +99,19 @@
     const atrasadas = andamento.filter(function (x) { return I.atrasadas(x, hoje).length; }).length;
     return h('div.card.kpi-card' + (atrasadas ? '.alerta' : ''), h('span', 'Instalações em andamento'), h('strong', String(andamento.length)),
       h('small', h('a', { href: '#/instalacoes' }, [atrasadas ? atrasadas + ' com etapa atrasada' : '', iniciar ? iniciar + ' a iniciar' : '', 'ver todas'].filter(Boolean).join(' · '))));
+  }
+
+  /** Cartão do painel: ordens de serviço em aberto, atrasadas e urgentes. */
+  function cartaoOrdens() {
+    const O = App.Ordem;
+    if (!O) return null;
+    const hoje = U.todayISO();
+    const abertas = S.list('ordens').filter(O.aberta);
+    if (!abertas.length && !S.list('ordens').length) return null;
+    const atrasadas = abertas.filter(function (o) { return O.atrasada(o, hoje); }).length;
+    const urgentes = abertas.filter(function (o) { return o.prioridade === 'urgente'; }).length;
+    return h('div.card.kpi-card' + (atrasadas || urgentes ? '.alerta' : ''), h('span', 'Ordens de serviço em aberto'), h('strong', String(abertas.length)),
+      h('small', h('a', { href: '#/ordens' }, [atrasadas ? atrasadas + ' atrasada(s)' : '', urgentes ? urgentes + ' urgente(s)' : '', 'ver todas'].filter(Boolean).join(' · '))));
   }
 
   function tabela(lista, recarregar) {

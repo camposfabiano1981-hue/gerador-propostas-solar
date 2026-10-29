@@ -70,7 +70,7 @@ window.App = window.App || {};
       const alvo = a.getAttribute('href').replace(/^#/, '');
       a.classList.toggle('ativo', caminho === alvo || (alvo !== '/painel' && caminho.indexOf(alvo + '/') === 0) ||
         (alvo === '/propostas' && caminho.indexOf('/proposta/') === 0 && caminho !== '/proposta/nova') ||
-        (alvo === '/instalacoes' && caminho.indexOf('/instalacao/') === 0));
+        (alvo === '/instalacoes' && caminho.indexOf('/instalacao/') === 0) || (alvo === '/ordens' && caminho.indexOf('/ordem/') === 0));
     });
   };
 

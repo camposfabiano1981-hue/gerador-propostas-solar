@@ -205,6 +205,38 @@ window.App = window.App || {};
       'Ampliação futura do banco de baterias',
       'Separação de circuitos além das cargas críticas listadas'
     ],
+    // checklist da instalação (Execução › Instalações), em três grupos
+    checklistEstrutura: [
+      'Telhado inspecionado antes da montagem (telhas, madeiramento e vedação)',
+      'Ganchos/suportes fixados no madeiramento conforme o fabricante (quantidade e espaçamento)',
+      'Furos e passagens vedados (sem risco de infiltração)',
+      'Trilhos alinhados, nivelados e com emendas firmes',
+      'Módulos fixados com grampos e torque conferido',
+      'Estrutura e molduras dos módulos aterradas (equipotencialização)',
+      'Cabos CC presos aos trilhos, sem contato com as telhas e com proteção UV',
+      'Conectores MC4 crimpados com ferramenta própria e conferidos',
+      'Módulos sem trincas, sujeira ou sombreamento não previsto'
+    ],
+    checklistStringBox: [
+      'String box fixada em local abrigado, com acesso para manutenção',
+      'Fusíveis e chave seccionadora CC com a especificação do projeto',
+      'DPS CC instalado e ligado ao aterramento',
+      'Polaridade das strings conferida',
+      'Tensão de circuito aberto (Voc) de cada string medida e anotada',
+      'Circuitos identificados (etiquetas)',
+      'Prensa-cabos apertados e caixa vedada'
+    ],
+    checklistInversor: [
+      'Inversor fixado em local ventilado, protegido do sol e da chuva diretos',
+      'Distâncias mínimas de ventilação respeitadas (manual do fabricante)',
+      'Disjuntor e DPS CA dimensionados conforme o projeto',
+      'Inversor aterrado',
+      'Tensão da rede conferida antes de ligar',
+      'Parametrização: padrão de rede, país e limite de injeção',
+      'Monitoramento (Wi-Fi) configurado e acesso entregue ao cliente',
+      'Teste de funcionamento: geração registrada no aplicativo',
+      'Placa de advertência "geração própria" no quadro e junto ao medidor'
+    ],
     passoNaProposta: false, // linha do tempo fora da proposta por enquanto (liga em Configurações › Textos padrão)
     passoIntro: 'Da aprovação da proposta ao sistema gerando energia: veja como conduzimos cada etapa e os prazos estimados.',
     cronograma: [

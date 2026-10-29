@@ -41,9 +41,15 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - as **etapas do cronograma de execução** (Configurações › Textos padrão › Passo a passo), já com o nome da concessionária; dá para incluir, remover e reordenar etapas em cada obra;
   - **datas previstas** calculadas pelo prazo de cada etapa ("5 dias úteis", "15–30 dias úteis"…) a partir do início previsto e recalculadas quando uma etapa termina; etapas vencidas aparecem como **atrasadas**;
   - botões **Iniciar / Concluir / Reabrir** (datas automáticas e gravação imediata), **checklist** e observações por etapa;
-  - **dados da obra** (UC, ART, protocolo de homologação, medidor, data da ligação, equipamentos), telefone do cliente e link da pasta de fotos (as fotos ficam na sua nuvem, sem ocupar o armazenamento do app);
+  - **equipamentos instalados**: marca, modelo, potência e quantidade do módulo e do inversor (vêm da proposta), nº de série do inversor e as **fotos das etiquetas** (até 6 por equipamento, tiradas no celular ou escolhidas no computador; ficam no banco de fotos do navegador — IndexedDB — e numa cópia na nuvem, sem ocupar o armazenamento local, e entram no backup);
+  - **checklist da instalação em três grupos** — estrutura de fixação e módulos, string box e inversor —, com campo para anotar medições (ex.: Voc de cada string), itens extras por obra e "não se aplica" (com microinversores a string box já começa assim); os itens padrão ficam em Configurações › Textos padrão;
+  - **dados da obra** (UC, ART, protocolo de homologação, medidor, data da ligação), telefone do cliente e link da pasta de fotos da obra;
   - **histórico** com cada mudança de etapa e as anotações — base para avisar o cliente a cada avanço;
-  - progresso, etapa atual e previsão de conclusão na lista, no resumo da obra e no painel; ao concluir, a obra pode virar uma ficha em **Projetos realizados** (sem o nome do cliente — faltam só as 2 fotos).
+  - progresso, etapa atual, checklist e previsão de conclusão na lista, no resumo da obra e no painel; ao concluir, a obra pode virar uma ficha em **Projetos realizados** (sem o nome do cliente — faltam só as 2 fotos).
+- **Ordens de serviço** (Execução › Ordens de serviço, ou "+ Nova ordem de serviço" dentro da instalação), para as demais demandas das instalações:
+  - numeração própria **OS-AAAAMMDD-NNN**; tipo (manutenção preventiva ou corretiva, limpeza dos módulos, visita técnica, garantia/troca de equipamento, vistoria da concessionária, ampliação, pendência da instalação, outro), prioridade e situação (aberta, agendada, em execução, concluída, cancelada);
+  - cliente, telefone e endereço trazidos da instalação; data agendada (atrasada quando vence), técnico, solicitação, serviço executado, materiais utilizados, atendimento em garantia e valor cobrado;
+  - a abertura e a conclusão entram no **histórico da instalação**; lista com filtros (em aberto, atrasadas, por tipo) e cartão no painel com as em aberto, atrasadas e urgentes.
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
 - Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
@@ -214,7 +220,9 @@ js/passos.js          "Passo a passo" da proposta: cronograma de execução em l
 js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato e gráfico do saldo acumulado (canvas → PNG)
 js/arte.js            Artes da proposta: faixa da capa e ilustração "Como funciona" (canvas → PNG)
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
-js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, progresso, situação e histórico
+js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, checklist, equipamentos instalados, progresso e histórico
+js/ordem.js           Ordens de serviço das instalações (tipos, prioridades, situação, atrasos)
+js/fotos.js           Fotos das etiquetas: banco de fotos do navegador (IndexedDB) com cópia na nuvem, lida sob demanda
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)
 js/documento.js       Conteúdo da proposta (modelo comum ao Word e ao PDF)

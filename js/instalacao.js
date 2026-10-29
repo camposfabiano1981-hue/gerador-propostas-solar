@@ -18,7 +18,43 @@ window.App = window.App || {};
     { id: 'concluida', label: 'Concluída', cor: 'ok' }, { id: 'pausada', label: 'Pausada', cor: 'ambar' }, { id: 'cancelada', label: 'Cancelada', cor: 'erro' }
   ];
 
+  // checklist da instalação em três grupos (itens padrão em Configurações › Textos padrão)
+  const GRUPOS = [
+    { id: 'estrutura', titulo: 'Estrutura de fixação e módulos', chave: 'checklistEstrutura' },
+    { id: 'stringbox', titulo: 'String box', chave: 'checklistStringBox' },
+    { id: 'inversor', titulo: 'Inversor', chave: 'checklistInversor' }
+  ];
+
   function agora() { return new Date().toISOString(); }
+
+  /** Checklist padrão; com microinversores a string box (CC) começa marcada como "não se aplica". */
+  function checklistPadrao(textos, micro) {
+    return GRUPOS.map(function (g) {
+      return { id: g.id, titulo: g.titulo, naoSeAplica: g.id === 'stringbox' && !!micro,
+        itens: ((textos && textos[g.chave]) || []).filter(Boolean).map(function (t) { return { texto: t, ok: false, obs: '' }; }) };
+    });
+  }
+
+  /** Marca e modelo do módulo e do inversor efetivamente instalados, com as fotos das etiquetas (ids em App.Fotos). */
+  function placasVazias() {
+    return { modulo: { marca: '', modelo: '', potencia: '', quantidade: '', fotos: [] }, inversor: { marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [] } };
+  }
+
+  function progressoChecklist(inst) {
+    let feitos = 0, total = 0;
+    (inst.checklistInstalacao || []).forEach(function (g) {
+      if (g.naoSeAplica) return;
+      (g.itens || []).forEach(function (it) { total++; if (it.ok) feitos++; });
+    });
+    return { feitos: feitos, total: total };
+  }
+
+  /** Marca um item; quando o grupo fica completo, registra no histórico. */
+  function marcarItem(inst, grupo, item, ok) {
+    item.ok = !!ok;
+    if (ok && (grupo.itens || []).length && grupo.itens.every(function (x) { return x.ok; })) registrar(inst, 'Checklist "' + grupo.titulo + '" concluído.', 'etapa');
+    return inst;
+  }
 
   /** Prazo do cronograma em dias ("5 dias úteis", "15–30 dias úteis", "1 dia"): o maior número; null quando não há número ("Após aprovação"). */
   function prazoDias(texto) {
@@ -77,6 +113,7 @@ window.App = window.App || {};
       geracaoMes: 0, economiaMes: 0, reducaoPct: 0, segmento: 'residencial',
       situacao: 'ativa', responsavel: emp.responsavel || '', equipe: '', inicioPrevisto: U.todayISO(),
       uc: '', art: '', protocolo: '', medidor: '', ligacao: '', fotosLink: '', observacoes: '',
+      placas: placasVazias(), checklistInstalacao: checklistPadrao(ctx.textos, false),
       etapas: etapasPadrao(ctx.textos, varsTexto(ctx, '', '')), historico: []
     };
     return preverDatas(inst);
@@ -111,6 +148,10 @@ window.App = window.App || {};
         armazenamento: r.armazenamentoAtivo && r.hibrido && r.hibrido.bateria ? nome(r.hibrido.bateria) + ' — ' + U.fmtSmart(r.hibrido.capInstalada, 2) + ' kWh' : '',
         estrutura: [p.telhado, r.estruturaTexto].filter(Boolean).join(' — ')
       };
+      inst.placas = placasVazias();
+      if (r.incluiFV && r.modulo) Object.assign(inst.placas.modulo, { marca: r.modulo.fabricante || '', modelo: r.modulo.modelo || '', potencia: r.modulo.potencia || '', quantidade: r.nModulos || '' });
+      if (r.incluiFV && r.inversor) Object.assign(inst.placas.inversor, { marca: r.inversor.fabricante || '', modelo: r.inversor.modelo || '', potencia: r.inversor.potencia || '', quantidade: r.nInversores || '' });
+      inst.checklistInstalacao = checklistPadrao(ctx.textos, r.micro);
       const a1 = r.fin && r.fin.anos && r.fin.anos[0];
       inst.geracaoMes = r.incluiFV ? U.round(r.geracaoMensal, 0) : 0;
       inst.economiaMes = r.fin ? U.round(r.fin.economiaMes1, 2) : 0;
@@ -187,19 +228,25 @@ window.App = window.App || {};
   function paraProjeto(inst) {
     const fim = previsaoConclusao(inst);
     const eq = inst.equipamentos || {};
+    const pl = inst.placas || {};
+    const desc = function (x, un) {
+      if (!x || !(x.marca || x.modelo)) return '';
+      return (U.num(x.quantidade) > 1 ? U.fmtSmart(U.num(x.quantidade), 0) + ' × ' : '') + [x.marca, x.modelo].filter(Boolean).join(' ') + (U.num(x.potencia) > 0 ? ' (' + U.fmtSmart(U.num(x.potencia), 2) + ' ' + un + ')' : '');
+    };
     const local = inst.endereco ? String(inst.endereco).split(',').slice(-1)[0].trim() : '';
     return {
       titulo: (inst.segmento === 'residencial' ? 'Residência' : App.DEFAULTS.SEGMENTOS.find(function (s) { return s.id === inst.segmento; }).label) + (local ? ' — ' + local : ''),
       segmento: inst.segmento || 'residencial', tipoSistema: inst.tipoSistema || 'ongrid', cidade: inst.cidade || '', uf: inst.uf || '',
       conclusao: fim ? fim.slice(5, 7) + '/' + fim.slice(0, 4) : '', potenciaKwp: inst.kwp || '',
-      modulos: eq.modulos || '', inversor: eq.inversor || '', armazenamento: eq.armazenamento || '', estrutura: eq.estrutura || '',
+      modulos: desc(pl.modulo, 'Wp') || eq.modulos || '', inversor: desc(pl.inversor, 'kW') || eq.inversor || '', armazenamento: eq.armazenamento || '', estrutura: eq.estrutura || '',
       geracaoMes: inst.geracaoMes || '', economiaMes: inst.economiaMes || '', reducaoPct: inst.reducaoPct || '',
       descricao: '', foto1: null, foto2: null, exibir: true, instalacaoId: inst.id || ''
     };
   }
 
   App.Instalacao = {
-    SITUACOES: SITUACOES, STATUS_ETAPA: STATUS_ETAPA, STATUS: STATUS,
+    SITUACOES: SITUACOES, STATUS_ETAPA: STATUS_ETAPA, STATUS: STATUS, GRUPOS: GRUPOS,
+    checklistPadrao: checklistPadrao, placasVazias: placasVazias, progressoChecklist: progressoChecklist, marcarItem: marcarItem,
     prazoDias: prazoDias, somarDias: somarDias, preverDatas: preverDatas, novaEtapa: novaEtapa, etapasPadrao: etapasPadrao,
     nova: nova, deProposta: deProposta, registrar: registrar, mudarEtapa: mudarEtapa,
     progresso: progresso, etapaAtual: etapaAtual, status: status, atrasadas: atrasadas, previsaoConclusao: previsaoConclusao, paraProjeto: paraProjeto

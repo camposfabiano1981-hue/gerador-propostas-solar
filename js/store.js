@@ -7,10 +7,10 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 9;
+  const VERSAO = 10;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
-  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes'];
+  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
 
@@ -117,6 +117,8 @@ window.App = window.App || {};
     if (v < 8) separarMateriaisAvulsas();
     // gestão das instalações (obras das propostas aprovadas)
     if (v < 9 && ler('col.instalacoes', null) == null) gravar('col.instalacoes', []);
+    // ordens de serviço das instalações
+    if (v < 10 && ler('col.ordens', null) == null) gravar('col.ordens', []);
     gravar('v', VERSAO);
   };
 
@@ -216,6 +218,7 @@ window.App = window.App || {};
     gravar('col.contratos', []);
     gravar('col.projetos', []);
     gravar('col.instalacoes', []);
+    gravar('col.ordens', []);
     gravar('v', VERSAO);
   };
 
@@ -334,14 +337,14 @@ window.App = window.App || {};
 
   /**
    * Próximo número no formato PREFIXO-AAAAMMDD-NNN.
-   * tipo 'proposta' (propostas solares e avulsas compartilham a sequência) ou 'contrato'.
+   * tipo 'proposta' (propostas solares e avulsas compartilham a sequência), 'contrato' ou 'os' (ordem de serviço).
    */
   Store.proximoNumero = function (dataISO, tipo) {
     const c = Store.config();
-    const contrato = tipo === 'contrato';
+    const contrato = tipo === 'contrato', os = tipo === 'os';
     const dia = String(dataISO || U.todayISO()).replace(/-/g, '').slice(0, 8);
-    const chave = contrato ? 'CT:' + dia : dia;
-    const cols = contrato ? ['contratos'] : ['propostas', 'avulsas'];
+    const chave = contrato ? 'CT:' + dia : (os ? 'OS:' + dia : dia);
+    const cols = contrato ? ['contratos'] : (os ? ['ordens'] : ['propostas', 'avulsas']);
     const usados = [];
     cols.forEach(function (col) {
       Store.list(col).forEach(function (p) {
@@ -350,7 +353,7 @@ window.App = window.App || {};
       });
     });
     const seq = Math.max(c.seq[chave] || 0, usados.length ? Math.max.apply(null, usados) : 0) + 1;
-    const prefixo = contrato ? (c.empresa.prefixoContrato || 'CT') : (c.empresa.prefixo || 'PR');
+    const prefixo = contrato ? (c.empresa.prefixoContrato || 'CT') : (os ? 'OS' : (c.empresa.prefixo || 'PR'));
     return { numero: prefixo + '-' + dia + '-' + String(seq).padStart(3, '0'), dia: dia, seq: seq, chave: chave };
   };
 

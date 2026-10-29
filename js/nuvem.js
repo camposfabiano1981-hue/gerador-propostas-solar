@@ -5,6 +5,7 @@
  *
  * Dados: usuarios/{uid}/{coleção}/{id} = {json, partes, atualizadoEm, excluido}; configuração em usuarios/{uid}/config/geral.
  * Registros grandes (fotos) são divididos em usuarios/{uid}/partes/{coleção}__{id}__{n} (limite de 1 MiB por documento).
+ * Fotos das instalações (App.Fotos): usuarios/{uid}/fotos/{id}, gravadas ao tirar e lidas sob demanda (fora das coleções acompanhadas).
  * Conflitos: vale a versão com a data de alteração (atualizadoEm) mais recente; exclusões ficam marcadas (excluido: true).
  */
 window.App = window.App || {};
@@ -224,6 +225,33 @@ window.App = window.App || {};
     acompanhar(fb.m.fs.setDoc(refDoc(col, id), { excluido: true, partes: 0, atualizadoEm: ts || new Date().toISOString() }));
   }
 
+  /* ------------------------------------------------------------ fotos (lidas sob demanda) */
+
+  N.gravarFoto = function (id, obj) {
+    if (!N.usuario || !fb) return Promise.reject(new Error('Sincronização desligada.'));
+    const p = gravarDoc('fotos', id, obj);
+    acompanhar(p);
+    return p;
+  };
+
+  N.lerFoto = async function (id) {
+    if (!N.usuario || !fb) return null;
+    const snap = await fb.m.fs.getDoc(refDoc('fotos', id));
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    return d.excluido ? null : lerDoc('fotos', id, d);
+  };
+
+  N.excluirFoto = async function (id) {
+    if (!N.usuario || !fb) throw new Error('Sincronização desligada.');
+    const snap = await fb.m.fs.getDoc(refDoc('fotos', id));
+    const n = snap.exists() ? (snap.data().partes || 0) : 0;
+    const lote = fb.m.fs.writeBatch(fb.db);
+    for (let i = 0; i < n; i++) lote.delete(refParte('fotos', id, i));
+    lote.delete(refDoc('fotos', id));
+    await lote.commit();
+  };
+
   /* ------------------------------------------------------------ sincronização */
 
   const COLECOES = function () { return App.Store.COLECOES.concat(['config']); };
@@ -300,6 +328,8 @@ window.App = window.App || {};
       if (todasLidas()) {
         if (enviadosNaEntrada) App.UI.toast(enviadosNaEntrada + ' registro(s) deste aparelho enviados para a nuvem.', 'ok');
         enviadosNaEntrada = 0;
+        // fotos tiradas sem conexão
+        if (App.Fotos) App.Fotos.enviarPendentes().catch(function (e) { console.error(e); });
         definirEstado(estadoAtual());
       }
     } else {

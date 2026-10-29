@@ -243,6 +243,14 @@
       { k: 'cenariosIntro', label: 'Introdução do comparativo de cenários', type: 'textarea', rows: 3, cls: 'span2' }
     ], tx, marcar)));
 
+    cont.appendChild(h('div.card', h('h3', 'Checklist da instalação (um item por linha)'),
+      h('p.ajuda-sec', 'Itens que entram em cada nova obra em Execução › Instalações, em três grupos. Em cada obra dá para marcar, anotar medições, incluir e remover itens.'),
+      UI.grade([
+        { k: 'checklistEstrutura', label: '🏗️ Estrutura de fixação e módulos', type: 'linhas', rows: 9, cls: 'span2' },
+        { k: 'checklistStringBox', label: '🔒 String box', type: 'linhas', rows: 7 },
+        { k: 'checklistInversor', label: '🔌 Inversor', type: 'linhas', rows: 7 }
+      ], tx, marcar)));
+
     cont.appendChild(h('div.card', h('h3', 'Propostas avulsas (serviços complementares)'), UI.grade([
       { k: 'avulsaApresentacao', label: 'Apresentação', type: 'textarea', rows: 3, cls: 'span2' },
       { k: 'avulsaGarantia', label: 'Garantia padrão dos serviços', type: 'textarea', rows: 2, cls: 'span2' },
@@ -466,6 +474,7 @@
           const dados = JSON.parse(await U.readFileAsText(f));
           if (!(await UI.confirmar('Importar este backup substituirá TODOS os dados atuais' + emTodos() + '. Continuar?', 'Importar', true))) return;
           S.importar(dados);
+          if (App.Fotos && Array.isArray(dados.fotos)) await App.Fotos.importar(dados.fotos);
           App.atualizarMarca();
           UI.toast('Backup importado com sucesso.', 'ok');
           UI.ir('#/painel');
@@ -483,10 +492,12 @@
     cont.appendChild(h('div.grade-cards',
       h('div.card',
         h('h3', 'Exportar backup'),
-        h('p', 'Baixa um arquivo .json com empresa, premissas, textos, cadastros e propostas.'),
+        h('p', 'Baixa um arquivo .json com empresa, premissas, textos, cadastros, propostas, instalações e as fotos das etiquetas.'),
         h('button.btn.primario', {
-          type: 'button', onclick: function () {
-            const blob = new Blob([JSON.stringify(S.exportar(), null, 1)], { type: 'application/json' });
+          type: 'button', onclick: async function () {
+            const dados = S.exportar();
+            if (App.Fotos) dados.fotos = await App.Fotos.todas();
+            const blob = new Blob([JSON.stringify(dados, null, 1)], { type: 'application/json' });
             U.download(blob, 'backup-propostas-solar-' + U.todayISO() + '.json');
           }
         }, 'Exportar .json')),

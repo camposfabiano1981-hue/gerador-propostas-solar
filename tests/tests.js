@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '9');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '10');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,7 +641,7 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8 → v9: versão da base (atual) e coleção das instalações', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) ? ' ok' : ''), '9 ok');
+      igual('migração v8 → v10: versão da base (atual), instalações e ordens de serviço', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) ? ' ok' : ''), '10 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -854,7 +854,31 @@
   ok('capa: faixa da marca e quadro azul com o cliente, o número e a validade', mP.imagens.capa && /PREPARADA PARA/.test(xmlP.documento) && /Válida até/.test(xmlP.documento));
 
   // ---------------------------------------------------------------- docx
+  async function testarFotos() {
+    const F = App.Fotos;
+    try {
+      const cv = document.createElement('canvas'); cv.width = 2400; cv.height = 1600;
+      const g = cv.getContext('2d'); g.fillStyle = '#123456'; g.fillRect(0, 0, 2400, 1600); g.fillStyle = '#fff'; g.font = '120px sans-serif'; g.fillText('ETIQUETA 625 W', 200, 800);
+      const blob = await new Promise(function (ok) { cv.toBlob(ok, 'image/png'); });
+      const foto = await F.preparar(new File([blob], 'etiqueta.png', { type: 'image/png' }));
+      ok('fotos: etiqueta reduzida (lado maior 1280 px) e em JPEG', foto.w === 1280 && foto.h === 853 && /^data:image\/jpeg;base64,/.test(foto.dataURL) && foto.dataURL.length <= 450000, foto.w + '×' + foto.h + ' ' + foto.dataURL.length);
+      const usoAntes = App.Store.uso();
+      const id = await F.salvar(foto);
+      const lida = await F.obter(id);
+      ok('fotos: gravada fora do armazenamento local e lida de volta pelo id', /^foto-/.test(id) && lida && lida.dataURL === foto.dataURL && App.Store.uso() === usoAntes);
+      ok('fotos: entra no backup', (await F.todas()).some(function (x) { return x.id === id && x.dataURL === foto.dataURL; }));
+      await F.remover(id);
+      ok('fotos: removida', (await F.obter(id)) === null);
+      const n = await F.importar([{ id: 'foto-backup-1', dataURL: foto.dataURL, w: foto.w, h: foto.h }]);
+      ok('fotos: restauradas do backup', n === 1 && !!(await F.obter('foto-backup-1')));
+      await F.remover('foto-backup-1');
+    } catch (e) {
+      ok('fotos: IndexedDB', false, e && e.stack || String(e));
+    }
+  }
+
   async function testarDocx() {
+    await testarFotos();
     const out = { ref: null, hib: null };
     try {
       const gc = await K.gerarDocx(ctK, ctxK);
@@ -970,7 +994,40 @@
       proj.tipoSistema === 'ongrid' && proj.titulo.indexOf(inst.clienteNome) < 0 && !proj.foto1 && proj.exibir === true, JSON.stringify(proj).slice(0, 160));
     const branca = I.nova(ctxI);
     ok('instalações: em branco já traz as etapas do cronograma e o responsável', branca.etapas.length === D.textos.cronograma.length && branca.responsavel === ctxI.empresa.responsavel && !branca.propostaId);
-    ok('instalações: coleção sincronizada e no backup', App.Store.COLECOES.indexOf('instalacoes') >= 0 && Array.isArray(App.Store.exportar().colecoes.instalacoes));
+    // checklist em três grupos e equipamentos instalados
+    const inst2 = I.deProposta(pI, ctxI);
+    igual('checklist: três grupos com os itens padrão', inst2.checklistInstalacao.map(function (g) { return g.titulo + ':' + g.itens.length + (g.naoSeAplica ? ' NA' : ''); }).join(' | '),
+      'Estrutura de fixação e módulos:' + D.textos.checklistEstrutura.length + ' | String box:' + D.textos.checklistStringBox.length + ' | Inversor:' + D.textos.checklistInversor.length);
+    ok('checklist: com microinversores a string box começa como "não se aplica"', I.checklistPadrao(D.textos, true)[1].naoSeAplica === true && I.checklistPadrao(D.textos, false)[1].naoSeAplica === false);
+    const g0 = inst2.checklistInstalacao[0];
+    g0.itens.forEach(function (it, k) { if (k < g0.itens.length - 1) I.marcarItem(inst2, g0, it, true); });
+    const hAntes = inst2.historico.length;
+    I.marcarItem(inst2, g0, g0.itens[g0.itens.length - 1], true);
+    ok('checklist: grupo completo entra no histórico', inst2.historico.length === hAntes + 1 && /Checklist "Estrutura de fixação e módulos" concluído/.test(inst2.historico[0].texto));
+    const pc0 = I.progressoChecklist(inst2);
+    inst2.checklistInstalacao[1].naoSeAplica = true;
+    const pc1 = I.progressoChecklist(inst2);
+    ok('checklist: progresso ignora grupo que não se aplica', pc0.feitos === g0.itens.length && pc1.total === pc0.total - inst2.checklistInstalacao[1].itens.length, JSON.stringify([pc0, pc1]));
+    ok('equipamentos instalados: marca, modelo, potência e quantidade da proposta', inst2.placas.modulo.marca === r.modulo.fabricante && inst2.placas.modulo.modelo === r.modulo.modelo &&
+      Number(inst2.placas.modulo.potencia) === 625 && Number(inst2.placas.modulo.quantidade) === 9 && inst2.placas.inversor.marca === r.inversor.fabricante && inst2.placas.inversor.modelo === r.inversor.modelo &&
+      Array.isArray(inst2.placas.modulo.fotos) && Array.isArray(inst2.placas.inversor.fotos), JSON.stringify(inst2.placas));
+    inst2.placas.modulo.marca = 'Marca X'; inst2.placas.modulo.modelo = 'MX-610'; inst2.placas.modulo.potencia = 610; inst2.placas.modulo.quantidade = 10;
+    igual('equipamentos instalados: portfólio usa o que foi instalado', I.paraProjeto(inst2).modulos, '10 × Marca X MX-610 (610 Wp)');
+    // ordens de serviço
+    const Ord = App.Ordem;
+    inst2.id = 'inst-teste';
+    const os = Ord.nova(ctxI, inst2);
+    ok('OS: ligada à instalação traz cliente, telefone e endereço', os.instalacaoId === 'inst-teste' && os.clienteNome === inst2.clienteNome && os.telefone === '(67) 99999-0000' &&
+      os.endereco === inst2.endereco && os.status === 'aberta' && os.responsavel === ctxI.empresa.responsavel);
+    ok('OS: numeração própria OS-AAAAMMDD-NNN, separada da das propostas', /^OS-20261029-\d{3}$/.test(App.Store.proximoNumero('2026-10-29', 'os').numero) && !/^OS-/.test(App.Store.proximoNumero('2026-10-29').numero));
+    os.agendadaPara = '2026-11-10';
+    ok('OS: agendada vencida aparece como atrasada', Ord.atrasada(os, '2026-11-11') && !Ord.atrasada(os, '2026-11-10'));
+    Ord.mudarStatus(os, 'concluida', '2026-11-12');
+    ok('OS: concluir marca a data e deixa de estar em aberto', os.concluidaEm === '2026-11-12' && !Ord.aberta(os) && !Ord.atrasada(os, '2027-01-01'));
+    Ord.mudarStatus(os, 'aberta');
+    ok('OS: reabrir limpa a conclusão', os.concluidaEm === '' && Ord.aberta(os));
+    igual('OS: tipos de serviço', Ord.TIPOS.map(function (t) { return t.id; }).join(','), 'preventiva,corretiva,limpeza,visita,garantia,vistoria,ampliacao,pendencia,outro');
+    ok('instalações: coleções sincronizadas e no backup', ['instalacoes', 'ordens'].every(function (c) { return App.Store.COLECOES.indexOf(c) >= 0 && Array.isArray(App.Store.exportar().colecoes[c]); }));
   })();
 
   // ---------------------------------------------------------------- numeração automática (somente leitura do armazenamento)
