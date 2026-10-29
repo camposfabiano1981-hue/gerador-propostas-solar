@@ -924,6 +924,12 @@
         h('button.btn', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'),
         h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ Word'),
         h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ PDF')));
+      // proposta aprovada: atalho para a gestão da instalação
+      if (p.id && p.status === 'aprovada' && App.abrirInstalacao) {
+        const inst = App.instalacaoDaProposta(p.id);
+        resumo.appendChild(h('button.btn.instalacao-atalho', { type: 'button', onclick: function () { App.abrirInstalacao(p); } },
+          inst ? '🏗 Abrir a instalação (' + Math.round(App.Instalacao.progresso(inst).pct * 100) + '% concluída)' : '🏗 Iniciar a instalação'));
+      }
     }
 
     /* ---------------- salvar / gerar */

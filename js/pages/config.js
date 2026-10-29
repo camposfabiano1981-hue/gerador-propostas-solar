@@ -251,7 +251,7 @@
     ], tx, marcar)));
 
     cont.appendChild(h('div.card', h('h3', 'Passo a passo (cronograma de execução)'),
-      h('p.ajuda-sec', 'Linha do tempo ilustrada logo após Projetos realizados: cada etapa vira um passo numerado, com o prazo estimado. Fica fora da proposta até você marcar a opção abaixo.'),
+      h('p.ajuda-sec', 'As mesmas etapas viram o roteiro de cada obra em Execução › Instalações (o prazo estimado calcula as datas previstas). Na proposta, aparecem como linha do tempo ilustrada logo após Projetos realizados — fica fora da proposta até você marcar a opção abaixo.'),
       UI.grade([
         { k: 'passoNaProposta', label: 'Incluir o passo a passo na proposta', type: 'checkbox', cls: 'span2' },
         { k: 'passoIntro', label: 'Frase de abertura', type: 'textarea', rows: 2, cls: 'span2' }

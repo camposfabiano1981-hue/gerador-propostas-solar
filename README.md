@@ -37,6 +37,13 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   A composição de custos, as premissas do cálculo e o fluxo de caixa ficam fora do documento (o saldo acumulado aparece em gráfico em Seu investimento e retorno).
 
   Telefone (usado como WhatsApp), e-mail e endereço vêm de Configurações › Empresa. Os detalhes de engenharia (strings, FDG, HSP, PR, tensão do banco, balanço diário etc.) ficam no painel da proposta, fora do documento impresso.
+- **Gestão das instalações** (Execução › Instalações): cada proposta aprovada vira uma obra (botão 🏗 na lista de propostas, na proposta aprovada ou no aviso do painel), com:
+  - as **etapas do cronograma de execução** (Configurações › Textos padrão › Passo a passo), já com o nome da concessionária; dá para incluir, remover e reordenar etapas em cada obra;
+  - **datas previstas** calculadas pelo prazo de cada etapa ("5 dias úteis", "15–30 dias úteis"…) a partir do início previsto e recalculadas quando uma etapa termina; etapas vencidas aparecem como **atrasadas**;
+  - botões **Iniciar / Concluir / Reabrir** (datas automáticas e gravação imediata), **checklist** e observações por etapa;
+  - **dados da obra** (UC, ART, protocolo de homologação, medidor, data da ligação, equipamentos), telefone do cliente e link da pasta de fotos (as fotos ficam na sua nuvem, sem ocupar o armazenamento do app);
+  - **histórico** com cada mudança de etapa e as anotações — base para avisar o cliente a cada avanço;
+  - progresso, etapa atual e previsão de conclusão na lista, no resumo da obra e no painel; ao concluir, a obra pode virar uma ficha em **Projetos realizados** (sem o nome do cliente — faltam só as 2 fotos).
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
 - Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
@@ -207,6 +214,7 @@ js/passos.js          "Passo a passo" da proposta: cronograma de execução em l
 js/chart.js           Gráfico "Estimativa de produção mensal", o mesmo na proposta e no contrato e gráfico do saldo acumulado (canvas → PNG)
 js/arte.js            Artes da proposta: faixa da capa e ilustração "Como funciona" (canvas → PNG)
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
+js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, progresso, situação e histórico
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)
 js/documento.js       Conteúdo da proposta (modelo comum ao Word e ao PDF)
@@ -215,7 +223,7 @@ js/pdf.js             Documento PDF no layout do modelo (jsPDF + fonte Arimo, ca
 js/docx-parts.js      Estilos/tema/fontes extraídos do modelo original
 js/logo-default.js    Logotipo padrão (gerado a partir de assets/logo-genesis.jpg)
 js/ui.js              Roteador, diálogos, campos e cadastro genérico
-js/pages/*.js         Telas (painel, propostas, formulário, cadastros, configurações)
+js/pages/*.js         Telas (painel, propostas, formulário, contratos, instalações, cadastros, configurações)
 tests/index.html      Testes automáticos do cálculo e do .docx
 tests/equipamentos-teste.js  Módulos, inversores e baterias usados nos cenários de teste (antigo catálogo)
 tools/serve.ps1       Servidor local opcional (Windows/PowerShell)

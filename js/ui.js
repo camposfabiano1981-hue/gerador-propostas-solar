@@ -69,7 +69,8 @@ window.App = window.App || {};
     document.querySelectorAll('.nav a').forEach(function (a) {
       const alvo = a.getAttribute('href').replace(/^#/, '');
       a.classList.toggle('ativo', caminho === alvo || (alvo !== '/painel' && caminho.indexOf(alvo + '/') === 0) ||
-        (alvo === '/propostas' && caminho.indexOf('/proposta/') === 0 && caminho !== '/proposta/nova'));
+        (alvo === '/propostas' && caminho.indexOf('/proposta/') === 0 && caminho !== '/proposta/nova') ||
+        (alvo === '/instalacoes' && caminho.indexOf('/instalacao/') === 0));
     });
   };
 

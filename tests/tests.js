@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '8');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '9');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,7 +641,7 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8: versão da base', localStorage.getItem('gsp.v'), '8');
+      igual('migração v8 → v9: versão da base (atual) e coleção das instalações', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) ? ' ok' : ''), '9 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -929,6 +929,49 @@
     })(c[1].corpo.concat(c[1].cabecalho, c[1].rodape));
     ok('cores de fundo das células válidas (' + c[0] + ')', !invalidos.length, invalidos.slice(0, 3).join(' | '));
   });
+
+  // ---------------------------------------------------------------- instalações (gestão da obra)
+  (function () {
+    const I = App.Instalacao;
+    igual('instalações: prazo do cronograma em dias', [I.prazoDias('5 dias úteis'), I.prazoDias('15–30 dias úteis'), I.prazoDias('1 dia'), I.prazoDias('30–60 dias (Energisa MS)'), I.prazoDias('Após aprovação')]
+      .map(function (x) { return x ? x.dias + (x.uteis ? 'u' : 'c') : '—'; }).join(','), '5u,30u,1c,60c,—');
+    igual('instalações: dias úteis pulam o fim de semana (sex + 1 útil = seg)', I.somarDias('2026-10-30', 1, true), '2026-11-02');
+    igual('instalações: dias corridos', I.somarDias('2026-10-30', 3, false), '2026-11-02');
+    const ctxI = U.clone(ctx); ctxI.clientes[0].telefone = '(67) 99999-0000';
+    const pI = Object.assign(U.clone(p), { id: 'prop-teste', numero: 'GE-20260929-012', status: 'aprovada' });
+    const inst = I.deProposta(pI, ctxI);
+    ok('instalações: criada da proposta com cliente, telefone, sistema e valor', inst.propostaId === 'prop-teste' && inst.clienteNome === ctxI.clientes[0].nome &&
+      inst.telefone === '(67) 99999-0000' && Math.abs(inst.kwp - r.kwp) < 1e-9 && Math.abs(inst.valor - r.total) < 1e-6 && /kWp — On-Grid$/.test(inst.titulo), inst.titulo);
+    ok('instalações: equipamentos e números para o portfólio', /^9 × .* \(625 Wp\)$/.test(inst.equipamentos.modulos) && !!inst.equipamentos.inversor && inst.geracaoMes > 0 && inst.reducaoPct > 0 && inst.segmento === 'residencial',
+      JSON.stringify(inst.equipamentos));
+    igual('instalações: etapas do cronograma com o nome da concessionária', inst.etapas.map(function (e) { return e.titulo; }).join(' | '),
+      D.textos.cronograma.map(function (c) { return c.etapa.replace(/\{concessionaria\}/g, r.concessionaria.nome); }).join(' | '));
+    ok('instalações: previsões em sequência a partir do início', inst.etapas.every(function (e, k) { return e.previsto && (k === 0 || e.previsto >= inst.etapas[k - 1].previsto); }) &&
+      inst.etapas[0].previsto === I.somarDias(inst.inicioPrevisto, 5, true));
+    ok('instalações: etapa sem prazo em dias fica na data da anterior', inst.etapas[5].previsto === inst.etapas[4].previsto);
+    igual('instalações: nova = a iniciar, 0 de 6', I.status(inst) + ' ' + I.progresso(inst).feitas + '/' + I.progresso(inst).total, 'iniciar 0/6');
+    ok('instalações: histórico registra a criação', inst.historico.length === 1 && /proposta GE-20260929-012/.test(inst.historico[0].texto));
+    // avanço das etapas
+    I.mudarEtapa(inst, inst.etapas[0], 'andamento', '2026-11-03');
+    ok('instalações: iniciar etapa marca a data e a situação vai a em andamento', inst.etapas[0].iniciadoEm === '2026-11-03' && I.status(inst) === 'andamento' && I.etapaAtual(inst) === inst.etapas[0]);
+    I.mudarEtapa(inst, inst.etapas[0], 'concluida', '2026-11-05');
+    ok('instalações: concluir etapa marca a data, conta no progresso e passa para a próxima', inst.etapas[0].concluidoEm === '2026-11-05' && I.progresso(inst).feitas === 1 &&
+      I.etapaAtual(inst) === inst.etapas[1] && /Etapa 1 — .*: concluída\./.test(inst.historico[0].texto));
+    ok('instalações: previsões seguintes recontadas a partir da conclusão real', inst.etapas[1].previsto === I.somarDias('2026-11-05', 30, true));
+    I.mudarEtapa(inst, inst.etapas[0], 'andamento', '2026-11-06');
+    ok('instalações: reabrir etapa limpa a conclusão e registra', inst.etapas[0].concluidoEm === '' && /reaberta/.test(inst.historico[0].texto));
+    ok('instalações: etapa vencida aparece como atrasada', I.atrasadas(inst, '2099-01-01').length === inst.etapas.length && I.atrasadas(inst, '2000-01-01').length === 0);
+    inst.etapas.forEach(function (e) { I.mudarEtapa(inst, e, 'concluida', '2026-12-10'); });
+    ok('instalações: todas concluídas = obra concluída, sem atrasos', I.status(inst) === 'concluida' && I.atrasadas(inst, '2099-01-01').length === 0 && I.previsaoConclusao(inst) === '2026-12-10');
+    inst.situacao = 'pausada'; const stP = I.status(inst); inst.situacao = 'cancelada'; const stC = I.status(inst); inst.situacao = 'ativa';
+    igual('instalações: obra pausada e cancelada', stP + ',' + stC, 'pausada,cancelada');
+    const proj = I.paraProjeto(inst);
+    ok('instalações: concluída vira ficha de Projetos realizados (sem o nome do cliente)', proj.conclusao === '12/2026' && proj.potenciaKwp === inst.kwp && proj.modulos === inst.equipamentos.modulos &&
+      proj.tipoSistema === 'ongrid' && proj.titulo.indexOf(inst.clienteNome) < 0 && !proj.foto1 && proj.exibir === true, JSON.stringify(proj).slice(0, 160));
+    const branca = I.nova(ctxI);
+    ok('instalações: em branco já traz as etapas do cronograma e o responsável', branca.etapas.length === D.textos.cronograma.length && branca.responsavel === ctxI.empresa.responsavel && !branca.propostaId);
+    ok('instalações: coleção sincronizada e no backup', App.Store.COLECOES.indexOf('instalacoes') >= 0 && Array.isArray(App.Store.exportar().colecoes.instalacoes));
+  })();
 
   // ---------------------------------------------------------------- numeração automática (somente leitura do armazenamento)
   const num = App.Store.proximoNumero('2026-09-29');

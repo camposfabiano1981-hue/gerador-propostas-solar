@@ -7,10 +7,10 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 8;
+  const VERSAO = 9;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
-  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos'];
+  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
 
@@ -115,6 +115,8 @@ window.App = window.App || {};
     }
     if (v < 7) zerarCatalogoDatasheet();
     if (v < 8) separarMateriaisAvulsas();
+    // gestão das instalações (obras das propostas aprovadas)
+    if (v < 9 && ler('col.instalacoes', null) == null) gravar('col.instalacoes', []);
     gravar('v', VERSAO);
   };
 
@@ -213,6 +215,7 @@ window.App = window.App || {};
     gravar('col.avulsas', []);
     gravar('col.contratos', []);
     gravar('col.projetos', []);
+    gravar('col.instalacoes', []);
     gravar('v', VERSAO);
   };
 

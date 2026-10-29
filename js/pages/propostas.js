@@ -66,9 +66,13 @@
       h('div.card.kpi-card', h('span', 'Propostas'), h('strong', String(props.length)), h('small', abertas.length + ' em aberto')),
       h('div.card.kpi-card', h('span', 'Valor em aberto'), h('strong', U.brl(soma(abertas, 'total'))), h('small', U.kwp(soma(abertas, 'kwp')) + ' kWp')),
       h('div.card.kpi-card.ok', h('span', 'Aprovadas'), h('strong', U.brl(soma(aprovadas, 'total'))), h('small', aprovadas.length + ' proposta(s) · ' + U.kwp(soma(aprovadas, 'kwp')) + ' kWp')),
-      h('div.card.kpi-card', h('span', 'Clientes'), h('strong', String(S.list('clientes').length)), h('small', h('a', { href: '#/clientes' }, 'Ver cadastro')))));
+      h('div.card.kpi-card', h('span', 'Clientes'), h('strong', String(S.list('clientes').length)), h('small', h('a', { href: '#/clientes' }, 'Ver cadastro'))),
+      cartaoInstalacoes()));
 
     const avisos = [];
+    const semInstalacao = App.aprovadasSemInstalacao ? App.aprovadasSemInstalacao() : [];
+    if (semInstalacao.length) avisos.push(h('li', semInstalacao.length === 1 ? '1 proposta aprovada ainda sem instalação. ' : semInstalacao.length + ' propostas aprovadas ainda sem instalação. ',
+      h('a', { href: '#/instalacoes' }, 'Iniciar em Instalações'), '.'));
     if (semPreco) avisos.push(h('li', semPreco + ' equipamento(s) principal(is) sem preço. ', h('a', { href: '#/equipamentos' }, 'Cadastrar preços'), ' para o kit ser somado automaticamente.'));
     if (props.length) avisos.push(h('li', 'Os dados ficam neste navegador — ', h('a', { href: '#/dados' }, 'faça backup'), ' periodicamente.'));
     if (!S.list('clientes').length) avisos.push(h('li', 'Comece cadastrando um ', h('a', { href: '#/clientes' }, 'cliente'), ' ou crie a proposta e cadastre o cliente por lá.'));
@@ -83,6 +87,19 @@
     }
     cont.appendChild(box);
   });
+
+  /** Cartão do painel: obras em andamento, atrasadas e a iniciar. */
+  function cartaoInstalacoes() {
+    const I = App.Instalacao;
+    if (!I) return null;
+    const lista = S.list('instalacoes');
+    const hoje = U.todayISO();
+    const andamento = lista.filter(function (x) { return I.status(x) === 'andamento'; });
+    const iniciar = lista.filter(function (x) { return I.status(x) === 'iniciar'; }).length;
+    const atrasadas = andamento.filter(function (x) { return I.atrasadas(x, hoje).length; }).length;
+    return h('div.card.kpi-card' + (atrasadas ? '.alerta' : ''), h('span', 'Instalações em andamento'), h('strong', String(andamento.length)),
+      h('small', h('a', { href: '#/instalacoes' }, [atrasadas ? atrasadas + ' com etapa atrasada' : '', iniciar ? iniciar + ' a iniciar' : '', 'ver todas'].filter(Boolean).join(' · '))));
+  }
 
   function tabela(lista, recarregar) {
     const tb = h('tbody');
@@ -104,6 +121,10 @@
           btnPdf,
           btnDocx,
           h('button.btn-icone', { type: 'button', title: 'Gerar contrato', 'aria-label': 'Gerar contrato', onclick: function () { UI.ir('#/contrato/novo?proposta=' + p.id); } }, '✍'),
+          App.abrirInstalacao ? h('button.btn-icone', {
+            type: 'button', title: App.instalacaoDaProposta(p.id) ? 'Abrir a instalação' : 'Iniciar a instalação', 'aria-label': 'Instalação',
+            onclick: function () { App.abrirInstalacao(p); }
+          }, '🏗') : null,
           h('button.btn-icone', { type: 'button', title: 'Duplicar', 'aria-label': 'Duplicar', onclick: function () { duplicar(p); } }, '⧉'),
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
@@ -145,7 +166,7 @@
       h('option', { value: '' }, 'Todas as situações'), D.STATUS.map(function (s) { return h('option', { value: s.id }, s.label); }));
     const selTipo = h('select', { 'aria-label': 'Filtrar por tipo', onchange: function () { filtro.tipo = selTipo.value; desenhar(); } },
       h('option', { value: '' }, 'Todos os tipos'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'), h('option', { value: 'bess' }, 'BESS'));
-    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. PDF / DOCX baixam a proposta, ✍ gera o contrato, ⧉ duplica.', [
+    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. PDF / DOCX baixam a proposta, ✍ gera o contrato, 🏗 abre a instalação, ⧉ duplica.', [
       busca, selStatus, selTipo, h('a.btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta')
     ]));
     cont.appendChild(box);
