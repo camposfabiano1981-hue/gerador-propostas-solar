@@ -22,7 +22,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - **Número da proposta automático** `PREFIXO-AAAAMMDD-NNN` (ex.: GE-20261016-001): sequencial por data de emissão, atribuído ao salvar e nunca repetido (mesmo após excluir propostas). O prefixo é definido em Configurações › Empresa.
 - **Proposta amigável para o cliente**, em linguagem simples e com o resultado em destaque:
   - **capa** com a redução da conta em %, os números principais (potência, geração, economia por mês) e a data de validade;
-  - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, como pagar e o contato pelo WhatsApp;
+  - **sua proposta em uma página**: investimento, economia, retorno, a conta de hoje × com energia solar, o que o cliente recebe, **todas as formas de pagamento** (parcelas, total pago e a sobra no mês: economia − parcela), a validade e o contato pelo WhatsApp;
   - **apresentação da empresa**: o texto de apresentação, os cartões "Por que escolher" (diferenciais editáveis em Configurações › Textos padrão) e o cartão do responsável técnico ("Quem cuida do seu projeto");
   - projetos realizados;
   - **passo a passo** (cronograma em linha do tempo ilustrada, com o prazo de cada etapa): fica fora da proposta até ser ligado em Configurações › Textos padrão;
@@ -32,9 +32,9 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - **o que está incluso** e o que não está, as garantias e o que acontece depois da instalação;
   - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?" e a conta nos próximos anos em tabela amigável: 1º, 5º, 10º, 15º, 20º e 25º ano, valores arredondados e o total da economia);
   - **retorno do investimento** (tempo de retorno, TIR × SELIC, quantas vezes o valor volta, custo do kWh solar e gráfico do saldo acumulado);
-  - investimento (só o valor total e o que está incluído, sem a composição de custos) e formas de pagamento (com a sobra no mês: economia − parcela);
-  - **próximos passos** (aprovação, contrato, vistoria), considerações, cartão de contato e assinaturas;
-  - anexo com as premissas do cálculo e o fluxo de caixa de 25 anos.
+  - **próximos passos** (aprovação, contrato, vistoria), considerações, cartão de contato e assinaturas.
+
+  A composição de custos, as premissas do cálculo e o fluxo de caixa ficam fora do documento (o saldo acumulado aparece em gráfico no retorno do investimento).
 
   Telefone (usado como WhatsApp), e-mail e endereço vêm de Configurações › Empresa. Os detalhes de engenharia (strings, FDG, HSP, PR, tensão do banco, balanço diário etc.) ficam no painel da proposta, fora do documento impresso.
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.

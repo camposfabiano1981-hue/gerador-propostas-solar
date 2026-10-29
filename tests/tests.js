@@ -302,7 +302,7 @@
   const rSep = C.calcular(Object.assign(U.clone(pPreco), { precoModo: 'separado', maoObraValor: 3000 }), ctx);
   perto('itens separados: total = kit + infra + mão de obra + outros (comissão dentro da mão de obra)', rSep.total, 8177.08 + 1500 + 3000 + 300, 1e-9);
   const txPreco = textoModelo(App.Documento.montar(pPreco, rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
-  ok('proposta: só o valor final, sem a composição do investimento', txPreco.indexOf('Composição do investimento') < 0 && txPreco.indexOf('Investimento total') >= 0 &&
+  ok('proposta: só o valor final, sem a composição do investimento', txPreco.indexOf('Composição do investimento') < 0 &&
     txPreco.indexOf(U.brl(rPreco.total)) >= 0 && txPreco.indexOf('Adequação do padrão de entrada') < 0);
   ok('proposta: comissão não aparece', !/comiss[aã]o/i.test(txPreco) && txPreco.indexOf('R$ 500,00') < 0);
   ok('proposta: valores internos (kit e mão de obra) fora do documento', txPreco.indexOf(U.brl(rPreco.maoObra)) < 0 && txPreco.indexOf(U.brl(rPreco.kit)) < 0);
@@ -312,8 +312,8 @@
   const txObs = textoModelo(App.Documento.montar(Object.assign(U.clone(pPreco), { condicoesObs: 'Preço válido para pagamento via PIX.' }), rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
   ok('proposta: observações da proposta junto das opções de pagamento', txObs.indexOf('Observações: Preço válido para pagamento via PIX.') >= 0);
   ok('proposta: validade com data na capa, no resumo e nos próximos passos', (txPreco.match(/04\/10\/2026/g) || []).length >= 3);
-  ok('proposta: conta dos próximos anos em linguagem simples; regra técnica (art. 655-I) no anexo', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('25º ano') >= 0 &&
-    txPreco.indexOf('Custo Disponib.') < 0 && txPreco.indexOf('Anexo — premissas e fluxo de caixa') >= 0 && /art\. 655-I/.test(txPreco.slice(txPreco.indexOf('Anexo — premissas'))));
+  ok('proposta: conta dos próximos anos em linguagem simples, sem anexo técnico', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('25º ano') >= 0 &&
+    txPreco.indexOf('Custo Disponib.') < 0 && txPreco.indexOf('Anexo') < 0 && !/655-I|Premissas do cálculo|Fluxo de caixa/.test(txPreco));
 
   // ---------------------------------------------------------------- fluxo de caixa pela conta anual e indicadores de retorno
   (function () {
@@ -329,11 +329,8 @@
     ok('retorno: TIR zera o VPL', Math.abs(npvTir) < 0.01, npvTir);
     perto('retorno: acumulado final = economia total − investimento', f.anos[f.anos.length - 1].acumulado, f.economiaTotal - r.total, 1e-6);
     const tx = textoModelo(App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 }));
-    ok('fluxo no documento: colunas pela conta anual', ['Conta anual sem sistema', 'Conta anual com sistema', 'Economia anual', 'Fluxo acumulado'].every(function (c) { return tx.indexOf(c) >= 0; }) &&
-      tx.indexOf('Custo Fio B (R$)') < 0 && tx.indexOf('Econ. Bruta (R$)') < 0);
-    ok('fluxo no documento: ano 0 com o investimento', tx.indexOf('Investimento') >= 0 && tx.indexOf(U.brl(-r.total)) >= 0);
-    const a1 = f.anos[0];
-    ok('fluxo no documento: ano 1 com as contas anuais e a economia', [U.brl(a1.contaSem * 12), U.brl(a1.contaCom * 12), U.brl(a1.economiaMes * 12), U.brl(a1.acumulado)].every(function (v) { return tx.indexOf(v) >= 0; }));
+    ok('documento: sem a tabela do fluxo de caixa (saldo acumulado em gráfico no retorno)', ['Conta anual sem sistema', 'Fluxo acumulado', 'Custo Fio B (R$)'].every(function (c) { return tx.indexOf(c) < 0; }) &&
+      tx.indexOf('Seu dinheiro ao longo do tempo (saldo acumulado)') >= 0);
   })();
 
   // ---------------------------------------------------------------- preço pela margem: instalação por módulo, lucro e comissão sobre o valor final
@@ -789,7 +786,7 @@
   const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
   igual('sem projetos: seções na ordem da proposta amigável', titulos(textoModelo(mSemP)).join(' | '),
     '1 Sua proposta em uma página | 2 Apresentação da empresa | 3 Como a energia solar funciona na sua casa | 4 Seu sistema solar | ' +
-    '5 O que está incluso | 6 Quanto você economiza | 7 Retorno do investimento | 8 Investimento e formas de pagamento | 9 Próximos passos');
+    '5 O que está incluso | 6 Quanto você economiza | 7 Retorno do investimento | 8 Próximos passos');
   ok('passo a passo: fora da proposta por padrão', D.textos.passoNaProposta === false && !mSemP.imagens.passos && textoModelo(mSemP).indexOf(D.textos.passoIntro) < 0);
   const ctxPassos = U.clone(ctxP); ctxPassos.textos = Object.assign(U.clone(ctxP.textos || D.textos), { passoNaProposta: true });
   const mPassos = App.Documento.montar(p, rP, ctxPassos, ctxP.clientes[0], { w: 1400, h: 752 });
@@ -896,7 +893,14 @@
     ok('resumo: investimento, economia no 1º ano, retorno e economia em 25 anos', ['Investimento', 'Economia no 1º ano', 'O investimento volta em', 'Economia em 25 anos', U.brl(r.total), U.anosMeses(f.paybackSimples)]
       .every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('resumo: conta de hoje × com energia solar', txt.indexOf('Sua conta de luz por mês') >= 0 && txt.indexOf(U.brl(a1.contaSem)) >= 0 && txt.indexOf(U.brl(a1.contaCom)) >= 0);
-    ok('resumo: o que você recebe e como pagar', txt.indexOf('O que você recebe') >= 0 && /9 módulos .* de 625 Wp/.test(txt) && txt.indexOf('Como pagar') >= 0);
+    ok('resumo: o que você recebe e as formas de pagamento', txt.indexOf('O que você recebe') >= 0 && /9 módulos .* de 625 Wp/.test(txt) && txt.indexOf('Formas de pagamento') >= 0 &&
+      txt.indexOf('Formas de pagamento') < txt.indexOf('Apresentação da empresa'));
+    // todas as opções de pagamento no resumo, com parcelas, total e sobra no mês
+    const pgs = r.pagamentos;
+    ok('resumo: todas as formas de pagamento com parcelas, total e sobra no mês', pgs.length >= 3 && pgs.every(function (pg) {
+      return txt.indexOf(pg.label) >= 0 && tx.indexOf(U.brl(pg.total)) >= 0 && (pg.prazo === '1x' || tx.indexOf(parseInt(pg.prazo, 10) + ' × ' + U.brl(pg.parcela)) >= 0);
+    }) && ['Parcelas', 'Total pago', 'Sobra no mês*', 'melhor preço', 'pagamento único', D.textos.notaPagamento].every(function (x) { return txt.indexOf(x) >= 0; }) &&
+      pgs.every(function (pg) { const sb = f.economiaMes1 - (pg.prazo === '1x' ? 0 : pg.parcela); return tx.indexOf((sb >= 0 ? '+ ' : '− ') + U.brl(Math.abs(sb))) >= 0; }));
     ok('como funciona: ilustração e 5 passos', !!m.imagens.comoFunciona && txt.indexOf('Painéis no telhado captam a luz do sol') >= 0 && txt.indexOf('À noite e em dias nublados você usa a rede') >= 0);
     ok('benefícios personalizados com os números do cliente', txt.indexOf('Por que vale a pena para você') >= 0 && new RegExp('De R\\$ [\\d.]+ para cerca de R\\$ [\\d.]+ por mês').test(txt));
     ok('seu sistema: faixa de indicadores, gráfico e equipamentos com garantia', txt.indexOf('geração média/mês') >= 0 && txt.indexOf('Geração estimada mês a mês') >= 0 && /Garantia: /.test(txt));
@@ -904,8 +908,7 @@
       .every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('quanto você economiza: quadros, explicações e tabela dos anos', ['Conta hoje', 'Você economiza', 'Por que a conta não zera?', 'O que é o Fio B?', 'Sua conta de luz nos próximos anos'].every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('retorno: tempo, TIR, vezes, custo do kWh e saldo acumulado', !!m.imagens.saldo && ['Tempo de retorno', 'Rentabilidade (TIR)', 'vezes', 'Custo da sua energia solar', '/kWh'].every(function (x) { return txt.indexOf(x) >= 0; }));
-    ok('pagamento: valor total com o que está incluído e sobra no mês (sem a composição)', ['Investimento total', 'Tudo incluído:', 'Formas de pagamento', 'Sobra no mês*'].every(function (x) { return txt.indexOf(x) >= 0; }) &&
-      txt.indexOf('Composição do investimento') < 0 && txt.indexOf('Valor total da proposta') < 0);
+    ok('seção de investimento e pagamento retirada (valor e pagamento ficam no resumo)', ['Investimento e formas de pagamento', 'Investimento total', 'Tudo incluído:', 'Composição do investimento'].every(function (x) { return txt.indexOf(x) < 0; }));
     ok('seções retiradas: dados do cliente, lista de equipamentos e passo a passo', ['Dados do cliente e do projeto', 'Lista de equipamentos e materiais', 'Passo a passo', 'Tipo de Telhado'].every(function (x) { return txt.indexOf(x) < 0; }));
     // conta dos próximos anos: marcos de 5 em 5 anos, valores arredondados e total
     const somaEco = f.anos.reduce(function (s0, a) { return s0 + a.economiaMes * 12; }, 0);
@@ -921,7 +924,7 @@
     ok('considerações: sem o passo a passo, prazos combinados após a aprovação', txt.indexOf('Após a aprovação, combinamos com você as datas de cada etapa') >= 0);
     ok('próximos passos: 3 passos, validade com data, contato e assinatura', ['Aprovação', 'Contrato e pagamento', 'Vistoria e projeto', 'Considerações importantes', 'Contratante — de acordo'].every(function (x) { return txt.indexOf(x) >= 0; }) &&
       /válida até\n?04\/10\/2026/.test(txt.replace(/e é válida até /, 'válida até')));
-    ok('anexo: premissas e fluxo de caixa no fim', txt.lastIndexOf('Anexo — premissas e fluxo de caixa') > txt.indexOf('Próximos passos') && txt.indexOf('Premissas do cálculo:') > 0 && txt.indexOf('Fluxo de caixa — 25 anos') > 0);
+    ok('sem anexo: termina nos próximos passos', txt.indexOf('Anexo') < 0 && txt.indexOf('Premissas do cálculo:') < 0 && txt.lastIndexOf(D.textos.slogan) > txt.indexOf('Próximos passos'));
     const xml = App.Docx.serializar(m).documento;
     ok('Word: XML válido e sem tabelas encostadas (que o Word fundiria)', !new DOMParser().parseFromString(xml, 'application/xml').querySelector('parsererror') && xml.indexOf('</w:tbl><w:tbl>') < 0);
     ok('Word: seções principais começam em página nova', (xml.match(/<w:pageBreakBefore\/>/g) || []).length >= 6);
