@@ -35,9 +35,58 @@ window.App = window.App || {};
     });
   }
 
-  /** Marca e modelo do módulo e do inversor efetivamente instalados, com as fotos das etiquetas (ids em App.Fotos). */
+  /**
+   * Módulo e inversor efetivamente instalados: equipamento do cadastro (equipamentoId) ou marca e modelo digitados,
+   * nº de série e as fotos das etiquetas (ids em App.Fotos).
+   */
   function placasVazias() {
-    return { modulo: { marca: '', modelo: '', potencia: '', quantidade: '', fotos: [] }, inversor: { marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [] } };
+    return {
+      modulo: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [] },
+      inversor: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [] }
+    };
+  }
+
+  // tipos do cadastro de equipamentos aceitos em cada placa
+  const TIPOS_PLACA = { modulo: ['modulo'], inversor: ['inversor', 'micro', 'hibrido'] };
+
+  /** Equipamentos do cadastro para a placa (ativos primeiro, depois por fabricante e modelo). */
+  function opcoesCadastro(equipamentos, qual) {
+    const tipos = TIPOS_PLACA[qual] || [];
+    return (equipamentos || []).filter(function (e) { return tipos.indexOf(e.tipo) >= 0; }).slice().sort(function (a, b) {
+      return ((a.ativo === false) - (b.ativo === false)) || [a.fabricante, a.modelo].join(' ').localeCompare([b.fabricante, b.modelo].join(' '), 'pt-BR');
+    });
+  }
+
+  /** Preenche a placa com um equipamento do cadastro (marca, modelo e potência); sem equipamento, passa a ser digitada. */
+  function placaDoCadastro(placa, e) {
+    placa.equipamentoId = e ? e.id : '';
+    if (e) { placa.marca = e.fabricante || ''; placa.modelo = e.modelo || ''; placa.potencia = e.potencia || ''; }
+    return placa;
+  }
+
+  function norm(x) { return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+  /** Liga a placa digitada ao equipamento do cadastro com a mesma marca e modelo (quando houver). */
+  function vincularCadastro(placa, equipamentos, qual) {
+    if (placa.equipamentoId || !placa.modelo) return placa;
+    const e = opcoesCadastro(equipamentos, qual).find(function (x) { return norm(x.modelo) === norm(placa.modelo) && (!placa.marca || norm(x.fabricante) === norm(placa.marca)); });
+    if (e) placa.equipamentoId = e.id;
+    return placa;
+  }
+
+  /** Marca, modelo, potência e quantidade do módulo e do inversor da proposta (mantém nº de série e fotos). Devolve false sem equipamentos. */
+  function placasDaProposta(inst, p, ctx) {
+    let r = null;
+    try { r = App.Calc.calcular(U.clone(p), ctx); } catch (e) { r = null; }
+    if (!r || !r.incluiFV) return false;
+    const pv = placasVazias();
+    inst.placas = inst.placas || pv;
+    inst.placas.modulo = Object.assign(pv.modulo, inst.placas.modulo || {});
+    inst.placas.inversor = Object.assign(pv.inversor, inst.placas.inversor || {});
+    let ok = false;
+    if (r.modulo) { placaDoCadastro(inst.placas.modulo, r.modulo); inst.placas.modulo.quantidade = r.nModulos || ''; ok = true; }
+    if (r.inversor) { placaDoCadastro(inst.placas.inversor, r.inversor); inst.placas.inversor.quantidade = r.nInversores || ''; ok = true; }
+    return ok;
   }
 
   function progressoChecklist(inst) {
@@ -149,8 +198,8 @@ window.App = window.App || {};
         estrutura: [p.telhado, r.estruturaTexto].filter(Boolean).join(' — ')
       };
       inst.placas = placasVazias();
-      if (r.incluiFV && r.modulo) Object.assign(inst.placas.modulo, { marca: r.modulo.fabricante || '', modelo: r.modulo.modelo || '', potencia: r.modulo.potencia || '', quantidade: r.nModulos || '' });
-      if (r.incluiFV && r.inversor) Object.assign(inst.placas.inversor, { marca: r.inversor.fabricante || '', modelo: r.inversor.modelo || '', potencia: r.inversor.potencia || '', quantidade: r.nInversores || '' });
+      if (r.incluiFV && r.modulo) { placaDoCadastro(inst.placas.modulo, r.modulo); inst.placas.modulo.quantidade = r.nModulos || ''; }
+      if (r.incluiFV && r.inversor) { placaDoCadastro(inst.placas.inversor, r.inversor); inst.placas.inversor.quantidade = r.nInversores || ''; }
       inst.checklistInstalacao = checklistPadrao(ctx.textos, r.micro);
       const a1 = r.fin && r.fin.anos && r.fin.anos[0];
       inst.geracaoMes = r.incluiFV ? U.round(r.geracaoMensal, 0) : 0;
@@ -247,6 +296,7 @@ window.App = window.App || {};
   App.Instalacao = {
     SITUACOES: SITUACOES, STATUS_ETAPA: STATUS_ETAPA, STATUS: STATUS, GRUPOS: GRUPOS,
     checklistPadrao: checklistPadrao, placasVazias: placasVazias, progressoChecklist: progressoChecklist, marcarItem: marcarItem,
+    opcoesCadastro: opcoesCadastro, placaDoCadastro: placaDoCadastro, vincularCadastro: vincularCadastro, placasDaProposta: placasDaProposta,
     prazoDias: prazoDias, somarDias: somarDias, preverDatas: preverDatas, novaEtapa: novaEtapa, etapasPadrao: etapasPadrao,
     nova: nova, deProposta: deProposta, registrar: registrar, mudarEtapa: mudarEtapa,
     progresso: progresso, etapaAtual: etapaAtual, status: status, atrasadas: atrasadas, previsaoConclusao: previsaoConclusao, paraProjeto: paraProjeto

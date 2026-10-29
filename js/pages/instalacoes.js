@@ -131,7 +131,15 @@
     const pv = I.placasVazias();
     inst.placas.modulo = Object.assign(pv.modulo, inst.placas.modulo || {});
     inst.placas.inversor = Object.assign(pv.inversor, inst.placas.inversor || {});
-    ['modulo', 'inversor'].forEach(function (k) { if (!Array.isArray(inst.placas[k].fotos)) inst.placas[k].fotos = []; });
+    ['modulo', 'inversor'].forEach(function (k) {
+      if (!Array.isArray(inst.placas[k].fotos)) inst.placas[k].fotos = [];
+      I.vincularCadastro(inst.placas[k], ctx.equipamentos, k);
+    });
+    // sem marca e modelo: puxa da proposta de origem
+    if (!inst.placas.modulo.modelo && !inst.placas.inversor.modelo && inst.propostaId) {
+      const prop = S.get('propostas', inst.propostaId);
+      if (prop) I.placasDaProposta(inst, prop, ctx);
+    }
     inst.checklistInstalacao.forEach(function (g) { if (!Array.isArray(g.itens)) g.itens = []; });
     if (!Array.isArray(inst.etapas)) inst.etapas = [];
     if (!Array.isArray(inst.historico)) inst.historico = [];
@@ -248,6 +256,7 @@
             const novo = I.deProposta(prop, ctx);
             ['propostaId', 'propostaNumero', 'clienteId', 'clienteNome', 'telefone', 'endereco', 'cidade', 'uf', 'tipoSistema', 'kwp', 'kwh', 'valor', 'titulo',
               'equipamentos', 'geracaoMes', 'economiaMes', 'reducaoPct', 'segmento'].forEach(function (k) { inst[k] = novo[k]; });
+            I.placasDaProposta(inst, prop, ctx); // módulo e inversor da proposta (mantém nº de série e fotos)
             I.registrar(inst, 'Dados importados da proposta ' + prop.numero + '.', 'sistema');
             mudou();
             Object.keys(secoes).forEach(desenhar);
@@ -358,20 +367,47 @@
         h('button.btn.pequeno', { type: 'button', onclick: function () { I.preverDatas(inst); mudou(); desenhar('etapas'); UI.toast('Previsões recalculadas.'); } }, '↻ Recalcular previsões')));
     });
 
-    /* ---------- equipamentos instalados (marca, modelo e fotos das etiquetas) */
+    /* ---------- equipamentos instalados (do cadastro ou digitados, nº de série e fotos das etiquetas) */
     secao('equipamentos', 'Equipamentos instalados', function (c) {
-      c.appendChild(h('p.ajuda-sec', 'Marca e modelo do que foi instalado (vêm da proposta; confira na obra) e as fotos das etiquetas. ',
-        'As fotos ficam neste aparelho e na nuvem, sem ocupar o armazenamento do app.'));
-      const pl = inst.placas;
+      const prop = inst.propostaId ? S.get('propostas', inst.propostaId) : null;
+      c.appendChild(h('div.linha-campo',
+        h('p.ajuda-sec.cresce', 'Módulo e inversor vêm da proposta; escolha outro da lista do cadastro ou, se não estiver cadastrado, digite marca e modelo. ',
+          'As fotos das etiquetas ficam neste aparelho e na nuvem, sem ocupar o armazenamento do app.'),
+        prop ? h('button.btn.pequeno', {
+          type: 'button', onclick: async function () {
+            if (!(await UI.confirmar('Puxar marca, modelo, potência e quantidade do módulo e do inversor da proposta ' + prop.numero + '? Nº de série e fotos são mantidos.', 'Puxar'))) return;
+            if (I.placasDaProposta(inst, prop, ctx)) { mudou(); desenhar('equipamentos'); UI.toast('Módulo e inversor da proposta ' + prop.numero + '.', 'ok'); }
+            else UI.toast('A proposta ' + prop.numero + ' não tem módulo e inversor definidos.', 'erro');
+          }
+        }, '↻ Puxar da proposta') : null));
       const fotoMudou = function () { mudou(); if (inst.id) salvar(false); };
-      c.appendChild(h('div.equip-instalado', h('h3', '☀️ Módulos fotovoltaicos'), UI.grade([
-        { k: 'marca', label: 'Marca' }, { k: 'modelo', label: 'Modelo', cls: 'span2' }, { k: 'quantidade', label: 'Quantidade', type: 'int' },
-        { k: 'potencia', label: 'Potência', type: 'number', suffix: 'Wp' }
-      ], pl.modulo, mudou, 4), campoFotos('Fotos da etiqueta do módulo', pl.modulo.fotos, fotoMudou)));
-      c.appendChild(h('div.equip-instalado', h('h3', '🔌 Inversor (ou microinversores)'), UI.grade([
-        { k: 'marca', label: 'Marca' }, { k: 'modelo', label: 'Modelo', cls: 'span2' }, { k: 'quantidade', label: 'Quantidade', type: 'int' },
-        { k: 'potencia', label: 'Potência', type: 'number', suffix: 'kW' }, { k: 'serie', label: 'Nº de série', cls: 'span2' }
-      ], pl.inversor, mudou, 4), campoFotos('Fotos da etiqueta do inversor', pl.inversor.fotos, fotoMudou)));
+      const bloco = function (qual, titulo, un, rotFotos) {
+        const pl = inst.placas[qual];
+        const lista = I.opcoesCadastro(ctx.equipamentos, qual);
+        const doCadastro = !!(pl.equipamentoId && lista.some(function (e) { return e.id === pl.equipamentoId; }));
+        if (!doCadastro) pl.equipamentoId = '';
+        const escolha = UI.campo({ k: 'equipamentoId', label: 'Equipamento', type: 'select',
+          options: [{ v: '', t: lista.length ? '✏️ Não está no cadastro — digitar marca e modelo' : '✏️ Digitar marca e modelo (nenhum cadastrado)' }].concat(lista.map(function (e) {
+            return { v: e.id, t: [e.fabricante, e.modelo].filter(Boolean).join(' ') + (U.num(e.potencia) > 0 ? ' — ' + U.fmtSmart(U.num(e.potencia), 2) + ' ' + un : '') + (e.ativo === false ? ' (inativo)' : '') };
+          })),
+          help: doCadastro ? 'Do cadastro de equipamentos. Para digitar outro, escolha "Não está no cadastro".' : (lista.length ? 'Digitado. Para usar um equipamento cadastrado, escolha na lista.' : 'Cadastre em Cadastros › Equipamentos para escolher da lista.')
+        }, pl, function () {
+          I.placaDoCadastro(pl, lista.find(function (e) { return e.id === pl.equipamentoId; }) || null);
+          mudou(); desenhar('equipamentos');
+        });
+        escolha.classList.add('span-all');
+        const defs = [
+          { el: escolha },
+          { k: 'marca', label: 'Marca', readonly: doCadastro }, { k: 'modelo', label: 'Modelo', cls: 'span2', readonly: doCadastro },
+          { k: 'quantidade', label: 'Quantidade', type: 'int' },
+          { k: 'potencia', label: 'Potência', type: 'number', suffix: un, readonly: doCadastro },
+          { k: 'serie', label: qual === 'modulo' ? 'Nº de série / lote' : 'Nº de série', cls: qual === 'modulo' ? 'span-all' : 'span2',
+            placeholder: qual === 'modulo' ? 'Um ou mais, separados por vírgula' : '' }
+        ];
+        return h('div.equip-instalado', h('h3', titulo), UI.grade(defs, pl, mudou, 4), campoFotos(rotFotos, pl.fotos, fotoMudou));
+      };
+      c.appendChild(bloco('modulo', '☀️ Módulos fotovoltaicos', 'Wp', 'Fotos da etiqueta do módulo'));
+      c.appendChild(bloco('inversor', '🔌 Inversor (ou microinversores)', 'kW', 'Fotos da etiqueta do inversor'));
     });
 
     /* ---------- checklist da instalação (três grupos) */

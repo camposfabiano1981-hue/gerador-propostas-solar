@@ -1011,6 +1011,23 @@
     ok('equipamentos instalados: marca, modelo, potência e quantidade da proposta', inst2.placas.modulo.marca === r.modulo.fabricante && inst2.placas.modulo.modelo === r.modulo.modelo &&
       Number(inst2.placas.modulo.potencia) === 625 && Number(inst2.placas.modulo.quantidade) === 9 && inst2.placas.inversor.marca === r.inversor.fabricante && inst2.placas.inversor.modelo === r.inversor.modelo &&
       Array.isArray(inst2.placas.modulo.fotos) && Array.isArray(inst2.placas.inversor.fotos), JSON.stringify(inst2.placas));
+    ok('equipamentos instalados: vêm ligados ao cadastro (equipamento da proposta)', inst2.placas.modulo.equipamentoId === r.modulo.id && inst2.placas.inversor.equipamentoId === r.inversor.id);
+    const listaMod = I.opcoesCadastro(ctxI.equipamentos, 'modulo'), listaInv = I.opcoesCadastro(ctxI.equipamentos, 'inversor');
+    ok('equipamentos instalados: lista do cadastro por tipo (módulos; inversores, micros e híbridos)', listaMod.length > 0 && listaMod.every(function (e) { return e.tipo === 'modulo'; }) &&
+      listaInv.length > 0 && listaInv.every(function (e) { return ['inversor', 'micro', 'hibrido'].indexOf(e.tipo) >= 0; }) && listaMod.some(function (e) { return e.id === r.modulo.id; }));
+    const plTeste = { equipamentoId: r.modulo.id, marca: 'A', modelo: 'B', potencia: 1 };
+    I.placaDoCadastro(plTeste, null);
+    ok('equipamentos instalados: "não está no cadastro" mantém o que foi digitado', plTeste.equipamentoId === '' && plTeste.marca === 'A' && plTeste.modelo === 'B');
+    const outro = listaMod.find(function (e) { return e.id !== r.modulo.id; }) || listaMod[0];
+    I.placaDoCadastro(plTeste, outro);
+    ok('equipamentos instalados: escolher da lista preenche marca, modelo e potência', plTeste.equipamentoId === outro.id && plTeste.marca === (outro.fabricante || '') && plTeste.modelo === outro.modelo && plTeste.potencia === outro.potencia);
+    const digitada = { equipamentoId: '', marca: String(r.modulo.fabricante || '').toUpperCase(), modelo: '  ' + r.modulo.modelo + ' ', potencia: '' };
+    I.vincularCadastro(digitada, ctxI.equipamentos, 'modulo');
+    ok('equipamentos instalados: marca e modelo digitados iguais aos do cadastro ficam ligados a ele', digitada.equipamentoId === r.modulo.id);
+    const inst3 = I.nova(ctxI);
+    inst3.placas.modulo.serie = 'LOTE-1'; inst3.placas.modulo.fotos = ['foto-x']; inst3.placas.inversor.serie = 'SN9';
+    ok('equipamentos instalados: puxar da proposta mantém nº de série e fotos', I.placasDaProposta(inst3, pI, ctxI) && inst3.placas.modulo.modelo === r.modulo.modelo && Number(inst3.placas.modulo.quantidade) === 9 &&
+      inst3.placas.inversor.modelo === r.inversor.modelo && inst3.placas.modulo.serie === 'LOTE-1' && inst3.placas.modulo.fotos[0] === 'foto-x' && inst3.placas.inversor.serie === 'SN9');
     inst2.placas.modulo.marca = 'Marca X'; inst2.placas.modulo.modelo = 'MX-610'; inst2.placas.modulo.potencia = 610; inst2.placas.modulo.quantidade = 10;
     igual('equipamentos instalados: portfólio usa o que foi instalado', I.paraProjeto(inst2).modulos, '10 × Marca X MX-610 (610 Wp)');
     // ordens de serviço
