@@ -33,7 +33,8 @@ window.App = window.App || {};
     const os = {
       numero: '', data: U.todayISO(), instalacaoId: '', instalacaoTitulo: '', clienteId: '', clienteNome: '', telefone: '', endereco: '', cidade: '', uf: emp.uf || '',
       tipo: 'visita', prioridade: 'normal', status: 'aberta', agendadaPara: '', concluidaEm: '', responsavel: emp.responsavel || '',
-      descricao: '', servico: '', materiais: [], garantia: false, valor: ''
+      descricao: '', servico: '', materiais: [], garantia: false, valor: '',
+      assinaturas: { cliente: { fotoId: '', nome: '', em: '' }, tecnico: { fotoId: '', nome: '', em: '' } }
     };
     if (inst) {
       Object.assign(os, {

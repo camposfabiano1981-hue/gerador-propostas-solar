@@ -237,6 +237,9 @@ window.App = window.App || {};
       'Teste de funcionamento: geração registrada no aplicativo',
       'Placa de advertência "geração própria" no quadro e junto ao medidor'
     ],
+    // textos de aceite assinados pelo cliente (PDF da ordem de serviço e do relatório de instalação)
+    termoOS: 'Declaro que os serviços descritos nesta ordem foram executados pela {empresaCurta} e que o sistema me foi entregue em funcionamento.',
+    termoInstalacao: 'Declaro que recebi da {empresaCurta} o sistema de energia solar descrito neste relatório, instalado e em funcionamento, e que fui orientado(a) sobre o uso, o acompanhamento da geração pelo aplicativo e os cuidados de manutenção.',
     passoNaProposta: false, // linha do tempo fora da proposta por enquanto (liga em Configurações › Textos padrão)
     passoIntro: 'Da aprovação da proposta ao sistema gerando energia: veja como conduzimos cada etapa e os prazos estimados.',
     cronograma: [

@@ -141,6 +141,8 @@
       if (prop) I.placasDaProposta(inst, prop, ctx);
     }
     inst.checklistInstalacao.forEach(function (g) { if (!Array.isArray(g.itens)) g.itens = []; });
+    const va = App.Assinatura.vazia;
+    inst.assinaturas = Object.assign({ cliente: va(), tecnico: va() }, inst.assinaturas || {});
     if (!Array.isArray(inst.etapas)) inst.etapas = [];
     if (!Array.isArray(inst.historico)) inst.historico = [];
     inst.etapas.forEach(function (e) { if (!Array.isArray(e.checklist)) e.checklist = []; if (!e.id) e.id = 'et-' + U.uid(); });
@@ -457,6 +459,17 @@
       ], inst, mudou, 2));
     });
 
+    /* ---------- termo de entrega e assinaturas */
+    secao('assinaturas', 'Termo de entrega e assinaturas', function (c) {
+      const termo = App.Documento.nos.substituir(ctx.textos.termoInstalacao || '', { empresa: ctx.empresa.razao, empresaCurta: ctx.empresa.nomeCurto || ctx.empresa.razao, cliente: inst.clienteNome || 'o cliente' });
+      if (termo) c.appendChild(h('div.nota.aviso', termo));
+      const salvarAss = function () { mudou(); if (inst.id) salvar(false); };
+      c.appendChild(h('div.assinaturas-grade',
+        App.Assinatura.campo('Assinatura do cliente', inst.assinaturas.cliente, { nomePadrao: function () { return inst.clienteNome; }, declaracao: termo }, salvarAss),
+        App.Assinatura.campo('Assinatura do responsável técnico', inst.assinaturas.tecnico, { nomePadrao: function () { return inst.responsavel; } }, salvarAss)));
+      c.appendChild(h('p.ajuda-sec', 'Na entrega da obra, o cliente assina com o dedo no celular ou tablet. As assinaturas saem no relatório de instalação em PDF (botão no resumo); sem assinatura, o PDF traz a linha para assinar à mão.'));
+    });
+
     /* ---------- ordens de serviço */
     secao('ordens', 'Ordens de serviço', function (c) {
       if (!inst.id) { c.appendChild(h('p.ajuda-sec', 'Salve a instalação para abrir ordens de serviço ligadas a ela.')); return; }
@@ -532,6 +545,15 @@
           }
         }, '📸 Cadastrar em Projetos realizados'));
       }
+      const btnRel = h('button.btn', {
+        type: 'button', onclick: async function () {
+          btnRel.disabled = true; const rot = btnRel.textContent; btnRel.textContent = 'Gerando…';
+          try { const g = await App.Relatorios.pdfInstalacao(inst, ctx); U.download(g.blob, g.nome); UI.toast('PDF gerado: ' + g.nome, 'ok'); }
+          catch (e) { console.error(e); UI.toast('Falha ao gerar o PDF: ' + e.message, 'erro'); }
+          finally { btnRel.disabled = false; btnRel.textContent = rot; }
+        }
+      }, '⬇ Relatório de instalação (PDF)');
+      links.unshift(btnRel);
       if (links.length) resumo.appendChild(h('div.resumo-links', links));
       resumo.appendChild(h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'));
     }

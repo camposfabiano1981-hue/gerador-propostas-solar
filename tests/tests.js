@@ -872,6 +872,18 @@
       const n = await F.importar([{ id: 'foto-backup-1', dataURL: foto.dataURL, w: foto.w, h: foto.h }]);
       ok('fotos: restauradas do backup', n === 1 && !!(await F.obter('foto-backup-1')));
       await F.remover('foto-backup-1');
+      // PDF real com uma assinatura colhida (imagem em App.Fotos)
+      const cvA = document.createElement('canvas'); cvA.width = 600; cvA.height = 200;
+      const gA = cvA.getContext('2d'); gA.fillStyle = '#fff'; gA.fillRect(0, 0, 600, 200); gA.strokeStyle = '#000'; gA.lineWidth = 4; gA.beginPath(); gA.moveTo(40, 150); gA.bezierCurveTo(200, 0, 300, 220, 560, 60); gA.stroke();
+      const idA = await F.salvar({ dataURL: cvA.toDataURL('image/png'), w: 600, h: 200 });
+      const ctxA = ctxReferencia();
+      const osA = Object.assign(App.Ordem.nova(ctxA), { numero: 'OS-20261029-009', clienteNome: 'Cliente Exemplo', descricao: 'Teste', assinaturas: { cliente: { fotoId: idA, nome: 'Cliente Exemplo', em: '2026-10-29T10:00:00' }, tecnico: { fotoId: '', nome: '', em: '' } } });
+      const gOS = await App.Relatorios.pdfOS(osA, ctxA);
+      ok('PDF da OS gerado com a assinatura do cliente', new TextDecoder().decode(await gOS.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && Object.keys(gOS.modelo.imagens).join(',') === 'assCliente' && /^OS_OS-20261029-009_/.test(gOS.nome), gOS.nome);
+      const instA = Object.assign(App.Instalacao.nova(ctxA), { titulo: 'Obra teste', clienteNome: 'Cliente Exemplo', assinaturas: { cliente: { fotoId: idA, nome: 'Cliente Exemplo', em: '2026-10-29T10:00:00' }, tecnico: { fotoId: idA, nome: 'Técnico', em: '2026-10-29T10:01:00' } } });
+      const gIn = await App.Relatorios.pdfInstalacao(instA, ctxA);
+      ok('PDF do relatório de instalação gerado com as duas assinaturas', new TextDecoder().decode(await gIn.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && ['assCliente', 'assTecnico'].every(function (k) { return !!gIn.modelo.imagens[k]; }), gIn.nome);
+      await F.remover(idA);
     } catch (e) {
       ok('fotos: IndexedDB', false, e && e.stack || String(e));
     }
@@ -1044,6 +1056,20 @@
     Ord.mudarStatus(os, 'aberta');
     ok('OS: reabrir limpa a conclusão', os.concluidaEm === '' && Ord.aberta(os));
     igual('OS: tipos de serviço', Ord.TIPOS.map(function (t) { return t.id; }).join(','), 'preventiva,corretiva,limpeza,visita,garantia,vistoria,ampliacao,pendencia,outro');
+    // assinaturas e PDFs da execução
+    ok('assinatura: OS e instalação nascem com cliente e técnico em branco', ['cliente', 'tecnico'].every(function (k) { return os.assinaturas[k] && os.assinaturas[k].fotoId === '' && inst2.assinaturas[k] && inst2.assinaturas[k].fotoId === ''; }));
+    ok('assinatura: termos de aceite padrão', /executados pela \{empresaCurta\}/.test(D.textos.termoOS) && /instalado e em funcionamento/.test(D.textos.termoInstalacao));
+    igual('assinatura: data e hora por extenso curto', App.Assinatura.dataHora('2026-10-29T14:05:00'), '29/10/2026 às 14:05');
+    const recVazio = { logo: { w: 1400, h: 752 }, imagens: {}, dims: {}, legendas: {} };
+    const ctxRel = Object.assign({}, ctxI, { instalacoes: [inst2], ordens: [Object.assign({}, os, { id: 'os1', numero: 'OS-20261029-001' })] });
+    const osPdf = Object.assign({}, os, { numero: 'OS-20261029-001', descricao: 'Inversor desligando', servico: 'Conector refeito', materiais: [{ descricao: 'MC4', qtd: '2' }] });
+    const txOS = textoModelo(App.Relatorios.montarOS(osPdf, ctxRel, recVazio)).join('\n');
+    ok('PDF da OS: faixa, cliente, atendimento, solicitação, serviço, materiais, termo e assinaturas', ['ORDEM DE SERVIÇO', 'OS-20261029-001', 'Cliente e local do atendimento', inst2.clienteNome, 'Atendimento',
+      'Solicitação / problema relatado', 'Inversor desligando', 'Serviço executado', 'Conector refeito', 'Materiais utilizados', 'Aceite e assinaturas', 'Data: ____/____/________', 'Cliente'].every(function (x) { return txOS.indexOf(x) >= 0; }) &&
+      txOS.indexOf('{empresaCurta}') < 0 && txOS.indexOf(ctxI.empresa.nomeCurto || ctxI.empresa.razao) >= 0, txOS.slice(0, 200));
+    const txRel = textoModelo(App.Relatorios.montarInstalacao(inst2, ctxRel, recVazio)).join('\n');
+    ok('PDF da instalação: obra, sistema, equipamentos, etapas, checklist, ordens de serviço e termo', ['RELATÓRIO DE INSTALAÇÃO', 'Cliente e obra', 'Sistema instalado', 'Marca X MX-610', 'Etapas da instalação',
+      'Checklist da instalação', 'Estrutura de fixação e módulos', 'não se aplica', 'Ordens de serviço', 'OS-20261029-001', 'Termo de entrega e aceite'].every(function (x) { return txRel.indexOf(x) >= 0; }), txRel.slice(0, 200));
     ok('instalações: coleções sincronizadas e no backup', ['instalacoes', 'ordens'].every(function (c) { return App.Store.COLECOES.indexOf(c) >= 0 && Array.isArray(App.Store.exportar().colecoes[c]); }));
   })();
 

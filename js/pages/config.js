@@ -251,6 +251,13 @@
         { k: 'checklistInversor', label: '🔌 Inversor', type: 'linhas', rows: 7 }
       ], tx, marcar)));
 
+    cont.appendChild(h('div.card', h('h3', 'Termos de aceite (assinados pelo cliente)'),
+      h('p.ajuda-sec', 'Aparecem acima das assinaturas no PDF da ordem de serviço e do relatório de instalação, e na janela em que o cliente assina.'),
+      UI.grade([
+        { k: 'termoOS', label: 'Ordem de serviço', type: 'textarea', rows: 3, cls: 'span2' },
+        { k: 'termoInstalacao', label: 'Relatório de instalação (termo de entrega)', type: 'textarea', rows: 3, cls: 'span2' }
+      ], tx, marcar)));
+
     cont.appendChild(h('div.card', h('h3', 'Propostas avulsas (serviços complementares)'), UI.grade([
       { k: 'avulsaApresentacao', label: 'Apresentação', type: 'textarea', rows: 3, cls: 'span2' },
       { k: 'avulsaGarantia', label: 'Garantia padrão dos serviços', type: 'textarea', rows: 2, cls: 'span2' },

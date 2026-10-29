@@ -45,11 +45,14 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - **checklist da instalação em três grupos** — estrutura de fixação e módulos, string box e inversor —, com campo para anotar medições (ex.: Voc de cada string), itens extras por obra e "não se aplica" (com microinversores a string box já começa assim); os itens padrão ficam em Configurações › Textos padrão;
   - **dados da obra** (UC, ART, protocolo de homologação, medidor, data da ligação), telefone do cliente e link da pasta de fotos da obra;
   - **histórico** com cada mudança de etapa e as anotações — base para avisar o cliente a cada avanço;
+  - **termo de entrega com assinaturas** do cliente e do responsável técnico, feitas na tela (dedo, caneta ou mouse), e o **relatório de instalação em PDF** — cliente e obra, sistema e equipamentos instalados, fotos das etiquetas, etapas, checklist com as medições, documentos, ordens de serviço, termo e assinaturas (sem assinatura, sai a linha para assinar à mão);
   - progresso, etapa atual, checklist e previsão de conclusão na lista, no resumo da obra e no painel; ao concluir, a obra pode virar uma ficha em **Projetos realizados** (sem o nome do cliente — faltam só as 2 fotos).
 - **Ordens de serviço** (Execução › Ordens de serviço, ou "+ Nova ordem de serviço" dentro da instalação), para as demais demandas das instalações:
   - numeração própria **OS-AAAAMMDD-NNN**; tipo (manutenção preventiva ou corretiva, limpeza dos módulos, visita técnica, garantia/troca de equipamento, vistoria da concessionária, ampliação, pendência da instalação, outro), prioridade e situação (aberta, agendada, em execução, concluída, cancelada);
   - cliente, telefone e endereço trazidos da instalação; data agendada (atrasada quando vence), técnico, solicitação, serviço executado, materiais utilizados, atendimento em garantia e valor cobrado;
+  - **assinaturas do cliente e do técnico na tela** e a **OS em PDF** (faixa com número, situação e prioridade; cliente e local; atendimento; solicitação; serviço executado; materiais; termo de aceite e assinaturas) — na OS e na lista;
   - a abertura e a conclusão entram no **histórico da instalação**; lista com filtros (em aberto, atrasadas, por tipo) e cartão no painel com as em aberto, atrasadas e urgentes.
+- **Termos de aceite** da OS e do relatório de instalação editáveis em Configurações › Textos padrão. As assinaturas são imagens guardadas como as fotos (banco de fotos do navegador, com cópia na nuvem e no backup).
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
 - Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
@@ -223,6 +226,8 @@ js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, checklist, equipamentos instalados, progresso e histórico
 js/ordem.js           Ordens de serviço das instalações (tipos, prioridades, situação, atrasos)
 js/fotos.js           Fotos das etiquetas: banco de fotos do navegador (IndexedDB) com cópia na nuvem, lida sob demanda
+js/assinatura.js      Assinatura na tela (dedo, caneta ou mouse), guardada como imagem em App.Fotos
+js/relatorios.js      PDFs da execução: ordem de serviço e relatório de instalação com as assinaturas
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)
 js/documento.js       Conteúdo da proposta (modelo comum ao Word e ao PDF)

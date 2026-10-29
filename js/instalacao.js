@@ -163,6 +163,7 @@ window.App = window.App || {};
       situacao: 'ativa', responsavel: emp.responsavel || '', equipe: '', inicioPrevisto: U.todayISO(),
       uc: '', art: '', protocolo: '', medidor: '', ligacao: '', fotosLink: '', observacoes: '',
       placas: placasVazias(), checklistInstalacao: checklistPadrao(ctx.textos, false),
+      assinaturas: { cliente: { fotoId: '', nome: '', em: '' }, tecnico: { fotoId: '', nome: '', em: '' } },
       etapas: etapasPadrao(ctx.textos, varsTexto(ctx, '', '')), historico: []
     };
     return preverDatas(inst);

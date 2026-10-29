@@ -10,6 +10,22 @@
     return UI.badge(x.label, x.cor);
   }
 
+  /** PDF da OS (com as assinaturas colhidas na tela). */
+  async function baixarPdf(os, botao) {
+    const rotulo = botao ? botao.textContent : '';
+    if (botao) { botao.disabled = true; botao.textContent = '…'; }
+    try {
+      const g = await App.Relatorios.pdfOS(os, C.contexto());
+      U.download(g.blob, g.nome);
+      UI.toast('PDF gerado: ' + g.nome, 'ok');
+    } catch (e) {
+      console.error(e);
+      UI.toast('Falha ao gerar o PDF: ' + e.message, 'erro');
+    } finally {
+      if (botao) { botao.disabled = false; botao.textContent = rotulo; }
+    }
+  }
+
   /** Tabela de ordens (lista geral e seção da instalação). */
   App.tabelaOrdens = function (lista, recarregar, semObra) {
     const hoje = U.todayISO();
@@ -23,7 +39,10 @@
         h('td', os.status === 'concluida' ? 'Concluída em ' + U.dataBR(os.concluidaEm) : (U.dataBR(os.agendadaPara) || '—'),
           O.atrasada(os, hoje) ? h('div', UI.badge('Atrasada', 'erro')) : null),
         h('td', badge(O.STATUS, os.status)),
-        recarregar ? h('td.acoes-col', h('button.btn-icone.perigo', {
+        recarregar ? h('td.acoes-col', (function () {
+          const btn = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar a OS em PDF', onclick: function () { baixarPdf(os, btn); } }, 'PDF');
+          return btn;
+        })(), h('button.btn-icone.perigo', {
           type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
             if (await UI.confirmar('Excluir a ordem de serviço ' + (os.numero || '') + '?', 'Excluir', true)) {
               S.remove('ordens', os.id);
@@ -91,6 +110,8 @@
       if (!salvo) { UI.toast('Ordem de serviço não encontrada.', 'erro'); UI.ir('#/ordens'); return; }
       os = Object.assign(O.nova(ctx), U.clone(salvo));
       if (!Array.isArray(os.materiais)) os.materiais = [];
+      const va = App.Assinatura.vazia;
+      os.assinaturas = Object.assign({ cliente: va(), tecnico: va() }, os.assinaturas || {});
     } else {
       const inst = qs && qs.get('instalacao') ? S.get('instalacoes', qs.get('instalacao')) : null;
       os = O.nova(ctx, inst);
@@ -185,6 +206,16 @@
       ], mudou, '+ Adicionar material', function () { return { descricao: '', qtd: '' }; }));
     });
 
+    secao('assinaturas', 'Assinaturas', function (c) {
+      const termo = App.Documento.nos.substituir(ctx.textos.termoOS || '', { empresa: ctx.empresa.razao, empresaCurta: ctx.empresa.nomeCurto || ctx.empresa.razao, cliente: os.clienteNome || 'o cliente' });
+      if (termo) c.appendChild(h('div.nota.aviso', termo));
+      const salvarAss = function () { mudou(); if (os.id) salvar(false); };
+      c.appendChild(h('div.assinaturas-grade',
+        App.Assinatura.campo('Assinatura do cliente', os.assinaturas.cliente, { nomePadrao: function () { return os.clienteNome; }, declaracao: termo }, salvarAss),
+        App.Assinatura.campo('Assinatura do técnico', os.assinaturas.tecnico, { nomePadrao: function () { return os.responsavel; } }, salvarAss)));
+      c.appendChild(h('p.ajuda-sec', 'O cliente assina com o dedo no celular ou tablet (ou com o mouse). As assinaturas saem no PDF da OS; sem assinatura, o PDF traz a linha para assinar à mão.'));
+    });
+
     function desenharResumo() {
       resumo.innerHTML = '';
       const kpi = function (rot, val) { return h('div.kpi', h('span', rot), h('strong', val)); };
@@ -205,6 +236,8 @@
       if (O.aberta(os)) acoes.push(acao('concluida', '✓ Concluir', 'primario'));
       else acoes.push(acao('aberta', '↺ Reabrir'));
       resumo.appendChild(h('div.resumo-links', acoes));
+      const btnPdf = h('button.btn', { type: 'button', onclick: function () { baixarPdf(os, btnPdf); } }, '⬇ OS em PDF');
+      resumo.appendChild(btnPdf);
       if (os.instalacaoId && S.get('instalacoes', os.instalacaoId)) resumo.appendChild(h('a.btn', { href: '#/instalacao/' + os.instalacaoId }, '🏗 Abrir a instalação'));
       resumo.appendChild(h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'));
     }
