@@ -29,13 +29,12 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - **como a energia solar funciona** (ilustração própria, com ou sem baterias) e os benefícios para o cliente;
   - **seu sistema**: números do projeto, gráfico de produção mês a mês, equipamentos com garantia e um glossário curto;
   - armazenamento (cargas críticas e resumo do banco) e comparativo de cenários, quando houver;
-  - **seu investimento**: valor, economia no 1º ano, retorno e economia em 25 anos, **como pagar** (todas as opções de pagamento em cartões: parcelas, taxa, total pago e o aviso quando a parcela é menor que a economia do mês, com a nota de pagamento e as observações), a validade e o contato pelo WhatsApp;
+  - **seu investimento e retorno**: valor, tempo de retorno, economia no 1º ano, TIR × SELIC, economia em 25 anos (quantas vezes o valor volta), custo do kWh solar, gráfico do saldo acumulado, **como pagar** (todas as opções de pagamento em cartões: parcelas, taxa, total pago e o aviso quando a parcela é menor que a economia do mês, com a nota de pagamento e as observações), a validade e o contato pelo WhatsApp;
   - **o que está incluso** e o que não está, as garantias e o que acontece depois da instalação;
-  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?" e a conta nos próximos anos em tabela amigável ano a ano, com valores arredondados e o total da economia; quando a conta varia ao longo do ano, a faixa aparece no quadro da conta com o sistema);
-  - **retorno do investimento** (tempo de retorno, TIR × SELIC, quantas vezes o valor volta, custo do kWh solar e gráfico do saldo acumulado);
+  - **quanto você economiza** ("por que a conta não zera?", "o que é o Fio B?" e a conta nos próximos anos, ano a ano, no formato da projeção com Fio B em versão amigável: % do Fio B, conta sem o sistema, mínimo (disponibilidade), energia + Fio B, COSIP, conta com o sistema e economia, com o valor que vale em negrito e o total da economia; quando a conta varia ao longo do ano, a faixa aparece no quadro da conta com o sistema);
   - **próximos passos** (aprovação, contrato, vistoria), considerações, cartão de contato e assinaturas.
 
-  A composição de custos, as premissas do cálculo e o fluxo de caixa ficam fora do documento (o saldo acumulado aparece em gráfico no retorno do investimento).
+  A composição de custos, as premissas do cálculo e o fluxo de caixa ficam fora do documento (o saldo acumulado aparece em gráfico em Seu investimento e retorno).
 
   Telefone (usado como WhatsApp), e-mail e endereço vêm de Configurações › Empresa. Os detalhes de engenharia (strings, FDG, HSP, PR, tensão do banco, balanço diário etc.) ficam no painel da proposta, fora do documento impresso.
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
@@ -170,7 +169,7 @@ e acesse `http://localhost:8765/`.
 | Conta com sistema (grupo B) | `max(disponibilidade × tarifa_N, energia_não_compensada × tarifa_N + Fio B) + COSIP_N` — REN ANEEL 1.000/2021, art. 655-I (os dois não se somam). Opção em Premissas para a leitura de algumas distribuidoras: `max(energia_não_compensada, disponibilidade) × tarifa_N + Fio B sobre (energia_compensada − kWh que completam a disponibilidade) + COSIP_N` |
 | Economia real | `conta sem sistema − conta com sistema` (a conta com sistema inclui o consumo próprio do inversor híbrido) |
 | Faixa mensal da conta | ano 1 simulado mês a mês (fatores mensais de geração, perfil mensal de consumo, créditos transportados) — mostra a menor e a maior conta |
-| Fluxo de caixa | ano 0 = − investimento (valor final da proposta); ano N = `(conta mensal sem sistema − conta mensal com sistema) × 12` (+ benefício de backup − troca de baterias, quando houver); o acumulado aparece no gráfico do saldo, em Retorno do investimento |
+| Fluxo de caixa | ano 0 = − investimento (valor final da proposta); ano N = `(conta mensal sem sistema − conta mensal com sistema) × 12` (+ benefício de backup − troca de baterias, quando houver); o acumulado aparece no gráfico do saldo, em Seu investimento e retorno |
 | Payback | mês exato por interpolação, exibido como "X anos e Y meses" (simples e descontado pela TMA) |
 | VPL / TIR | fluxo de 25 anos descontado pela TMA / taxa que zera o VPL |
 | CO₂ evitado | `geração média × fator (kg/kWh) × 25 anos` |

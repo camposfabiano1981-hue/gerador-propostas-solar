@@ -312,7 +312,7 @@
   const txObs = textoModelo(App.Documento.montar(Object.assign(U.clone(pPreco), { condicoesObs: 'Preço válido para pagamento via PIX.' }), rPreco, ctx, ctx.clientes[0], { w: 1400, h: 752 })).join('\n');
   ok('proposta: observações da proposta junto das opções de pagamento', txObs.indexOf('Observações: Preço válido para pagamento via PIX.') >= 0);
   ok('proposta: validade com data na capa, no resumo e nos próximos passos', (txPreco.match(/04\/10\/2026/g) || []).length >= 3);
-  ok('proposta: conta dos próximos anos em linguagem simples, sem anexo técnico', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('25º ano') >= 0 &&
+  ok('proposta: conta dos próximos anos em linguagem simples, sem anexo técnico', txPreco.indexOf('Sem energia solar') >= 0 && txPreco.indexOf('Energia + Fio B') >= 0 &&
     txPreco.indexOf('Custo Disponib.') < 0 && txPreco.indexOf('Anexo') < 0 && !/655-I|Premissas do cálculo|Fluxo de caixa/.test(txPreco));
 
   // ---------------------------------------------------------------- fluxo de caixa pela conta anual e indicadores de retorno
@@ -834,8 +834,8 @@
     '1 Apresentação da empresa | 2 Projetos realizados | 3 Como a energia solar funciona na sua casa | 4 Seu sistema solar');
   const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
   igual('sem projetos: seções na ordem da proposta amigável', titulos(textoModelo(mSemP)).join(' | '),
-    '1 Apresentação da empresa | 2 Como a energia solar funciona na sua casa | 3 Seu sistema solar | 4 Seu investimento | ' +
-    '5 O que está incluso | 6 Quanto você economiza | 7 Retorno do investimento | 8 Próximos passos');
+    '1 Apresentação da empresa | 2 Como a energia solar funciona na sua casa | 3 Seu sistema solar | 4 Seu investimento e retorno | ' +
+    '5 O que está incluso | 6 Quanto você economiza | 7 Próximos passos');
   ok('passo a passo: fora da proposta por padrão', D.textos.passoNaProposta === false && !mSemP.imagens.passos && textoModelo(mSemP).indexOf(D.textos.passoIntro) < 0);
   const ctxPassos = U.clone(ctxP); ctxPassos.textos = Object.assign(U.clone(ctxP.textos || D.textos), { passoNaProposta: true });
   const mPassos = App.Documento.montar(p, rP, ctxPassos, ctxP.clientes[0], { w: 1400, h: 752 });
@@ -959,16 +959,18 @@
     ok('o que está incluso: inclusos, não inclusos, garantias e pós-instalação', ['Está incluso', 'Não está incluso', 'Projeto elétrico completo + ART/CFT-BR', 'Troca do padrão de entrada (medidor)', 'Garantias', 'Depois da instalação: ']
       .every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('quanto você economiza: quadros, explicações e tabela dos anos', ['Conta hoje', 'Você economiza', 'Por que a conta não zera?', 'O que é o Fio B?', 'Sua conta de luz nos próximos anos'].every(function (x) { return txt.indexOf(x) >= 0; }));
-    ok('retorno: tempo, TIR, vezes, custo do kWh e saldo acumulado', !!m.imagens.saldo && ['Tempo de retorno', 'Rentabilidade (TIR)', 'vezes', 'Custo da sua energia solar', '/kWh'].every(function (x) { return txt.indexOf(x) >= 0; }));
+    ok('investimento e retorno juntos: volta em, TIR, vezes, custo do kWh e saldo acumulado', !!m.imagens.saldo && ['O investimento volta em', 'Rentabilidade (TIR)', 'vezes o valor investido', 'Custo da sua energia solar', '/kWh',
+      'Seu dinheiro ao longo do tempo (saldo acumulado)'].every(function (x) { return txt.indexOf(x) >= 0; }) && txt.indexOf('Retorno do investimento') < 0 && txt.indexOf('Tempo de retorno') < 0 &&
+      txt.indexOf('Seu dinheiro ao longo do tempo') > txt.indexOf('Seu investimento e retorno') && txt.indexOf('Seu dinheiro ao longo do tempo') < txt.indexOf('Como pagar'));
     ok('seção de investimento e pagamento retirada (valor e pagamento ficam no resumo)', ['Investimento e formas de pagamento', 'Investimento total', 'Tudo incluído:', 'Composição do investimento'].every(function (x) { return txt.indexOf(x) < 0; }));
     ok('seções retiradas: dados do cliente, lista de equipamentos e passo a passo', ['Dados do cliente e do projeto', 'Lista de equipamentos e materiais', 'Passo a passo', 'Tipo de Telhado'].every(function (x) { return txt.indexOf(x) < 0; }));
     // conta dos próximos anos: ano a ano, valores arredondados e total
     const somaEco = f.anos.reduce(function (s0, a) { return s0 + a.economiaMes * 12; }, 0);
     const reais = function (v) { return U.brl(Math.round(v)).replace(/,00$/, ''); };
-    ok('conta nos próximos anos: tabela amigável ano a ano com o total', f.anos.length === 25 && f.anos.every(function (a, k) {
-      return tx.indexOf(a.ano + '  ' + (k + 1) + 'º ano') >= 0 && tx.indexOf(reais(a.contaSem)) >= 0 && tx.indexOf(reais(a.contaCom)) >= 0 && tx.indexOf(reais(a.economiaMes)) >= 0 && tx.indexOf(reais(a.economiaMes * 12)) >= 0;
-    }) && ['Você economiza', 'por mês', 'no ano', 'Somando os 25 anos, a economia na conta de luz chega a ', reais(somaEco)].every(function (x) { return txt.indexOf(x) >= 0; }) &&
-      txt.indexOf('Economia no mês') < 0, reais(a1.contaSem) + ' / ' + reais(somaEco));
+    ok('conta nos próximos anos: formato com Fio B ano a ano, amigável, com o total', f.anos.length === 25 && f.anos.every(function (a) {
+      return [String(a.ano), U.fmtSmart(a.pctFioB * 100, 0) + '%', reais(a.contaSem), reais(a.custoDisp), reais(a.energiaGD), reais(a.cosip), reais(a.contaCom), reais(a.economiaMes)].every(function (x) { return tx.indexOf(x) >= 0; });
+    }) && ['Fio B', 'Mínimo', 'disponibilidade', 'Energia + Fio B', 'COSIP', 'Com energia solar', 'Você economiza', 'o que vale está em negrito', 'Somando os 25 anos, a economia na conta de luz chega a ', reais(somaEco)]
+      .every(function (x) { return txt.indexOf(x) >= 0; }) && txt.indexOf('Economia no mês') < 0, reais(a1.contaSem) + ' / ' + reais(somaEco));
     ok('valores acima de 1 milhão por extenso', /^R\$ \d+,\d\d milh(ão|ões)$/.test((function () { const x = App.Documento.montar(p, Object.assign({}, r, { fin: Object.assign({}, f, { economiaTotal: 2234567 }) }), ctx, ctx.clientes[0], { w: 1400, h: 752 });
       return textoModelo(x).find(function (y) { return /milh/.test(y); }) || ''; })()));
     // apresentação: texto, diferenciais e o responsável técnico

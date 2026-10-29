@@ -535,15 +535,37 @@ window.App = window.App || {};
     }
 
 
-    /* ---------- SEU INVESTIMENTO (valor, economia, retorno, formas de pagamento e validade) */
-    abrir('Seu investimento', 'Quanto você investe, quanto economiza e as formas de pagamento.', true);
-    const cartoesResumo = [
+    /* ---------- SEU INVESTIMENTO E RETORNO (valor, retorno, saldo acumulado, formas de pagamento e validade) */
+    abrir('Seu investimento e retorno', 'Quanto você investe, em quanto tempo o valor volta e as formas de pagamento.', true);
+    const geracao25 = f.anos.reduce(function (s0, a) { return s0 + (a.geracao || 0); }, 0);
+    const cartoesInv = [
       { rot: 'Investimento', valor: U.brl(r.total), sub: maxParcelas > 1 ? 'à vista ou parcelado em até ' + maxParcelas + 'x' : 'à vista' },
-      { rot: 'Economia no 1º ano', valor: valorCurto(f.economiaAno1), sub: '≈ ' + valorCurto(f.economiaMes1) + ' por mês', tom: 'verde' },
       { rot: 'O investimento volta em', valor: f.paybackSimples != null ? U.anosMeses(f.paybackSimples) : 'mais de ' + H + ' anos', sub: 'depois disso, a economia é lucro', tom: 'ouro' },
-      { rot: 'Economia em ' + H + ' anos', valor: valorCurto(f.economiaTotal), sub: 'com reajuste de ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano na tarifa' }
+      { rot: 'Economia no 1º ano', valor: valorCurto(f.economiaAno1), sub: '≈ ' + valorCurto(f.economiaMes1) + ' por mês', tom: 'verde' },
+      { rot: 'Rentabilidade (TIR)', valor: f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? 'acima de 1.000% a.a.' : '—'), sub: 'a ' + (prem.tmaNome || 'SELIC') + ' está em ' + U.fmt(prem.tma * 100, 2) + '% a.a.', tom: 'verde' },
+      { rot: 'Economia em ' + H + ' anos', valor: valorCurto(f.economiaTotal), sub: (r.total > 0 ? U.fmt(f.economiaTotal / r.total, 1) + ' vezes o valor investido · ' : '') + 'reajuste de ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano' },
+      temFV && geracao25 > 0
+        ? { rot: 'Custo da sua energia solar', valor: U.brl(r.total / geracao25) + '/kWh', sub: 'contra ' + U.brl(r.tarifa) + '/kWh da ' + (conc || 'concessionária') }
+        : { rot: 'Valor presente líquido (VPL)', valor: valorCurto(f.vpl), sub: 'em ' + H + ' anos, descontado pela ' + (prem.tmaNome || 'SELIC') }
     ];
-    b.push(grade(cartoesResumo, 2, cartao));
+    cartoesInv.forEach(function (c) { c.sz = 28; });
+    b.push(grade(cartoesInv, 3, cartao));
+    if (App.Chart && App.Chart.saldoDataURL) {
+      b.push(subtitulo('Seu dinheiro ao longo do tempo (saldo acumulado)', 200));
+      const ptsSaldo = [{ rot: 'Hoje', v: -r.total }].concat(f.anos.map(function (a) { return { rot: String(a.ano), v: a.acumulado }; }));
+      const gs = App.Chart.saldoDataURL({
+        pontos: ptsSaldo, marca: f.paybackSimples != null ? 'O investimento se paga em ' + U.anosMeses(f.paybackSimples) : '',
+        sub: 'a partir daí, a economia é lucro', final: reais(f.anos[f.anos.length - 1].acumulado) + ' de saldo em ' + H + ' anos'
+      });
+      imagens.saldo = gs.dataURL;
+      b.push(P(IMG('saldo', wTexto, Math.round(wTexto * gs.proporcao), 'Saldo acumulado'), { after: 40, jc: 'center' }));
+    }
+    const extrasRet = ['Payback descontado (' + (prem.tmaNome || 'SELIC') + ' ' + U.fmt(prem.tma * 100, 2) + '% a.a.): ' + (f.paybackDescontado != null ? U.anosMeses(f.paybackDescontado) : 'acima do horizonte'),
+      'VPL em ' + H + ' anos: ' + U.brl(f.vpl)];
+    if (temFV) extrasRet.push('CO₂ evitado: ' + U.fmt(f.co2t, 1) + ' t');
+    if (a1.beneficioBackup > 0) extrasRet.push('benefício de backup: ' + U.brl(a1.beneficioBackup) + '/ano');
+    if (r.trocaBateria && r.trocaBateria.custo > 0) extrasRet.push('substituição ' + (r.bessAtivo ? 'do BESS' : 'das baterias') + ' no ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ': ' + U.brl(r.trocaBateria.custo));
+    b.push(T(extrasRet.join('  •  '), { after: 40 }, { color: CINZA, sz: 16 }));
     // como pagar: todas as opções em cartões, na ordem cadastrada (rótulo antes do " — " e o detalhe, como a taxa, no complemento)
     const comoPagar = pags.map(function (pg) {
       const partes = String(pg.label || '').split(' — ');
@@ -631,63 +653,60 @@ window.App = window.App || {};
         { w: w, fill: 'FFFBEB', borda: { sz: 6, cor: 'FDE68A' }, mar: { t: 120, b: 120, l: 180, r: 140 }, vAlign: 'top' });
     }));
     b.push(subtitulo('Sua conta de luz nos próximos anos', 200));
-    b.push(T('A tarifa sobe quase todo ano (aqui, ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano); ' + (temFV ? 'com energia solar' : 'com o sistema') +
-      ', a sua conta fica pequena e a diferença fica no seu bolso. Valores mensais médios, com impostos' + (r.cosip > 0 ? ' e a COSIP de ' + U.brl(r.cosip) : '') + ':',
+    // projeção ano a ano no formato da conta com Fio B (Lei 14.300/2022), em versão amigável: média mensal, valores arredondados e uma cor por coluna
+    const regraMaior = prem.regraDisponibilidade !== 'disponibilidade';
+    b.push(T(!temFV
+      ? 'A tarifa sobe quase todo ano (aqui, ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano). Valores mensais médios, com impostos' + (r.cosip > 0 ? ' e a COSIP' : '') + ':'
+      : (grupoA
+        ? 'Valores mensais médios, com impostos e a COSIP. No grupo A, a conta com o sistema soma a energia, a demanda e o Fio B, que sobe aos poucos pela Lei 14.300/2022:'
+        : 'Valores mensais médios, com impostos. ' + (regraMaior
+          ? 'Com o sistema, a conta é o maior valor entre o mínimo (disponibilidade) e a energia + Fio B (o que vale está em negrito; os dois não se somam), mais a COSIP:'
+          : 'Com o sistema, a conta soma o mínimo (disponibilidade), o Fio B (que sobe aos poucos pela Lei 14.300/2022) e a COSIP:')),
     { keepNext: true, after: 100 }, { color: GRAFITE, sz: 18 }));
-    // tabela amigável ano a ano: valores arredondados, uma cor por coluna e o total no fim
-    const LCT = [1500, 1880, 1880, 2000, 2100];
-    const bordaT = { sz: 4, cor: 'E2E8F0' };
-    const cabT = function (txt, sub, w, cor, jc) {
-      return TC([T(txt, { jc: jc || 'right', after: 0 }, { b: true, color: BRANCO, sz: 17 }), T(sub, { jc: jc || 'right' }, { color: 'E2E8F0', sz: 14 })],
-        { w: w, fill: cor, borda: { sz: 4, cor: cor }, mar: { t: 60, b: 60, l: 140, r: 140 } });
-    };
-    const valT = function (filho, w, fundo) { return TC(filho, { w: w, fill: fundo, borda: bordaT, mar: { t: 22, b: 22, l: 140, r: 140 } }); };
-    const linhasT = [TR([cabT('Ano', ' ', LCT[0], AZUL, 'left'), cabT(semRot, 'por mês', LCT[1], '64748B'), cabT(temFV ? 'Com energia solar' : comRot, temArm && temFV ? 'e baterias, por mês' : 'por mês', LCT[2], '2563EB'),
-      cabT('Você economiza', 'por mês', LCT[3], '15803D'), cabT('Você economiza', 'no ano', LCT[4], '166534')], true)];
+    const ESMAECIDO = '94A3B8';
+    const colsT = [{ t: 'Ano', sub: ' ', w: 760, cor: AZUL, jc: 'left', v: function (a) { return [String(a.ano), { b: true, color: AZUL }]; } }];
+    if (temFV) colsT.push({ t: 'Fio B', sub: 'cobrado', w: 760, cor: 'B45309', jc: 'center', v: function (a) { return [U.fmtSmart(a.pctFioB * 100, 0) + '%', { color: '92400E' }]; } });
+    colsT.push({ t: semRot, sub: 'por mês', w: 1340, cor: '64748B', v: function (a) { return [reais(a.contaSem), { color: '475569' }]; } });
+    const partes = [];
+    if (temFV && grupoA) {
+      partes.push({ t: 'Energia', sub: 'com o sistema', v: function (a) { return [reais(a.contaMin), { color: '475569' }]; } },
+        { t: 'Demanda', sub: 'com o sistema', v: function (a) { return [reais(a.demandaCom), { color: '475569' }]; } },
+        { t: 'Fio B', sub: 'em R$', v: function (a) { return [reais(a.fioBMes), { color: '475569' }]; } });
+    } else if (temFV && regraMaior) {
+      partes.push({ t: 'Mínimo', sub: 'disponibilidade', v: function (a) { return [reais(a.custoDisp), { b: a.minimo, color: a.minimo ? '1D4ED8' : ESMAECIDO }]; } },
+        { t: 'Energia + Fio B', sub: 'o que não compensa', v: function (a) { return [reais(a.energiaGD), { b: !a.minimo, color: a.minimo ? ESMAECIDO : '1D4ED8' }]; } },
+        { t: 'COSIP', sub: 'iluminação pública', v: function (a) { return [reais(a.cosip), { color: '475569' }]; } });
+    } else if (temFV) {
+      partes.push({ t: tou ? 'Energia' : 'Mínimo', sub: tou ? 'com o sistema' : 'disponibilidade', v: function (a) { return [reais(a.contaMin), { color: '475569' }]; } },
+        { t: 'Fio B', sub: 'em R$', v: function (a) { return [reais(a.fioBMes), { color: '475569' }]; } },
+        { t: 'COSIP', sub: 'iluminação pública', v: function (a) { return [reais(a.cosip), { color: '475569' }]; } });
+    }
+    const wParte = partes.length ? Math.floor((9360 - 760 - 760 - 1340 - 1400 - 1600) / partes.length) : 0;
+    partes.forEach(function (c) { colsT.push(Object.assign({ w: wParte, cor: '3B82F6' }, c)); });
+    colsT.push({ t: temFV ? 'Com energia solar' : comRot, sub: temArm && temFV ? 'e baterias, por mês' : 'por mês', w: 1400, cor: '2563EB', v: function (a) { return [reais(a.contaCom), { b: true, color: '2563EB' }]; } },
+      { t: 'Você economiza', sub: 'por mês', w: 1600, cor: '15803D', verde: true, v: function (a) { return [reais(a.economiaMes), { b: true, color: '15803D' }]; } });
+    if (!temFV) colsT.push({ t: 'Você economiza', sub: 'no ano', w: 1600, cor: '166534', verde: true, v: function (a) { return [reais(a.economiaMes * 12), { color: '15803D' }]; } });
+    // sem as colunas do Fio B, as larguras se ajustam à largura útil
+    const somaW = colsT.reduce(function (s0, c) { return s0 + c.w; }, 0);
+    colsT.forEach(function (c) { c.w = Math.round(c.w * 9360 / somaW); });
+    colsT[colsT.length - 1].w += 9360 - colsT.reduce(function (s0, c) { return s0 + c.w; }, 0);
+    const LCT = colsT.map(function (c) { return c.w; });
+    const linhasT = [TR(colsT.map(function (c) {
+      return TC([T(c.t, { jc: c.jc || 'right', after: 0 }, { b: true, color: BRANCO, sz: 16 }), T(c.sub, { jc: c.jc || 'right' }, { color: 'E2E8F0', sz: 13 })],
+        { w: c.w, fill: c.cor, borda: { sz: 4, cor: c.cor }, mar: { t: 60, b: 60, l: 100, r: 100 } });
+    }), true)];
     let somaEco = 0;
     f.anos.forEach(function (a, i) {
       somaEco += a.economiaMes * 12;
-      const fundo = i % 2 ? 'F8FAFC' : BRANCO, verde = i % 2 ? 'E7F8EE' : 'F0FDF4';
-      linhasT.push(TR([
-        valT(P([R(String(a.ano), { b: true, color: AZUL, sz: 18 }), R('  ' + (i + 1) + 'º ano', { color: CINZA, sz: 14 })]), LCT[0], fundo),
-        valT(T(reais(a.contaSem), { jc: 'right' }, { color: '475569', sz: 18 }), LCT[1], fundo),
-        valT(T(reais(a.contaCom), { jc: 'right' }, { b: true, color: '2563EB', sz: 18 }), LCT[2], fundo),
-        valT(T(reais(a.economiaMes), { jc: 'right' }, { b: true, color: '15803D', sz: 18 }), LCT[3], verde),
-        valT(T(reais(a.economiaMes * 12), { jc: 'right' }, { color: '15803D', sz: 18 }), LCT[4], verde)
-      ], false, { naoQuebrar: true }));
+      linhasT.push(TR(colsT.map(function (c) {
+        const x = c.v(a);
+        return TC(T(x[0], { jc: c.jc || 'right' }, Object.assign({ sz: 17 }, x[1])),
+          { w: c.w, fill: c.verde ? (i % 2 ? 'E7F8EE' : 'F0FDF4') : (i % 2 ? 'F8FAFC' : BRANCO), borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 22, b: 22, l: 100, r: 100 } });
+      }), false, { naoQuebrar: true }));
     });
     linhasT.push(TR([TC(P([R('Somando os ' + f.anos.length + ' anos, a economia na conta de luz chega a ', { color: BRANCO, sz: 20 }), R(valorCurto(somaEco), { b: true, color: BRANCO, sz: 24 })], { jc: 'center' }),
-      { w: 9360, span: 5, fill: '15803D', borda: { sz: 4, cor: '15803D' }, mar: { t: 90, b: 90, l: 160, r: 160 } })], false, { naoQuebrar: true }));
+      { w: 9360, span: colsT.length, fill: '15803D', borda: { sz: 4, cor: '15803D' }, mar: { t: 90, b: 90, l: 160, r: 160 } })], false, { naoQuebrar: true }));
     b.push(TBL(LCT, linhasT));
-
-    /* ---------- RETORNO DO INVESTIMENTO */
-    abrir('Retorno do investimento', 'A energia solar funciona como uma aplicação: você investe uma vez e recebe a economia todo mês.', true);
-    const geracao25 = f.anos.reduce(function (s0, a) { return s0 + (a.geracao || 0); }, 0);
-    const cartoesRet = [
-      { rot: 'Tempo de retorno', valor: f.paybackSimples != null ? U.anosMeses(f.paybackSimples) : 'mais de ' + H + ' anos', sub: temFV ? 'o sistema dura mais de 25 anos' : 'considerando a vida útil do sistema', tom: 'ouro' },
-      { rot: 'Rentabilidade (TIR)', valor: f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? 'acima de 1.000% a.a.' : '—'), sub: 'a ' + (prem.tmaNome || 'SELIC') + ' está em ' + U.fmt(prem.tma * 100, 2) + '% a.a.', tom: 'verde' },
-      { rot: 'Retorno total', valor: r.total > 0 ? U.fmt(f.economiaTotal / r.total, 1) + ' vezes' : '—', sub: 'a economia de ' + H + ' anos sobre o valor investido' },
-      temFV && geracao25 > 0
-        ? { rot: 'Custo da sua energia solar', valor: U.brl(r.total / geracao25) + '/kWh', sub: 'contra ' + U.brl(r.tarifa) + '/kWh da ' + (conc || 'concessionária') }
-        : { rot: 'Valor presente líquido (VPL)', valor: valorCurto(f.vpl), sub: 'em ' + H + ' anos, descontado pela ' + (prem.tmaNome || 'SELIC') }
-    ];
-    b.push(grade(cartoesRet, 2, cartao));
-    if (App.Chart && App.Chart.saldoDataURL) {
-      b.push(subtitulo('Seu dinheiro ao longo do tempo (saldo acumulado)'));
-      const ptsSaldo = [{ rot: 'Hoje', v: -r.total }].concat(f.anos.map(function (a) { return { rot: String(a.ano), v: a.acumulado }; }));
-      const gs = App.Chart.saldoDataURL({
-        pontos: ptsSaldo, marca: f.paybackSimples != null ? 'O investimento se paga em ' + U.anosMeses(f.paybackSimples) : '',
-        sub: 'a partir daí, a economia é lucro', final: reais(f.anos[f.anos.length - 1].acumulado) + ' de saldo em ' + H + ' anos'
-      });
-      imagens.saldo = gs.dataURL;
-      b.push(P(IMG('saldo', wTexto, Math.round(wTexto * gs.proporcao), 'Saldo acumulado'), { after: 60, jc: 'center' }));
-    }
-    const extrasRet = ['Payback descontado (' + (prem.tmaNome || 'SELIC') + ' ' + U.fmt(prem.tma * 100, 2) + '% a.a.): ' + (f.paybackDescontado != null ? U.anosMeses(f.paybackDescontado) : 'acima do horizonte'),
-      'VPL em ' + H + ' anos: ' + U.brl(f.vpl)];
-    if (temFV) extrasRet.push('CO₂ evitado: ' + U.fmt(f.co2t, 1) + ' t');
-    if (a1.beneficioBackup > 0) extrasRet.push('benefício de backup: ' + U.brl(a1.beneficioBackup) + '/ano');
-    if (r.trocaBateria && r.trocaBateria.custo > 0) extrasRet.push('substituição ' + (r.bessAtivo ? 'do BESS' : 'das baterias') + ' no ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ': ' + U.brl(r.trocaBateria.custo));
-    b.push(T(extrasRet.join('  •  '), { after: 80 }, { color: CINZA, sz: 17 }));
 
     /* ---------- PRÓXIMOS PASSOS */
     abrir('Próximos passos', 'Gostou? Em três passos começamos o seu projeto.', true);
