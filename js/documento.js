@@ -336,44 +336,26 @@ window.App = window.App || {};
     b.push(listaMarcada(recebe, '✓', '15803D', 2));
     const pFin = pags.filter(function (pg) { return !/cart/i.test(pg.label) && pg.prazo !== '1x'; })
       .sort(function (x, y) { return (parseInt(y.prazo, 10) || 0) - (parseInt(x.prazo, 10) || 0); })[0];
-    // formas de pagamento: todas as opções, com as parcelas, o total e quanto sobra da economia do mês
-    if (pags.length) {
-      b.push(subtitulo('Formas de pagamento', 200));
-      const comSobra = f.economiaMes1 > 0;
-      const LP = comSobra ? [3300, 2160, 1900, 2000] : [4400, 2660, 2300];
-      const cabP = function (txt, w, jc) {
-        return TC(T(txt, { jc: jc || 'right' }, { b: true, color: BRANCO, sz: 18 }), { w: w, fill: AZUL, borda: { sz: 4, cor: AZUL }, mar: { t: 90, b: 90, l: 140, r: 140 } });
-      };
-      const celP = function (filho, w, fundo) { return TC(filho, { w: w, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 45, b: 45, l: 140, r: 140 } }); };
-      const cabs = [cabP('Forma de pagamento', LP[0], 'left'), cabP('Parcelas', LP[1]), cabP('Total pago', LP[2])];
-      if (comSobra) cabs.push(cabP('Sobra no mês*', LP[3]));
-      const linhasP = [TR(cabs, true)];
-      pags.forEach(function (pg, i) {
-        const avista = pg.prazo === '1x';
-        const fundo = avista ? 'F0FDF4' : (i % 2 ? 'F8FAFC' : BRANCO);
-        const rotulo = [R(pg.label, { b: avista, sz: 18 })];
-        if (avista) rotulo.push(R('   melhor preço', { b: true, color: '15803D', sz: 15 }));
-        const cel = [celP(P(rotulo), LP[0], fundo),
-          celP(T(avista ? 'pagamento único' : (parseInt(pg.prazo, 10) || 1) + ' × ' + U.brl(pg.parcela), { jc: 'right' }, { b: !avista, sz: 18 }), LP[1], fundo),
-          celP(T(U.brl(pg.total), { jc: 'right' }, { sz: 18 }), LP[2], fundo)];
-        if (comSobra) {
-          const sobra = f.economiaMes1 - (avista ? 0 : pg.parcela);
-          cel.push(celP(T((sobra >= 0 ? '+ ' : '− ') + U.brl(Math.abs(sobra)), { jc: 'right' }, { b: true, color: sobra >= 0 ? '15803D' : VERMELHO, sz: 18 }), LP[3], fundo));
-        }
-        linhasP.push(TR(cel, false, { naoQuebrar: true }));
-      });
-      b.push(TBL(LP, linhasP));
-      const notas = [];
-      if (comSobra) notas.push(['*Economia estimada do mês (' + U.brl(f.economiaMes1) + ') menos a parcela: quando é positiva, a parcela cabe na economia.', CINZA, 15]);
-      if (textos.notaPagamento) notas.push([textos.notaPagamento, CINZA, 15]);
-      if (p.condicoesObs) notas.push(['Observações: ' + p.condicoesObs, GRAFITE, 17]);
-      notas.forEach(function (n, i) { b.push(T(n[0], { before: i ? 0 : 50, after: i === notas.length - 1 ? 120 : 0 }, { color: n[1], sz: n[2] })); });
+    // como pagar: à vista, cartão e o financiamento mais longo em cartões
+    const pAvista = pags.find(function (pg) { return pg.prazo === '1x'; });
+    const pCartao = pags.find(function (pg) { return /cart/i.test(pg.label) && pg.prazo !== '1x'; });
+    const comoPagar = [];
+    if (pAvista) comoPagar.push({ rot: 'À vista', valor: U.brl(pAvista.total), sub: 'melhor preço', sz: 26 });
+    if (pCartao) comoPagar.push({ rot: pCartao.label.replace(/ — .*$/, ''), valor: pCartao.prazo.replace('x', '') + ' × ' + U.brl(pCartao.parcela), sub: Math.abs(pCartao.total - r.total) < 1 ? 'sem acréscimo' : 'total ' + U.brl(pCartao.total), sz: 26 });
+    if (pFin) comoPagar.push({ rot: pFin.label.replace(/ — .*$/, ''), valor: pFin.prazo.replace('x', '') + ' × ' + U.brl(pFin.parcela), sub: f.economiaMes1 > pFin.parcela ? 'parcela menor que a economia do mês' : 'total ' + U.brl(pFin.total), sz: 26 });
+    if (comoPagar.length) {
+      b.push(subtitulo('Como pagar', 200));
+      b.push(grade(comoPagar, comoPagar.length === 1 ? 2 : comoPagar.length, cartao));
     }
+    const notas = [];
+    if (comoPagar.length && textos.notaPagamento) notas.push([textos.notaPagamento, CINZA, 15]);
+    if (p.condicoesObs) notas.push(['Observações: ' + p.condicoesObs, GRAFITE, 17]);
+    notas.forEach(function (n, i) { b.push(T(n[0], { before: i ? 0 : 60, after: i === notas.length - 1 ? 120 : 0 }, { color: n[1], sz: n[2] })); });
     const cta = [TC([T('Proposta válida até ' + validoAte, { after: 20 }, { b: true, color: BRANCO, sz: 24 }),
       T('Para aprovar, assine a última página' + (fone ? ' ou responda pelo WhatsApp.' : '.'), null, { color: TXT_CLARO, sz: 18 })],
     { w: fone ? 6160 : 9360, fill: AZUL, borda: { sz: 4, cor: AZUL }, mar: { t: 160, b: 160, l: 260, r: 160 } })];
     if (fone) cta.push(TC(T('WhatsApp ' + fone, { jc: 'center' }, { b: true, color: BRANCO, sz: 22 }), { w: 3200, fill: '22C55E', borda: { sz: 4, cor: '22C55E' }, mar: { t: 160, b: 160, l: 120, r: 120 } }));
-    if (!pags.length || b[b.length - 1].tipo === 'tbl') b.push(P([], { after: 120 }));
+    if (b[b.length - 1].tipo === 'tbl') b.push(P([], { after: 120 })); // tabelas vizinhas se fundem no Word: um parágrafo entre elas
     b.push(TBL(fone ? [6160, 3200] : [9360], [TR(cta, false, { naoQuebrar: true })]));
 
     /* ---------- APRESENTAÇÃO */

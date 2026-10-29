@@ -942,14 +942,15 @@
     ok('resumo: investimento, economia no 1º ano, retorno e economia em 25 anos', ['Investimento', 'Economia no 1º ano', 'O investimento volta em', 'Economia em 25 anos', U.brl(r.total), U.anosMeses(f.paybackSimples)]
       .every(function (x) { return txt.indexOf(x) >= 0; }));
     ok('resumo: conta de hoje × com energia solar', txt.indexOf('Sua conta de luz por mês') >= 0 && txt.indexOf(U.brl(a1.contaSem)) >= 0 && txt.indexOf(U.brl(a1.contaCom)) >= 0);
-    ok('resumo: o que você recebe e as formas de pagamento', txt.indexOf('O que você recebe') >= 0 && /9 módulos .* de 625 Wp/.test(txt) && txt.indexOf('Formas de pagamento') >= 0 &&
-      txt.indexOf('Formas de pagamento') < txt.indexOf('Apresentação da empresa'));
-    // todas as opções de pagamento no resumo, com parcelas, total e sobra no mês
+    ok('resumo: o que você recebe e como pagar', txt.indexOf('O que você recebe') >= 0 && /9 módulos .* de 625 Wp/.test(txt) && txt.indexOf('Como pagar') >= 0 &&
+      txt.indexOf('Como pagar') < txt.indexOf('Apresentação da empresa'));
+    // como pagar em cartões: à vista, cartão e o financiamento mais longo
     const pgs = r.pagamentos;
-    ok('resumo: todas as formas de pagamento com parcelas, total e sobra no mês', pgs.length >= 3 && pgs.every(function (pg) {
-      return txt.indexOf(pg.label) >= 0 && tx.indexOf(U.brl(pg.total)) >= 0 && (pg.prazo === '1x' || tx.indexOf(parseInt(pg.prazo, 10) + ' × ' + U.brl(pg.parcela)) >= 0);
-    }) && ['Parcelas', 'Total pago', 'Sobra no mês*', 'melhor preço', 'pagamento único', D.textos.notaPagamento].every(function (x) { return txt.indexOf(x) >= 0; }) &&
-      pgs.every(function (pg) { const sb = f.economiaMes1 - (pg.prazo === '1x' ? 0 : pg.parcela); return tx.indexOf((sb >= 0 ? '+ ' : '− ') + U.brl(Math.abs(sb))) >= 0; }));
+    const pgAv = pgs.find(function (pg) { return pg.prazo === '1x'; }), pgCt = pgs.find(function (pg) { return /cart/i.test(pg.label) && pg.prazo !== '1x'; });
+    const pgFin = pgs.filter(function (pg) { return !/cart/i.test(pg.label) && pg.prazo !== '1x'; }).sort(function (x, y) { return parseInt(y.prazo, 10) - parseInt(x.prazo, 10); })[0];
+    ok('resumo: cartões à vista, cartão e financiamento mais longo, com a nota de pagamento', tx.indexOf(U.brl(pgAv.total)) >= 0 && txt.indexOf('melhor preço') >= 0 &&
+      tx.indexOf(pgCt.prazo.replace('x', '') + ' × ' + U.brl(pgCt.parcela)) >= 0 && tx.indexOf(pgFin.prazo.replace('x', '') + ' × ' + U.brl(pgFin.parcela)) >= 0 &&
+      txt.indexOf(D.textos.notaPagamento) >= 0 && txt.indexOf('Sobra no mês') < 0);
     ok('como funciona: ilustração e 5 passos', !!m.imagens.comoFunciona && txt.indexOf('Painéis no telhado captam a luz do sol') >= 0 && txt.indexOf('À noite e em dias nublados você usa a rede') >= 0);
     ok('benefícios personalizados com os números do cliente', txt.indexOf('Por que vale a pena para você') >= 0 && new RegExp('De R\\$ [\\d.]+ para cerca de R\\$ [\\d.]+ por mês').test(txt));
     ok('seu sistema: faixa de indicadores, gráfico e equipamentos com garantia', txt.indexOf('geração média/mês') >= 0 && txt.indexOf('Geração estimada mês a mês') >= 0 && /Garantia: /.test(txt));
