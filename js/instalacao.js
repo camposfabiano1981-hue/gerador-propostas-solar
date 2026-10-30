@@ -162,7 +162,7 @@ window.App = window.App || {};
       geracaoMes: 0, economiaMes: 0, reducaoPct: 0, segmento: 'residencial',
       situacao: 'ativa', responsavel: emp.responsavel || '', equipe: '', inicioPrevisto: U.todayISO(),
       uc: '', art: '', protocolo: '', medidor: '', ligacao: '', fotosLink: '', observacoes: '',
-      placas: placasVazias(), checklistInstalacao: checklistPadrao(ctx.textos, false),
+      placas: placasVazias(), checklistInstalacao: checklistPadrao(ctx.textos, false), materiais: [], comprasLancadas: [],
       assinaturas: { cliente: { fotoId: '', nome: '', em: '' }, tecnico: { fotoId: '', nome: '', em: '' } },
       etapas: etapasPadrao(ctx.textos, varsTexto(ctx, '', '')), historico: []
     };
@@ -188,7 +188,9 @@ window.App = window.App || {};
       cidade: (r && r.cidade) || rs.cidade || (cli && cli.cidade) || '', uf: (r && r.uf) || (cli && cli.uf) || inst.uf,
       tipoSistema: p.tipoSistema || 'ongrid', kwp: kwp, kwh: kwh, valor: r ? r.total : U.numOr(rs.total, 0),
       titulo: [nomeCli, [kwp > 0 ? U.kwp(kwp) + ' kWp' : '', kwh > 0 ? U.fmtSmart(kwh, 2) + ' kWh' : ''].filter(Boolean).join(' + '), tipo].filter(Boolean).join(' — '),
-      etapas: etapasPadrao(ctx.textos, varsTexto(ctx, conc, nomeCli))
+      etapas: etapasPadrao(ctx.textos, varsTexto(ctx, conc, nomeCli)),
+      // materiais CA previstos na proposta; o consumo real é lançado na obra
+      materiais: App.Materiais ? App.Materiais.daProposta(p) : []
     });
     if (r) {
       const nome = function (e) { return e ? [e.fabricante, e.modelo].filter(Boolean).join(' ') : ''; };

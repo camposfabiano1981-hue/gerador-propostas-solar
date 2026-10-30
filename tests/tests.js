@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '10');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '11');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,7 +641,7 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8 → v10: versão da base (atual), instalações e ordens de serviço', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) ? ' ok' : ''), '10 ok');
+      igual('migração v8 → v11: versão da base (atual), instalações, ordens de serviço e pedidos de compra', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) ? ' ok' : ''), '11 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -853,6 +853,165 @@
   ok('projetos: XML do Word válido', !new DOMParser().parseFromString(xmlP.documento, 'application/xml').querySelector('parsererror'));
   ok('capa: faixa da marca e quadro azul com o cliente, o número e a validade', mP.imagens.capa && /PREPARADA PARA/.test(xmlP.documento) && /Válida até/.test(xmlP.documento));
 
+  // ---------------------------------------------------------------- pedidos de compra e materiais CA
+  (function () {
+    const Cp = App.Compra, M = App.Materiais, S = App.Store;
+    // linhas como o PDF.js entrega (células com x); layout do orçamento de um distribuidor de material elétrico, com dados fictícios
+    const cel = function (x, t, w) { return { t: t, x: x, x2: x + (w || t.length * 4.6) }; };
+    const lin = function () { return { celulas: Array.prototype.slice.call(arguments) }; };
+    const orc = [
+      lin(cel(31, 'ADM 1.0 R1'), cel(218, 'Emitido em 29/09/2026'), cel(529, 'Página: 1')),
+      lin(cel(105, '01 - DISTRIBUIDORA ELETRICA EXEMPLO - MATRIZ')),
+      lin(cel(105, 'CNPJ: 11.222.333/0001-81'), cel(229, 'Inscrição Estadual:'), cel(313, '123456'), cel(392, 'Fone: (67) 3000-1000')),
+      lin(cel(105, 'Bairro: CENTRO'), cel(295, 'Cidade: CAMPO GRANDE-MS')),
+      lin(cel(30, 'Cliente: 1.234 - CLIENTE FICTICIO'), cel(383, 'A/C:')),
+      lin(cel(30, 'CPF: 000.000.000-00'), cel(382, 'Fone: (67) 99999-0000')),
+      lin(cel(30, 'Orçamento: 9.876'), cel(167, 'Data emissão: 29/09/2026'), cel(314, 'Data de validade:'), cel(391, '30/09/2026')),
+      lin(cel(30, 'Vendedor: FULANA DE TAL'), cel(299, 'Fone / ramal:')),
+      lin(cel(30, 'E-mail do vendedor: vendas@exemplo.com.br'), cel(294, 'Prazo entrega: 1 dias úteis')),
+      lin(cel(30, 'Condição de pagamento:'), cel(137, 'A VISTA (DINHEIRO, CARTAO)')),
+      lin(cel(41, 'Prod DescriçãoProd Descrição', 120), cel(293, 'MarcaMarca'), cel(410, 'UndUnd'), cel(458, 'Qtd.Qtd.'), cel(482, 'PrecoPreco'), cel(518, 'TotalTotal')),
+      lin(cel(32, '1 40.048WETZEL BRANCO CONDULET PVC 1"'), cel(293, 'WETZEL'), cel(410, 'PC'), cel(458, '6,000'), cel(494, '7,81'), cel(523, '46,84')),
+      lin(cel(32, '8'), cel(44, '4.306BARRAMENTO DE TERRA VERDE'), cel(293, 'LUKMA'), cel(410, 'PC'), cel(458, '2,000'), cel(491, '15,64'), cel(523, '31,27')),
+      lin(cel(40, '40.052WETZEL BRANCO ADAPTADOR CONDULET 1"'), cel(293, 'WETZEL'), cel(410, 'PC'), cel(455, '16,000'), cel(494, '1,58'), cel(523, '25,21')),
+      lin(cel(44, '5.710CABO FLEX 4MM PRETO ( POR METRO )'), cel(293, 'CORFIO'), cel(410, 'MT'), cel(455, '10,000'), cel(494, '4,54'), cel(523, '45,44')),
+      lin(cel(264, 'T O T A I S')),
+      lin(cel(65, 'Total produtos', 55), cel(256, 'Serviços adicionais', 80), cel(374, 'Valor desconto', 58), cel(494, 'Total pedido', 50)),
+      lin(cel(94, '160,00', 30), cel(320, '0,00', 18), cel(416, '11,24', 22), cel(514, '148,76', 30)),
+      lin(cel(92, 'Valor TC'), cel(170, 'Out. desp. man', 60), cel(491, 'TOTAL GERAL', 52)),
+      lin(cel(110, '0,00'), cel(214, '0,00', 18), cel(512, '148,76', 30))
+    ];
+    const lido = Cp.lerLinhas(orc);
+    igual('compras: fornecedor é o emitente (antes dos dados do cliente)', lido.fornecedor.nome, 'DISTRIBUIDORA ELETRICA EXEMPLO - MATRIZ');
+    ok('compras: CNPJ, telefone e cidade do fornecedor', lido.fornecedor.cnpj === '11.222.333/0001-81' && lido.fornecedor.telefone === '(67) 3000-1000' && lido.fornecedor.cidade === 'CAMPO GRANDE-MS', JSON.stringify(lido.fornecedor));
+    ok('compras: nº do orçamento, data, vendedor, condição e prazo', lido.docFornecedor === '9.876' && lido.data === '2026-09-29' && lido.vendedor === 'FULANA DE TAL' &&
+      lido.condicao === 'A VISTA (DINHEIRO, CARTAO)' && lido.prazoEntrega === '1 dias úteis', JSON.stringify([lido.docFornecedor, lido.data, lido.vendedor, lido.condicao, lido.prazoEntrega]));
+    igual('compras: 4 itens lidos', lido.itens.length, 4);
+    const i0 = lido.itens[0], i1 = lido.itens[1], i2 = lido.itens[2], i3 = lido.itens[3];
+    ok('compras: código colado à descrição e nº do item separados', i0 && i0.codigo === '40.048' && i0.descricao === 'WETZEL BRANCO CONDULET PVC 1"' && i0.marca === 'WETZEL' && i0.unidade === 'pç' &&
+      i0.qtd === 6 && i0.preco === 7.81 && i0.total === 46.84, JSON.stringify(i0));
+    ok('compras: nº do item em célula própria', i1 && i1.codigo === '4.306' && i1.descricao === 'BARRAMENTO DE TERRA VERDE' && i1.marca === 'LUKMA', JSON.stringify(i1));
+    ok('compras: preço impresso arredondado (16 × 1,58 ≠ 25,21) ainda é item', i2 && i2.qtd === 16 && i2.total === 25.21, JSON.stringify(i2));
+    ok('compras: unidade MT vira metro', i3 && i3.unidade === 'm' && i3.descricao === 'CABO FLEX 4MM PRETO ( POR METRO )', JSON.stringify(i3));
+    ok('compras: totais impressos (linha de baixo, alinhados pela coluna)', lido.totalProdutos === 160 && lido.desconto === 11.24 && lido.totalGeral === 148.76 && lido.servicos === 0 && lido.outras === 0,
+      JSON.stringify([lido.totalProdutos, lido.desconto, lido.totalGeral]));
+    const k = Cp.conciliar(lido);
+    ok('compras: desconto já embutido nos preços não é descontado de novo', k.desconto === '' && k.totalDocumento === 148.76 && /já está nos preços/.test(k.avisos[0]), JSON.stringify(k));
+
+    // nota fiscal (DANFE): NCM/CST/CFOP antes da quantidade e impostos depois do total
+    const danfe = [
+      lin(cel(30, 'MATERIAIS ELETRICOS MODELO LTDA')),
+      lin(cel(30, 'CNPJ 22.333.444/0001-55')),
+      lin(cel(30, 'DESTINATÁRIO / REMETENTE')),
+      lin(cel(30, 'CÓDIGO PRODUTO', 50), cel(90, 'DESCRIÇÃO DO PRODUTO / SERVIÇO', 140), cel(240, 'NCM/SH'), cel(280, 'CST'), cel(300, 'CFOP'), cel(330, 'UN'), cel(350, 'QUANT'), cel(390, 'VALOR UNIT', 40), cel(440, 'VALOR TOTAL', 44), cel(490, 'BC ICMS'), cel(530, 'VALOR ICMS', 40)),
+      lin(cel(30, 'A1020'), cel(90, 'DISJUNTOR DIN BIPOLAR 32A CURVA C'), cel(240, '85362000'), cel(280, '000'), cel(300, '5102'), cel(330, 'UN'), cel(350, '2,0000'), cel(390, '30,0000'), cel(440, '60,00'), cel(490, '0,00'), cel(530, '0,00')),
+      lin(cel(30, 'B77'), cel(90, 'CABO FLEXIVEL 6MM PRETO'), cel(240, '85444900'), cel(280, '000'), cel(300, '5102'), cel(330, 'M'), cel(350, '50,0000'), cel(390, '7,2000'), cel(440, '360,00'), cel(490, '0,00'), cel(530, '0,00')),
+      lin(cel(30, 'VALOR TOTAL DOS PRODUTOS', 100), cel(160, 'VALOR DO FRETE', 60), cel(260, 'DESCONTO', 40), cel(330, 'VALOR TOTAL DA NOTA', 80)),
+      lin(cel(60, '420,00', 30), cel(170, '25,00', 25), cel(265, '0,00', 18), cel(350, '445,00', 30))
+    ];
+    const ld = Cp.lerLinhas(danfe);
+    ok('compras: nota fiscal — itens sem NCM/CFOP na descrição e com o código', ld.itens.length === 2 && ld.itens[0].codigo === 'A1020' && ld.itens[0].descricao === 'DISJUNTOR DIN BIPOLAR 32A CURVA C' &&
+      ld.itens[0].qtd === 2 && ld.itens[0].total === 60 && ld.itens[1].unidade === 'm' && ld.itens[1].total === 360, JSON.stringify(ld.itens.map(function (i) { return [i.codigo, i.descricao, i.qtd, i.unidade, i.total]; })));
+    ok('compras: nota fiscal — fornecedor, frete e total da nota', ld.fornecedor.nome === 'MATERIAIS ELETRICOS MODELO LTDA' && ld.frete === 25 && ld.totalProdutos === 420 && ld.totalGeral === 445,
+      JSON.stringify([ld.fornecedor.nome, ld.frete, ld.totalProdutos, ld.totalGeral]));
+    const kd = Cp.conciliar(ld);
+    ok('compras: frete fora dos preços entra no pedido', kd.frete === 25 && kd.desconto === '' && !kd.avisos.length, JSON.stringify(kd));
+
+    // quantidade no início da linha, sem cabeçalho
+    const qIni = Cp.lerLinhas([lin(cel(30, '3 UN TERMINAL TUBULAR 6MM'), cel(300, '2,50'), cel(360, '7,50')), lin(cel(30, '10 M ELETRODUTO CORRUGADO 3/4'), cel(300, '1,90'), cel(360, '19,00'))]);
+    ok('compras: quantidade e unidade no início da linha', qIni.itens.length === 2 && qIni.itens[0].qtd === 3 && qIni.itens[0].descricao === 'TERMINAL TUBULAR 6MM' && qIni.itens[1].unidade === 'm' && qIni.itens[1].total === 19,
+      JSON.stringify(qIni.itens.map(function (i) { return [i.qtd, i.unidade, i.descricao, i.total]; })));
+    ok('compras: números no padrão brasileiro e unidades', Cp.numero('1.098,04') === 1098.04 && Cp.numero('6,000') === 6 && Cp.numero('1.000') === 1000 && Cp.numero('25.41', true) === 25.41 &&
+      isNaN(Cp.numero('40A')) && Cp.unidade('PÇ') === 'pç' && Cp.unidade('Mts') === 'm' && Cp.unidade('CX.') === 'cx' && Cp.unidade('WETZEL') === '');
+
+    // totais e custo de aquisição (rateio do desconto e do frete pelo valor de cada item)
+    const pc = Object.assign(Cp.nova(), { id: 'pc-1', numero: 'PC-20261030-001', data: '2026-10-30', fornecedor: { nome: 'Distribuidora Exemplo', cnpj: '', telefone: '', cidade: '' },
+      itens: [Cp.novoItem({ codigo: '10', descricao: 'Disjuntor bipolar 40A', marca: 'Soprano', unidade: 'pç', qtd: 2, preco: 30, total: 60 }),
+        Cp.novoItem({ codigo: '20', descricao: 'Cabo flexível 4mm preto', marca: 'Corfio', unidade: 'm', qtd: 100, preco: 4, total: '' })],
+      desconto: 23, frete: 10 });
+    const tp = Cp.totais(pc);
+    ok('compras: totais do pedido (itens − desconto + frete)', tp.itens === 460 && tp.total === 447 && Math.abs(tp.fator - 447 / 460) < 1e-9, JSON.stringify(tp));
+    ok('compras: custo unitário com rateio (e sem, quando pedido)', Cp.custoUnitario(pc, pc.itens[0]) === U.round(60 * 447 / 460 / 2, 4) && Cp.custoUnitario(pc, pc.itens[1]) === U.round(400 * 447 / 460 / 100, 4) &&
+      Cp.custoUnitario(pc, pc.itens[0], false) === 30, Cp.custoUnitario(pc, pc.itens[0]) + ' ' + Cp.custoUnitario(pc, pc.itens[1]));
+    ok('compras: semelhança das descrições (condulet × condulete)', Cp.semelhanca('WETZEL BRANCO CONDULET PVC 1"', 'Condulete PVC 1" Wetzel branco') >= 0.75 && Cp.semelhanca('Disjuntor 40A', 'Cabo solar 4mm') < 0.3);
+
+    // lançamento no cadastro de materiais: novo, existente (pela descrição) e o mesmo material em duas linhas
+    const eqs = [{ id: 'mat-x', tipo: 'material', descricao: 'Disjuntor bipolar 40A', unidade: 'pç', preco: 28, ativo: true, compras: [{ compraId: 'antiga', custo: 27, data: '2026-01-10' }] }];
+    const sug0 = Cp.sugerir(pc.itens[0], pc, eqs), sug1 = Cp.sugerir(pc.itens[1], pc, eqs);
+    ok('compras: sugere o material de mesma descrição e nenhum para o item novo', sug0 && sug0.eq.id === 'mat-x' && !sug1);
+    const res = Cp.paraCadastro(pc, [{ item: pc.itens[0], destino: 'mat-x' }, { item: pc.itens[1], destino: 'novo' }], eqs, { atualizarPreco: true, infraCA: true });
+    const exi = res.registros.find(function (r) { return r.id === 'mat-x'; }), nov = res.registros.find(function (r) { return r.id !== 'mat-x'; });
+    ok('compras: material existente recebe custo, fornecedor, código e histórico (o mais recente primeiro)', res.atualizados === 1 && exi.custo === Cp.custoUnitario(pc, pc.itens[0]) && exi.preco === U.round(exi.custo, 2) &&
+      exi.fornecedor === 'Distribuidora Exemplo' && exi.codigoFornecedor === '10' && exi.fabricante === 'Soprano' && exi.compras.length === 2 && exi.compras[0].compraId === 'pc-1' && eqs[0].preco === 28, JSON.stringify(exi));
+    ok('compras: material novo do pedido (uso nas duas listas, sem entrar sozinho na proposta solar, marcado como CA)', res.novos === 1 && nov.tipo === 'material' && nov.uso === 'ambas' && nov.autoIncluir === false &&
+      nov.infraCA === true && nov.unidade === 'm' && nov.custo === 3.887 && nov.custoEm === '2026-10-30' && nov.fabricante === 'Corfio', JSON.stringify(nov));
+    ok('compras: itens vinculados ao cadastro', pc.itens[0].equipamentoId === 'mat-x' && pc.itens[1].equipamentoId === nov.id);
+    const dup = Cp.paraCadastro(pc, [{ item: pc.itens[0], destino: 'mat-x' }, { item: Cp.novoItem({ descricao: 'Disjuntor 40A (outra linha)', qtd: 1, total: 31 }), destino: 'mat-x' }], eqs, {});
+    ok('compras: duas linhas do mesmo material geram um só registro', dup.registros.length === 1 && dup.atualizados === 1);
+    const pc2 = Cp.nova();
+    pc2.fornecedor.nome = 'Já informado';
+    const av = Cp.aplicarLeitura(pc2, lido);
+    ok('compras: aplicar a leitura preenche o pedido sem trocar o que já foi digitado', pc2.itens.length === 4 && pc2.fornecedor.nome === 'Já informado' && pc2.fornecedor.cnpj === '11.222.333/0001-81' &&
+      pc2.docFornecedor === '9.876' && pc2.data === '2026-09-29' && pc2.desconto === '' && pc2.totalDocumento === 148.76 && av.length === 1);
+    if (App.IA && App.IA._leituraPedido) {
+      const li = App.IA._leituraPedido({ fornecedor: { nome: 'Forn IA', cnpj: '', telefone: '', cidade: '' }, numero: '55', data: '2026-10-01', vendedor: '', condicaoPagamento: '', prazoEntrega: '',
+        itens: [{ codigo: '', descricao: 'Quadro de distribuição 8 DIN', marca: 'Legrand', unidade: 'PC', quantidade: '2', precoUnitario: '66.17', total: '132.34' }, { codigo: '', descricao: '', marca: '', unidade: '', quantidade: '', precoUnitario: '', total: '' }],
+        totalProdutos: '132.34', desconto: '', frete: '10', outrasDespesas: '', totalPedido: '142.34', avisos: '' });
+      ok('compras: leitura pela IA no formato da leitura local', li.itens.length === 1 && li.itens[0].unidade === 'pç' && li.itens[0].qtd === 2 && li.itens[0].preco === 66.17 && li.frete === 10 && li.totalGeral === 142.34 &&
+        li.desconto === '' && Cp.conciliar(li).frete === 10, JSON.stringify(li));
+    }
+
+    // materiais CA: proposta, instalação e cópia do consumo real
+    const ctxM = ctxReferencia();
+    const matCA = { id: 'mat-dps', tipo: 'material', descricao: 'DPS 275V 45kA', unidade: 'pç', preco: 50, custo: 54.07, infraCA: true, ativo: true };
+    const matCabo = { id: 'mat-cabo-ca', tipo: 'material', descricao: 'Cabo flexível 6mm', unidade: 'm', preco: 7, ativo: true };
+    ctxM.equipamentos = ctxM.equipamentos.concat([matCA, matCabo]);
+    ok('materiais CA: custo da última compra, senão o preço', M.custoDe(matCA) === 54.07 && M.custoDe(matCabo) === 7);
+    const ops = M.opcoes(ctxM.equipamentos);
+    ok('materiais CA: materiais da infraestrutura CA primeiro na lista', ops[0].id === 'mat-dps' && ops.every(function (e) { return e.tipo === 'material'; }));
+    const pN = C.novaProposta(ctxM);
+    ok('materiais CA: proposta nova começa pela lista (vazia)', pN.infraModo === 'lista' && Array.isArray(pN.materiaisCA) && !pN.materiaisCA.length && C.infraValor(pN) === 0);
+    pN.materiaisCA.push(M.linhaDe(matCA, 2), M.linhaDe(matCabo, 15));
+    perto('materiais CA: valor da infraestrutura = soma da lista (2 × 54,07 + 15 × 7)', C.infraValor(pN), 213.14);
+    ok('materiais CA: proposta gravada antes da lista continua com o valor informado', C.infraValor({ infraValor: 350, materiaisCA: [M.linhaDe(matCA, 9)] }) === 350 &&
+      C.infraValor({ infraModo: 'manual', infraValor: '120,50' }) === 120.5);
+    const pL = Object.assign(U.clone(p), { infraModo: 'lista', infraValor: 999, materiaisCA: U.clone(pN.materiaisCA) });
+    const pV = Object.assign(U.clone(p), { infraModo: 'manual', infraValor: 213.14 });
+    const rL = C.calcular(pL, ctxM), rV = C.calcular(pV, ctxM);
+    ok('materiais CA: cálculo da proposta usa a lista (mesmo preço que o valor informado igual)', rL.infra === 213.14 && Math.abs(rL.total - rV.total) < 0.01, rL.infra + ' ' + rL.total + ' ' + rV.total);
+    matCA.custo = 60;
+    ok('materiais CA: atualizar custos pelo cadastro', M.atualizarCustos(pN.materiaisCA, ctxM.equipamentos) === 1 && pN.materiaisCA[0].custo === 60 && C.infraValor(pN) === 225);
+    pN.id = 'prop-ca';
+    const inst = App.Instalacao.deProposta(pN, ctxM);
+    ok('materiais CA: instalação traz o previsto da proposta (usado em branco)', inst.materiais.length === 2 && inst.materiais[0].qtdPrevista === 2 && inst.materiais[0].qtd === '' && inst.materiais[0].origem === 'proposta');
+    ok('materiais CA: proposta com valor informado não gera previsto', App.Instalacao.deProposta(pV, ctxM).materiais.length === 0);
+    const compra = Object.assign(Cp.nova(), { id: 'pc-obra', numero: 'PC-20261030-002', fornecedor: { nome: 'Forn' }, desconto: 10,
+      itens: [Cp.novoItem({ descricao: 'DPS 275V 45kA', qtd: 4, preco: 54.07, total: 216.28, equipamentoId: 'mat-dps' }), Cp.novoItem({ descricao: 'Barramento de terra', qtd: 2, preco: 15, total: 30 })] });
+    const nL = M.lancarCompra(inst, compra);
+    const dps = inst.materiais.find(function (m) { return m.equipamentoId === 'mat-dps'; });
+    const barr = inst.materiais.find(function (m) { return m.descricao === 'Barramento de terra'; });
+    ok('materiais CA: pedido lançado na obra soma ao usado com o custo de aquisição', nL === 2 && dps.qtd === 4 && dps.qtdPrevista === 2 && dps.custo === Cp.custoUnitario(compra, compra.itens[0]) &&
+      barr && barr.origem === 'compra' && barr.qtd === 2 && inst.materiais.length === 3 && inst.comprasLancadas.join() === 'pc-obra', JSON.stringify(inst.materiais));
+    M.lancarCompra(inst, compra);
+    ok('materiais CA: lançar de novo soma as quantidades sem repetir o pedido', dps.qtd === 8 && inst.comprasLancadas.length === 1);
+    const rs = M.resumo(inst, pN);
+    ok('materiais CA: resumo previsto × usado', rs.previsto === M.total(inst.materiais, 'qtdPrevista') && rs.usado === M.total(inst.materiais) && rs.diferenca === U.round(rs.usado - rs.previsto, 2) && rs.lancados === 2, JSON.stringify(rs));
+    const nPux = M.puxarProposta(inst, pN);
+    ok('materiais CA: puxar o previsto de novo não duplica linhas', nPux === 2 && inst.materiais.length === 3);
+    inst.id = 'inst-ca'; inst.titulo = 'Obra CA';
+    const fts = M.fontes([pN, { id: 'outra', infraModo: 'manual', materiaisCA: [M.linhaDe(matCA, 1)] }], [inst], 'prop-ca');
+    ok('materiais CA: fontes para copiar (consumo real da obra; a própria proposta e as de valor informado ficam de fora)', fts.length === 1 && fts[0].tipo === 'obra' && fts[0].linhas.length === 2);
+    const destino = [M.linhaDe(matCA, 1)];
+    M.copiar(destino, fts[0], ctxM.equipamentos, false);
+    ok('materiais CA: copiar soma ao material igual e usa o custo atual do cadastro', destino.length === 2 && destino[0].qtd === 9 && destino[0].custo === 60 && destino[1].descricao === 'Barramento de terra');
+    M.copiar(destino, fts[0], ctxM.equipamentos, true);
+    ok('materiais CA: copiar substituindo a lista', destino.length === 2 && destino[0].qtd === 8);
+
+    // numeração e coleção
+    ok('compras: coleção sincronizada e no backup', S.COLECOES.indexOf('compras') >= 0 && Array.isArray(S.exportar().colecoes.compras));
+    ok('compras: número PC-AAAAMMDD-NNN com sequência própria', /^PC-20261030-\d{3}$/.test(S.proximoNumero('2026-10-30', 'compra').numero) && S.proximoNumero('2026-10-30', 'compra').chave === 'PC:20261030');
+  })();
+
   // ---------------------------------------------------------------- docx
   async function testarFotos() {
     const F = App.Fotos;
@@ -872,6 +1031,17 @@
       const n = await F.importar([{ id: 'foto-backup-1', dataURL: foto.dataURL, w: foto.w, h: foto.h }]);
       ok('fotos: restauradas do backup', n === 1 && !!(await F.obter('foto-backup-1')));
       await F.remover('foto-backup-1');
+      // documento do fornecedor anexado ao pedido de compra (PDF guardado como veio)
+      const pdfBytes = new TextEncoder().encode('%PDF-1.4\n% pedido de teste\n%%EOF');
+      const anexo = await F.salvarArquivo(new File([pdfBytes], 'orcamento.pdf', { type: 'application/pdf' }));
+      const devolvido = await F.arquivo(anexo);
+      ok('compras: PDF do fornecedor anexado e devolvido como arquivo', anexo.tipo === 'application/pdf' && anexo.nome === 'orcamento.pdf' && devolvido && devolvido.type === 'application/pdf' &&
+        new TextDecoder().decode(await devolvido.arrayBuffer()) === new TextDecoder().decode(pdfBytes) && (await F.todas()).some(function (x) { return x.id === anexo.fotoId && x.tipo === 'application/pdf' && x.nome === 'orcamento.pdf'; }));
+      await F.remover(anexo.fotoId);
+      const fotoDoc = await F.salvarArquivo(new File([blob], 'pedido.png', { type: 'image/png' }));
+      const regDoc = await F.obter(fotoDoc.fotoId);
+      ok('compras: foto do pedido reduzida a 1800 px em JPEG', fotoDoc.tipo === 'image/jpeg' && regDoc.w === 1800 && /^data:image\/jpeg/.test(regDoc.dataURL), regDoc && regDoc.w);
+      await F.remover(fotoDoc.fotoId);
       // PDF real com uma assinatura colhida (imagem em App.Fotos)
       const cvA = document.createElement('canvas'); cvA.width = 600; cvA.height = 200;
       const gA = cvA.getContext('2d'); gA.fillStyle = '#fff'; gA.fillRect(0, 0, 600, 200); gA.strokeStyle = '#000'; gA.lineWidth = 4; gA.beginPath(); gA.moveTo(40, 150); gA.bezierCurveTo(200, 0, 300, 220, 560, 60); gA.stroke();

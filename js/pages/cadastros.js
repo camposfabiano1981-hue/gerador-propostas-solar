@@ -169,10 +169,29 @@
         { k: 'garantia', label: 'Garantia', placeholder: 'Ex.: 5 anos' },
         { k: 'preco', label: 'Preço unitário', type: 'money' },
         soAvulsa ? null : { k: 'autoIncluir', label: 'Incluir automaticamente na lista de materiais da proposta solar (pela regra de quantidade)', type: 'checkbox', cls: 'span2' },
-        { k: 'ativo', label: 'Ativo', type: 'checkbox' }
+        { k: 'infraCA', label: 'Material da infraestrutura CA (aparece primeiro na lista de materiais CA da proposta e da instalação)', type: 'checkbox', cls: 'span2' },
+        { k: 'ativo', label: 'Ativo', type: 'checkbox' },
+        { secao: 'Compras' },
+        { k: 'custo', label: 'Custo de aquisição (última compra)', type: 'money', help: 'Lançado pelos pedidos de compra (com desconto e frete rateados). É o custo usado na lista de materiais CA; sem ele, vale o preço unitário.' },
+        { k: 'custoEm', label: 'Data da última compra', type: 'date' },
+        { k: 'fabricante', label: 'Marca' },
+        { k: 'fornecedor', label: 'Fornecedor' },
+        { k: 'codigoFornecedor', label: 'Código no fornecedor' },
+        (e.compras || []).length ? { el: historicoCompras(e) } : null
       ];
     }
   };
+
+  /** Últimas compras do material (lançadas pelos pedidos de compra). */
+  function historicoCompras(e) {
+    return h('div.span2.historico-compras', h('p.rotulo-campo', 'Últimas compras'), h('div.tabela-rolagem', h('table.tabela.compacta',
+      h('thead', h('tr', h('th', 'Data'), h('th', 'Pedido'), h('th', 'Fornecedor'), h('th.num', 'Qtd.'), h('th.num', 'Custo unit.'))),
+      h('tbody', e.compras.map(function (x) {
+        return h('tr', h('td', U.dataBR(x.data) || '—'),
+          h('td', x.compraId && S.get('compras', x.compraId) ? h('a', { href: '#/compra/' + x.compraId }, x.numero || 'abrir') : (x.numero || '—')),
+          h('td', x.fornecedor || '—'), h('td.num', U.fmtSmart(U.num(x.qtd), 3) + ' ' + (x.unidade || '')), h('td.num', U.brl(U.num(x.custo))));
+      })))));
+  }
 
   /** Situação dos dados técnicos: lido do datasheet e ainda não revisado, completo ou com campos ★ vazios. */
   function colDatasheet(tipo) {
@@ -247,6 +266,7 @@
       { t: 'Regra', v: function (e) { return C.usoMaterial(e, ctxUso) === 'avulsa' ? '—' : regraTxt(e); } },
       { t: 'Aplica-se', v: function (e) { return C.usoMaterial(e, ctxUso) === 'avulsa' ? '—' : APLICA_TXT[e.aplicaEm || 'ambos'] || e.aplicaEm; } },
       { t: 'Preço', cls: 'num', v: function (e) { return U.brl(U.numOr(e.preco, 0)) + ' / ' + (e.unidade || 'un'); } },
+      { t: 'Últ. custo', cls: 'num', v: function (e) { return U.num(e.custo) > 0 ? h('span', U.brl(U.num(e.custo)), e.custoEm ? h('div.mini', U.dataBR(e.custoEm)) : null) : '—'; } },
       { t: 'Auto (solar)', v: function (e) { return C.usoMaterial(e, ctxUso) === 'avulsa' ? '—' : (e.autoIncluir ? UI.badge('Sim', 'ok') : UI.badge('Não', 'cinza')); } },
       { t: 'Situação', v: function (e) { return SIM_NAO(e.ativo); } }
     ]
@@ -518,7 +538,7 @@
       largo: true,
       antesTabela: abas,
       filtro: function (e) { return e.tipo === def.id; },
-      busca: function (e) { return [e.fabricante, e.modelo, e.descricao].join(' '); },
+      busca: function (e) { return [e.fabricante, e.modelo, e.descricao, e.fornecedor, e.codigoFornecedor].join(' '); },
       ordenar: function (a, b) {
         // catálogo grande: agrupa por fabricante (ou por telhado, nas estruturas) e ordena por potência/capacidade
         if (def.id === 'estrutura') return String(a.telhado).localeCompare(String(b.telhado), 'pt-BR') || String(a.descricao).localeCompare(String(b.descricao), 'pt-BR');

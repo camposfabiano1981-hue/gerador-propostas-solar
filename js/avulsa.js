@@ -279,5 +279,5 @@ window.App = window.App || {};
     return { blob: out.blob, nome: d.nomeBase + '.pdf', fonteOk: out.fonteOk };
   }
 
-  App.Avulsa = { novo: novo, itemDeServico: itemDeServico, itemDeMaterial: itemDeMaterial, UNIDADES_MATERIAL: ['un', 'pç', 'm', 'm²', 'cj', 'pt', 'kg', 'rl', 'cx', 'L', 'vb'], calcular: calcular, montar: montar, preparar: preparar, gerarDocx: gerarDocx, gerarPdf: gerarPdf };
+  App.Avulsa = { novo: novo, itemDeServico: itemDeServico, itemDeMaterial: itemDeMaterial, UNIDADES_MATERIAL: ['un', 'pç', 'm', 'm²', 'cj', 'pt', 'kg', 'rl', 'cx', 'L', 'vb', 'br', 'pct'], calcular: calcular, montar: montar, preparar: preparar, gerarDocx: gerarDocx, gerarPdf: gerarPdf };
 })(window.App);

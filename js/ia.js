@@ -322,5 +322,94 @@ window.App = window.App || {};
     return res;
   };
 
+  /* ------------------------------------------------------------ pedidos de compra (orçamento, pedido ou nota do fornecedor) */
+
+  const SISTEMA_PEDIDO = [
+    'Você transcreve orçamentos, pedidos de compra e notas fiscais de fornecedores de material elétrico para o controle de compras de uma empresa de energia solar no Brasil. Os itens vão para o cadastro de materiais com o custo de aquisição, então a exatidão importa mais que a completude.',
+    'Regras:',
+    '- O fornecedor é quem vende (o emitente do documento), nunca o cliente ou comprador.',
+    '- Transcreva todos os itens da tabela, na ordem, com a descrição exatamente como impressa; o código do produto vai em "codigo" e a marca em "marca".',
+    '- Quantidade, preço unitário e total de cada item como impressos. Números como texto, com ponto decimal e sem separador de milhar (1.098,04 → "1098.04"; 6,000 → "6").',
+    '- Unidade como impressa (UN, PC, MT, CX…).',
+    '- Totais impressos: total dos produtos, desconto, frete, outras despesas e total do pedido (o valor final a pagar).',
+    '- Datas no formato AAAA-MM-DD.',
+    '- Não estime nem complete valores: o que não estiver impresso ou estiver ilegível fica como texto vazio ("") e é registrado em "avisos".',
+    '- "avisos": frases curtas em português do Brasil sobre itens ilegíveis, valores que não fecham ou dúvidas; texto vazio se não houver.'
+  ].join('\n');
+
+  const TXT = { type: 'string' };
+  const ESQUEMA_PEDIDO = {
+    type: 'object', additionalProperties: false,
+    required: ['fornecedor', 'numero', 'data', 'vendedor', 'condicaoPagamento', 'prazoEntrega', 'itens', 'totalProdutos', 'desconto', 'frete', 'outrasDespesas', 'totalPedido', 'avisos'],
+    properties: {
+      fornecedor: { type: 'object', additionalProperties: false, required: ['nome', 'cnpj', 'telefone', 'cidade'], properties: { nome: TXT, cnpj: TXT, telefone: TXT, cidade: TXT } },
+      numero: TXT, data: TXT, vendedor: TXT, condicaoPagamento: TXT, prazoEntrega: TXT,
+      itens: {
+        type: 'array', items: {
+          type: 'object', additionalProperties: false, required: ['codigo', 'descricao', 'marca', 'unidade', 'quantidade', 'precoUnitario', 'total'],
+          properties: { codigo: TXT, descricao: TXT, marca: TXT, unidade: TXT, quantidade: TXT, precoUnitario: TXT, total: TXT }
+        }
+      },
+      totalProdutos: TXT, desconto: TXT, frete: TXT, outrasDespesas: TXT, totalPedido: TXT, avisos: TXT
+    }
+  };
+
+  /** Bloco do documento do pedido: PDF como veio; foto reduzida a 2000 px (JPEG), dentro do limite de imagem da API. */
+  async function blocoPedido(file) {
+    if (App.Fotos.ehPdf(file)) return IA.blocoArquivo(file);
+    if (!/^image\//.test(file.type || '')) throw new Error('Envie o pedido em PDF ou foto (JPG, PNG ou WebP).');
+    const f = await App.Fotos.preparar(file, 2000, 3500000);
+    return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.dataURL.split(',')[1] || '' } };
+  }
+
+  /** Resposta da IA no formato da leitura local (App.Compra.lerLinhas). */
+  function leituraPedido(d) {
+    const n = function (v) { const t = String(v == null ? '' : v).trim(); const x = Number(t.replace(',', '.')); return t && isFinite(x) ? x : ''; };
+    const Cp = App.Compra;
+    const f = d.fornecedor || {};
+    return {
+      fornecedor: { nome: f.nome || '', cnpj: f.cnpj || '', telefone: f.telefone || '', cidade: f.cidade || '' },
+      docFornecedor: d.numero || '', data: /^\d{4}-\d{2}-\d{2}$/.test(d.data || '') ? d.data : '', vendedor: d.vendedor || '',
+      condicao: d.condicaoPagamento || '', prazoEntrega: d.prazoEntrega || '',
+      itens: (d.itens || []).filter(function (it) { return String(it.descricao || '').trim(); }).map(function (it) {
+        return Cp.novoItem({ codigo: it.codigo || '', descricao: String(it.descricao).trim(), marca: it.marca || '', unidade: Cp.unidade(it.unidade) || String(it.unidade || 'un').toLowerCase(),
+          qtd: n(it.quantidade), preco: n(it.precoUnitario), total: n(it.total) });
+      }),
+      totalProdutos: n(d.totalProdutos), desconto: n(d.desconto), frete: n(d.frete), outras: n(d.outrasDespesas), totalGeral: n(d.totalPedido),
+      avisos: String(d.avisos || '').trim() ? [String(d.avisos).trim()] : []
+    };
+  }
+
+  /**
+   * Lê o orçamento, pedido ou nota do fornecedor (PDF ou foto) e devolve {lido (formato de App.Compra.lerLinhas), modeloIA, fallback, custoUSD}.
+   * opcoes: {aoProgredir(caracteres), sinal (AbortSignal)}.
+   */
+  IA.lerPedido = async function (file, opcoes) {
+    const o = opcoes || {};
+    const cfg = IA.config();
+    if (!cfg.chave) throw new Error('Configure a chave de API em Configurações › Leitura de datasheet (IA).');
+    const bloco = await blocoPedido(file);
+    const c = await cliente(cfg);
+    const params = comFallback({
+      model: cfg.modelo,
+      max_tokens: 32000,
+      system: SISTEMA_PEDIDO,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: ESQUEMA_PEDIDO } },
+      messages: [{ role: 'user', content: [bloco, { type: 'text', text: 'Transcreva este documento do fornecedor para o pedido de compra.' }] }]
+    }, cfg);
+    const msg = await enviar(c, params, o);
+    if (msg.stop_reason === 'refusal') throw new Error('O modelo recusou a leitura deste documento (filtro de segurança). Tente outro arquivo ou outro modelo.');
+    if (msg.stop_reason === 'max_tokens') throw new Error('Resposta incompleta: o documento é extenso demais. Envie as páginas em partes.');
+    let dados;
+    try { dados = JSON.parse(textoDe(msg)); } catch (e) { throw new Error('Resposta da IA em formato inesperado. Tente novamente.'); }
+    if (!dados || !Array.isArray(dados.itens)) throw new Error('Resposta da IA em formato inesperado. Tente novamente.');
+    return {
+      lido: leituraPedido(dados), modeloIA: msg.model, custoUSD: custoEstimado(msg),
+      fallback: (msg.usage && msg.usage.iterations || []).some(function (it) { return it.type === 'fallback_message'; })
+    };
+  };
+
+  IA._leituraPedido = leituraPedido;
+
   App.IA = IA;
 })(window.App);

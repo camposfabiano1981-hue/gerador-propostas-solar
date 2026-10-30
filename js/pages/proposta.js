@@ -12,6 +12,8 @@
     const base = C.novaProposta(ctx);
     // propostas gravadas antes do preço pela margem continuam com o valor informado (o total não muda ao abrir)
     if (p.precificacao === undefined) p.precificacao = 'informado';
+    // propostas gravadas antes da lista de materiais CA continuam com o valor informado
+    if (p.infraModo === undefined) p.infraModo = 'manual';
     Object.keys(base).forEach(function (k) {
       if (p[k] === undefined && k !== '_seq' && k !== 'numero') p[k] = U.clone(base[k]);
     });
@@ -107,7 +109,7 @@
         localidadeId: ['local'], concessionariaId: ['local'], classe: ['local'],
         modalidade: ['local', 'consumo', 'cenarios'], bessComFV: ['sistema', 'cenarios', 'materiais'],
         consumoModo: ['consumo'], clienteId: ['cliente'], precoModo: ['materiais'], kitManual: ['materiais'], data: ['ident'],
-        precificacao: ['materiais'], instalacaoFaixa: ['materiais'], lucroModo: ['materiais'],
+        precificacao: ['materiais'], instalacaoFaixa: ['materiais'], lucroModo: ['materiais'], infraModo: ['materiais'],
         'cenarios.ativo': ['cenarios']
       };
       if (k === 'localidadeId') {
@@ -447,15 +449,14 @@
       c.appendChild(UI.grade([
         { k: 'kitManual', label: 'Informar valor do kit manualmente (cotação do distribuidor)', type: 'checkbox', cls: 'span2' },
         p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money' } : null,
-        { k: 'infraValor', label: 'Infraestrutura elétrica CA', type: 'money', help: 'DPS, disjuntores, quadro, aterramento.' },
         p.precoModo === 'separado'
           ? { k: 'maoObraValor', label: 'Mão de obra + projeto + homologação', type: 'money', required: true, help: 'Inclui a comissão, se houver.' }
           : { k: 'valorTotal', label: ehArm() ? 'Valor do sistema FV (sem armazenamento)' : 'Valor total da proposta', type: 'money', required: true },
-        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (contrato)', cls: 'span2' },
         { k: 'comissaoValor', label: 'Valor da comissão', type: 'money', help: 'Faz parte da mão de obra. Não aparece na proposta — uso gerencial.' },
         { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço; na proposta entra no valor final.' },
         { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…' }
       ], p, mudou, 3));
+      blocoInfra(c);
       infos.preco = h('div.info');
       c.appendChild(infos.preco);
     });
@@ -484,12 +485,80 @@
           type: 'button', onclick: function () { if (faixa !== o[0]) { p.instalacaoFaixa = o[0]; mudou('instalacaoFaixa'); } }
         }, h('strong', o[1]), h('small', o[2]));
       })));
+      blocoInfra(c);
       c.appendChild(UI.grade([
-        { k: 'infraValor', label: 'Infraestrutura elétrica CA', type: 'money', help: 'Começa zerada: lance o valor desta obra (DPS, disjuntores, quadro, aterramento).' },
-        { k: 'infraDescricao', label: 'Descrição da infraestrutura CA (contrato)', cls: 'span2' },
         { k: 'outrosValor', label: 'Outros valores', type: 'money', help: 'Somado ao preço; na proposta entra no valor final.' },
         { k: 'outrosDescricao', label: 'Descrição dos outros valores', placeholder: 'Ex.: adequação do padrão de entrada, frete…', cls: 'span2' }
       ], p, mudou, 3));
+    }
+
+    /**
+     * Infraestrutura elétrica CA: lista de materiais CA da obra (custo do cadastro, vindo dos pedidos de compra, × quantidade),
+     * que dá o valor do campo, ou o valor informado direto.
+     */
+    function blocoInfra(c) {
+      const lista = p.infraModo === 'lista';
+      if (!Array.isArray(p.materiaisCA)) p.materiaisCA = [];
+      const box = h('div.bloco-infra');
+      box.appendChild(h('p.rotulo-campo', 'Infraestrutura elétrica CA'));
+      box.appendChild(h('div.opcoes-cartao.compacto', [
+        ['lista', 'Lista de materiais CA', 'Quadro, DPS, disjuntores, cabos e eletrodutos da obra — o valor é a soma da lista'],
+        ['manual', 'Valor informado', 'Digite o valor direto, sem lista']
+      ].map(function (o) {
+        return h('button.opcao' + (p.infraModo === o[0] ? '.ativa' : ''), {
+          type: 'button', onclick: async function () {
+            if (p.infraModo === o[0]) return;
+            const informado = U.numOr(p.infraValor, 0);
+            if (o[0] === 'lista' && informado > 0 && Math.abs(informado - C.totalMateriaisCA(p.materiaisCA)) > 0.005 &&
+              !(await UI.confirmar('O valor informado (' + U.brl(informado) + ') passa a ser a soma da lista de materiais CA (' + U.brl(C.totalMateriaisCA(p.materiaisCA)) + '). Continuar?', 'Usar a lista'))) return;
+            p.infraModo = o[0];
+            // o valor informado começa pelo total da lista (que acompanha cada alteração)
+            if (o[0] === 'lista') p.infraValor = C.totalMateriaisCA(p.materiaisCA);
+            mudou('infraModo');
+          }
+        }, h('strong', o[1]), h('small', o[2]));
+      })));
+      if (lista) {
+        const fontes = App.Materiais.fontes(S.list('propostas'), S.list('instalacoes'), p.id);
+        const ed = App.Materiais.editor(p.materiaisCA, {
+          equipamentos: ctx.equipamentos, modo: 'proposta',
+          vazio: 'Monte a lista com os materiais CA desta obra. O custo de cada material vem do cadastro (última compra lançada pelos pedidos de compra); dá para digitar o que não estiver cadastrado.',
+          botoes: fontes.length ? [h('button.btn.pequeno', { type: 'button', onclick: function () { copiarLista(fontes, function () { ed.redesenhar(); alterouLista(); }); } }, '📋 Copiar de outra obra ou proposta')] : null
+        }, alterouLista);
+        box.appendChild(ed);
+      } else {
+        box.appendChild(UI.grade([
+          { k: 'infraValor', label: 'Valor da infraestrutura elétrica CA', type: 'money', help: 'Lance o valor desta obra (DPS, disjuntores, quadro, aterramento).' }
+        ], p, mudou, 3));
+      }
+      box.appendChild(UI.grade([{ k: 'infraDescricao', label: 'Descrição da infraestrutura CA (contrato)', cls: 'span2' }], p, mudou, 3));
+      c.appendChild(box);
+    }
+
+    function alterouLista() {
+      p.infraValor = C.totalMateriaisCA(p.materiaisCA);
+      mudou('materiaisCA');
+    }
+
+    /** Copia a lista de materiais CA do consumo real de uma obra ou de outra proposta (custos atuais do cadastro). */
+    function copiarLista(fontes, aoCopiar) {
+      const est = { fonte: fontes[0].id };
+      const corpo = h('div',
+        h('p.ajuda-sec', 'O consumo real das obras (materiais usados na instalação) é a melhor base para prever o custo da próxima. Os custos são atualizados pelo cadastro.'),
+        UI.campo({ k: 'fonte', label: 'Copiar de', type: 'select', options: fontes.map(function (f) {
+          return { v: f.id, t: (f.tipo === 'obra' ? '🏗 ' : '📄 ') + f.titulo + ' — ' + f.sub + ' · ' + U.brl(f.valor) };
+        }) }, est));
+      const aplicar = function (substituir) {
+        const f = fontes.find(function (x) { return x.id === est.fonte; });
+        if (!f) return;
+        const n = App.Materiais.copiar(p.materiaisCA, f, ctx.equipamentos, substituir);
+        aoCopiar();
+        UI.toast(n + ' material(is) copiado(s) de ' + f.titulo + '.', 'ok');
+      };
+      const acoes = [{ label: 'Cancelar' }];
+      if (p.materiaisCA.length) acoes.push({ label: 'Somar à lista atual', onClick: function () { aplicar(false); } });
+      acoes.push({ label: p.materiaisCA.length ? 'Substituir a lista' : 'Copiar', primario: true, onClick: function () { aplicar(true); } });
+      UI.modal({ titulo: 'Copiar lista de materiais CA', corpo: corpo, acoes: acoes });
     }
 
     function lucroComissao(c, soArmazenamento) {

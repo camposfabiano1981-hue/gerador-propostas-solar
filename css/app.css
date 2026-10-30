@@ -499,3 +499,64 @@ a.dash-tile:hover { border-color: var(--azul-borda); background: #FAFCFF; }
 .dash-status.critico { background: #FDECEC; color: #B91C1C; }
 .dash-status.aviso { background: #FEF3C7; color: #92400E; }
 .dash-status.parado { background: #F1F5F9; color: #475569; }
+
+/* ---------- pedidos de compra e materiais CA */
+label.btn { cursor: pointer; }
+label.btn input[type=file] { display: none; }
+.campo.sem-rotulo { margin: 0; }
+.leitura-status { margin: 8px 0 0; font-size: 13px; color: var(--azul-2); font-weight: 600; }
+.leitura-status[hidden] { display: none; }
+.anexos { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.anexos li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--borda); border-radius: 8px; background: #F8FAFC; }
+.anexos .cresce { flex: 1; }
+.anexo-icone { font-size: 18px; }
+.link-anexo { border: 0; background: none; padding: 0; color: var(--azul-2); font-weight: 600; cursor: pointer; text-align: left; word-break: break-all; }
+.link-anexo:hover { text-decoration: underline; }
+.tabela.compacta td, .tabela.compacta th { padding: 6px 8px; font-size: 13px; }
+.leitura-pedido { display: flex; flex-direction: column; gap: 12px; }
+.leitura-pedido .kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.leitura-pedido .kpi small, .resumo-col .kpi small { display: block; color: var(--muted); font-size: 12px; }
+.compra-totais { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 8px; max-width: 620px; margin-left: auto; }
+.compra-linha { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.compra-linha.total { font-size: 16px; padding-top: 6px; border-top: 1px dashed var(--borda-forte); }
+.compra-linha.total strong { color: var(--azul); font-size: 18px; }
+.compra-totais .ajuda-sec, .compra-totais .nota { margin: 0; }
+.cadastro-compra { display: flex; flex-direction: column; gap: 10px; }
+.cadastro-compra select { width: 100%; min-width: 200px; min-height: 34px; border: 1px solid var(--borda-forte); border-radius: 8px; padding: 4px 8px; background: #fff; }
+.bloco-infra { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.materiais-ca { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+/* itens do pedido e lista de materiais: cada linha é um cartão de duas linhas (cabe na coluna do formulário e no celular) */
+.tabela-compra, .tabela-compra tbody, .tabela-materiais, .tabela-materiais tbody { display: block; width: 100%; }
+.tabela-compra thead, .tabela-materiais thead { display: none; }
+.tabela-compra tr, .tabela-materiais tr { display: grid; gap: 6px 8px; padding: 10px 12px; border-bottom: 1px solid var(--borda); position: relative; }
+.tabela-compra tr:nth-child(even), .tabela-materiais tr:nth-child(even) { background: #FAFBFD; }
+.tabela-compra td, .tabela-materiais td { display: block; padding: 0 !important; border: 0; min-width: 0; }
+.tabela-compra td[data-rotulo]::before, .tabela-materiais td[data-rotulo]::before { content: attr(data-rotulo); display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.tabela-compra .acoes-col, .tabela-materiais .acoes-col { position: absolute; top: 8px; right: 6px; width: auto; }
+.tabela-compra tr { grid-template-columns: minmax(0, .9fr) minmax(0, .8fr) minmax(0, 1.15fr) minmax(0, 1.25fr) minmax(0, .9fr) minmax(0, 1fr); padding-right: 44px; }
+.tabela-compra .compra-cod { grid-column: 1; grid-row: 1; }
+.tabela-compra .compra-desc { grid-column: 2 / span 4; grid-row: 1; }
+.tabela-compra .compra-marca { grid-column: 6; grid-row: 1; }
+.tabela-compra .compra-cad { align-self: end; padding-bottom: 8px !important; white-space: nowrap; }
+.tabela-compra a.badge { text-decoration: none; }
+.tabela-materiais tr { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tabela-materiais.obra tr { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tabela-materiais .materiais-nome { grid-column: 1 / -1; padding-right: 40px !important; }
+.tabela-materiais .materiais-nome input { width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--borda-forte); border-radius: 8px; background: #fff; }
+.materiais-origem { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
+.tabela-materiais .materiais-subtotal { align-self: end; text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; padding-bottom: 8px !important; }
+.materiais-total { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; font-size: 13px; color: var(--texto-2); }
+.materiais-total strong { font-size: 15px; color: var(--azul); font-variant-numeric: tabular-nums; }
+.materiais-total .acima strong { color: var(--vermelho); }
+.materiais-total .abaixo strong { color: var(--verde); }
+.materiais-vazio { margin: 0; }
+.historico-compras .rotulo-campo { margin-top: 4px; }
+@media (max-width: 700px) {
+  .tabela-compra tr, .tabela-materiais tr, .tabela-materiais.obra tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tabela-compra tr { padding-right: 12px; }
+  .tabela-compra .compra-desc { grid-column: 1 / -1; grid-row: 1; padding-right: 36px !important; }
+  .tabela-compra .compra-cod, .tabela-compra .compra-marca { grid-column: auto; grid-row: auto; }
+  .tabela-materiais .materiais-subtotal { grid-column: 1 / -1; padding-bottom: 0 !important; }
+  .compra-totais { max-width: none; }
+}
+}

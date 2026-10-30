@@ -452,6 +452,15 @@ window.App = window.App || {};
     return !!eq && eq.tipo === 'material' && C.usoMaterial(eq, ctx) === 'avulsa';
   };
 
+  /**
+   * Infraestrutura elétrica CA: a soma da lista de materiais CA (quantidade × custo) ou o valor informado. Propostas gravadas
+   * antes da lista não têm infraModo e continuam com o valor informado.
+   */
+  C.totalMateriaisCA = function (lista) {
+    return U.round((lista || []).reduce(function (s, m) { return s + U.numOr(m && m.qtd, 0) * U.numOr(m && m.custo, 0); }, 0), 2);
+  };
+  C.infraValor = function (p) { return p && p.infraModo === 'lista' ? C.totalMateriaisCA(p.materiaisCA) : U.numOr(p && p.infraValor, 0); };
+
   /** Combinação de kits de estrutura (ex.: kits p/ 4 e p/ 2 módulos) cobrindo N módulos. */
   C.combinarKits = function (kits, nMod) {
     const ord = kits.slice().filter(function (k) { return pos(k.fator); }).sort(function (a, b) { return b.fator - a.fator; });
@@ -851,7 +860,7 @@ window.App = window.App || {};
     const somaItens = function (l) { return l.reduce(function (s, it) { return s + U.numOr(it.qtd, 0) * U.numOr(it.precoUnit, 0); }, 0); };
     r.kitFVSoma = somaItens(itensFVP.length ? itensFVP : itensFVGerados);
     r.kit = p.kitManual ? U.numOr(p.kitValor, 0) : r.kitFVSoma;
-    r.infra = r.permiteFV ? U.numOr(p.infraValor, 0) : 0;
+    r.infra = r.permiteFV ? C.infraValor(p) : 0;
     // outros valores: parcela própria do preço (com descrição); comissão: parte da mão de obra, só para controle gerencial
     r.outros = r.permiteFV ? U.numOr(p.outrosValor, 0) : 0;
     r.outrosDescricao = String(p.outrosDescricao || '').trim() || 'Outros valores';
@@ -1420,6 +1429,8 @@ window.App = window.App || {};
       kitManual: false,
       kitValor: '',
       infraValor: '',
+      infraModo: 'lista',
+      materiaisCA: [],
       infraDescricao: ctx.textos.infraDescricao,
       precificacao: 'margem',
       instalacaoFaixa: 1,

@@ -52,7 +52,7 @@ window.App = window.App || {};
   function enviar(reg) {
     const N = nuvem();
     if (!N) return Promise.resolve(false);
-    return N.gravarFoto(reg.id, { dataURL: reg.dataURL, w: reg.w, h: reg.h, criadoEm: reg.criadoEm, atualizadoEm: reg.criadoEm })
+    return N.gravarFoto(reg.id, { dataURL: reg.dataURL, w: reg.w, h: reg.h, tipo: reg.tipo || '', nome: reg.nome || '', criadoEm: reg.criadoEm, atualizadoEm: reg.criadoEm })
       .then(function () { reg.naNuvem = true; return gravarLocal(reg); }).then(function () { return true; }, function (e) { console.error(e); return false; });
   }
 
@@ -60,9 +60,9 @@ window.App = window.App || {};
 
   /**
    * Prepara a foto tirada no celular ou escolhida no computador: lado maior até `lado` px (padrão 1280, legível para etiquetas)
-   * e JPEG comprimido até ~330 kB.
+   * e JPEG comprimido até ~330 kB (ou `limite` caracteres do dataURL).
    */
-  F.preparar = async function (arquivo, lado) {
+  F.preparar = async function (arquivo, lado, limite) {
     const img = await U.loadImage(await U.readFileAsDataURL(arquivo));
     const max = lado || 1280;
     const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
@@ -74,13 +74,15 @@ window.App = window.App || {};
     g.fillRect(0, 0, W, H);
     g.drawImage(img, 0, 0, W, H);
     let q = 0.82, url = cv.toDataURL('image/jpeg', q);
-    while (url.length > 450000 && q > 0.45) { q -= 0.08; url = cv.toDataURL('image/jpeg', q); }
+    while (url.length > (limite || 450000) && q > 0.45) { q -= 0.08; url = cv.toDataURL('image/jpeg', q); }
     return { dataURL: url, w: W, h: H };
   };
 
-  /** Grava a foto ({dataURL, w, h}) e devolve o id. */
+  /** Grava a foto ({dataURL, w, h} e, nos documentos anexados, {tipo, nome}) e devolve o id. */
   F.salvar = async function (foto) {
     const reg = { id: 'foto-' + U.uid(), dataURL: foto.dataURL, w: foto.w || 0, h: foto.h || 0, criadoEm: new Date().toISOString(), naNuvem: false };
+    if (foto.tipo) reg.tipo = foto.tipo;
+    if (foto.nome) reg.nome = foto.nome;
     await gravarLocal(reg);
     enviar(reg);
     return reg.id;
@@ -96,7 +98,7 @@ window.App = window.App || {};
     let reg = null;
     try { reg = await N.lerFoto(id); } catch (e) { console.error(e); }
     if (!reg || !reg.dataURL) return null;
-    reg = { id: id, dataURL: reg.dataURL, w: reg.w || 0, h: reg.h || 0, criadoEm: reg.criadoEm || '', naNuvem: true };
+    reg = { id: id, dataURL: reg.dataURL, w: reg.w || 0, h: reg.h || 0, tipo: reg.tipo || '', nome: reg.nome || '', criadoEm: reg.criadoEm || '', naNuvem: true };
     await gravarLocal(reg);
     return reg;
   };
@@ -126,7 +128,7 @@ window.App = window.App || {};
 
   /** Todas as fotos deste aparelho (para o backup). */
   F.todas = function () {
-    return listarLocal().then(function (l) { return l.map(function (r) { return { id: r.id, dataURL: r.dataURL, w: r.w, h: r.h, criadoEm: r.criadoEm }; }); });
+    return listarLocal().then(function (l) { return l.map(function (r) { return { id: r.id, dataURL: r.dataURL, w: r.w, h: r.h, tipo: r.tipo || '', nome: r.nome || '', criadoEm: r.criadoEm }; }); });
   };
 
   /** Restaura as fotos de um backup (as que já existirem são mantidas). */
@@ -135,12 +137,43 @@ window.App = window.App || {};
     for (const r of (lista || [])) {
       if (!r || !r.id || !r.dataURL) continue;
       if (await lerLocal(r.id)) continue;
-      await gravarLocal({ id: r.id, dataURL: r.dataURL, w: r.w || 0, h: r.h || 0, criadoEm: r.criadoEm || new Date().toISOString(), naNuvem: false });
+      await gravarLocal({ id: r.id, dataURL: r.dataURL, w: r.w || 0, h: r.h || 0, tipo: r.tipo || '', nome: r.nome || '', criadoEm: r.criadoEm || new Date().toISOString(), naNuvem: false });
       n++;
     }
     F.enviarPendentes();
     return n;
   };
+
+  const LIMITE_PDF = 6 * 1024 * 1024;
+
+  function ehPdf(arquivo) { return arquivo.type === 'application/pdf' || /\.pdf$/i.test(arquivo.name || ''); }
+
+  /**
+   * Documento anexado (orçamento, pedido ou nota do fornecedor): o PDF como veio ou a foto reduzida (lado maior até 1800 px,
+   * legível para tabelas). Devolve {fotoId, nome, tipo} para o registro.
+   */
+  F.salvarArquivo = async function (arquivo) {
+    const pdf = ehPdf(arquivo);
+    let reg;
+    if (pdf) {
+      if (arquivo.size > LIMITE_PDF) throw new Error('PDF com mais de 6 MB: envie só as páginas do pedido.');
+      reg = { dataURL: String(await U.readFileAsDataURL(arquivo)).replace(/^data:[^;,]*/, 'data:application/pdf'), w: 0, h: 0 };
+    } else reg = await F.preparar(arquivo, 1800, 1200000);
+    const tipo = pdf ? 'application/pdf' : 'image/jpeg';
+    const nome = arquivo.name || (pdf ? 'documento.pdf' : 'foto.jpg');
+    const id = await F.salvar(Object.assign(reg, { tipo: tipo, nome: nome }));
+    return { fotoId: id, nome: nome, tipo: tipo };
+  };
+
+  /** O documento anexado como arquivo (para ler de novo ou abrir). */
+  F.arquivo = async function (anexo) {
+    const reg = await F.obter(anexo && anexo.fotoId);
+    if (!reg) return null;
+    const blob = await (await fetch(reg.dataURL)).blob();
+    return new File([blob], anexo.nome || reg.nome || 'documento', { type: anexo.tipo || reg.tipo || blob.type });
+  };
+
+  F.ehPdf = ehPdf;
 
   App.Fotos = F;
 })(window.App);

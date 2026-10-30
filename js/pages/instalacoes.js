@@ -126,6 +126,11 @@
       if (inst.placas === undefined) inst.placas = ref.placas;
       if (inst.checklistInstalacao === undefined) inst.checklistInstalacao = ref.checklistInstalacao;
     }
+    // instalações gravadas antes dos materiais consumidos: o previsto vem da lista de materiais CA da proposta
+    if (inst.materiais === undefined) {
+      const prop = inst.propostaId ? S.get('propostas', inst.propostaId) : null;
+      inst.materiais = prop ? App.Materiais.daProposta(prop) : [];
+    }
     Object.keys(base).forEach(function (k) { if (inst[k] === undefined) inst[k] = U.clone(base[k]); });
     inst.equipamentos = Object.assign(U.clone(base.equipamentos), inst.equipamentos || {});
     const pv = I.placasVazias();
@@ -412,6 +417,67 @@
       c.appendChild(bloco('inversor', '🔌 Inversor (ou microinversores)', 'kW', 'Fotos da etiqueta do inversor'));
     });
 
+    /* ---------- materiais consumidos (infraestrutura CA) */
+    secao('materiais', 'Materiais consumidos', function (c) {
+      const prop = inst.propostaId ? S.get('propostas', inst.propostaId) : null;
+      const daProp = prop ? App.Materiais.daProposta(prop) : [];
+      c.appendChild(h('p.ajuda-sec', 'Materiais da infraestrutura CA usados nesta obra. O previsto vem da lista de materiais CA da proposta; lance o usado ',
+        '(ou os itens dos pedidos de compra da obra). O consumo real serve de base para o custo da próxima proposta.'));
+      const botoes = [];
+      if (daProp.length) {
+        botoes.push(h('button.btn.pequeno', {
+          type: 'button', onclick: function () {
+            const n = App.Materiais.puxarProposta(inst, prop);
+            mudou(); desenhar('materiais');
+            UI.toast(n + ' material(is) previsto(s) na proposta ' + prop.numero + '.', 'ok');
+          }
+        }, '↻ Puxar previsto da proposta'));
+      }
+      botoes.push(h('button.btn.pequeno', { type: 'button', onclick: lancarPedido }, '🛒 Lançar pedido de compra'));
+      if (inst.id) botoes.push(h('a.btn.pequeno', { href: '#/compra/nova?instalacao=' + inst.id }, '+ Novo pedido para esta obra'));
+      c.appendChild(App.Materiais.editor(inst.materiais, {
+        equipamentos: ctx.equipamentos, modo: 'instalacao', botoes: botoes,
+        vazio: prop ? 'A proposta ' + prop.numero + ' não tem lista de materiais CA. Lance os pedidos de compra da obra ou adicione os materiais usados.' : 'Lance os pedidos de compra da obra ou adicione os materiais usados.'
+      }, mudou));
+      if (prop && prop.infraModo !== 'lista' && App.Calc.infraValor(prop) > 0) {
+        c.appendChild(h('p.ajuda-sec', 'Orçado na proposta (valor informado da infraestrutura CA): ' + U.brl(App.Calc.infraValor(prop)) + '.'));
+      }
+    });
+
+    /** Lança os itens de um pedido de compra (os desta obra primeiro) como materiais usados. */
+    function lancarPedido() {
+      const compras = S.list('compras').filter(function (x) { return x.situacao !== 'cancelado' && (x.itens || []).length; }).sort(function (a, b) {
+        return ((b.instalacaoId === inst.id) - (a.instalacaoId === inst.id)) || String(b.data).localeCompare(String(a.data));
+      });
+      if (!compras.length) { UI.toast('Nenhum pedido de compra com itens. Cadastre em Execução › Pedidos de compra.', 'erro'); return; }
+      const est = { compra: compras[0].id };
+      const corpo = h('div',
+        h('p.ajuda-sec', 'Os itens do pedido entram como usados nesta obra, com o custo de aquisição (desconto e frete rateados). Itens iguais aos já lançados somam à quantidade.'),
+        UI.campo({ k: 'compra', label: 'Pedido de compra', type: 'select', options: compras.map(function (x) {
+          const t = App.Compra.totais(x);
+          return { v: x.id, t: x.numero + ' — ' + ((x.fornecedor && x.fornecedor.nome) || 'fornecedor') + ' · ' + x.itens.length + ' itens · ' + U.brl(t.total) +
+            (x.instalacaoId === inst.id ? ' (desta obra)' : '') + ((inst.comprasLancadas || []).indexOf(x.id) >= 0 ? ' — já lançado' : '') };
+        }) }, est));
+      UI.modal({
+        titulo: 'Lançar pedido de compra', corpo: corpo, acoes: [
+          { label: 'Cancelar' },
+          {
+            label: 'Lançar itens', primario: true, onClick: async function () {
+              const cp = S.get('compras', est.compra);
+              if (!cp) return;
+              if ((inst.comprasLancadas || []).indexOf(cp.id) >= 0 && !(await UI.confirmar('O pedido ' + cp.numero + ' já foi lançado nesta obra. Lançar de novo (as quantidades somam)?', 'Lançar de novo'))) return;
+              const n = App.Materiais.lancarCompra(inst, cp);
+              I.registrar(inst, 'Pedido de compra ' + cp.numero + ' lançado nos materiais consumidos (' + n + ' itens).', 'sistema');
+              if (!cp.instalacaoId && inst.id) { cp.instalacaoId = inst.id; S.save('compras', cp); }
+              mudou(); desenhar('materiais'); desenhar('historico');
+              if (inst.id) salvar(false);
+              UI.toast(n + ' item(ns) do pedido ' + cp.numero + ' lançado(s) nos materiais consumidos.', 'ok');
+            }
+          }
+        ]
+      });
+    }
+
     /* ---------- checklist da instalação (três grupos) */
     secao('checklist', 'Checklist da instalação', function (c) {
       c.appendChild(h('p.ajuda-sec', 'Itens padrão em Configurações › Textos padrão › Checklist da instalação. Use a observação para anotar medições (ex.: Voc da string 1 = 412 V).'));
@@ -518,6 +584,13 @@
         kpi('Sistema', [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh' : ''].filter(Boolean).join(' + ') || '—'),
         kpi('Valor', inst.valor ? U.brl(inst.valor) : '—'),
         (function () { const pc = I.progressoChecklist(inst); return kpi('Checklist', pc.total ? pc.feitos + ' de ' + pc.total + ' itens' : '—'); })(),
+        (function () {
+          const rm = App.Materiais.resumo(inst, inst.propostaId ? S.get('propostas', inst.propostaId) : null);
+          if (!rm.itens && !rm.orcado) return kpi('Materiais CA', '—');
+          const el = kpi('Materiais CA', rm.usado > 0 ? U.brl(rm.usado) + ' usado' : 'nada lançado');
+          if (rm.base > 0) el.appendChild(h('small', 'previsto ' + U.brl(rm.base) + (rm.usado > 0 ? ' · ' + (rm.diferenca > 0 ? '+' : '') + U.brl(rm.diferenca) : '')));
+          return el;
+        })(),
         kpi('Ordens de serviço', inst.id ? (function () {
           const os = S.list('ordens').filter(function (o) { return o.instalacaoId === inst.id; });
           const ab = os.filter(App.Ordem.aberta).length;
