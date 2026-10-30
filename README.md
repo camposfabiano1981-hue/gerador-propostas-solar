@@ -1,6 +1,10 @@
-# Gerador de Propostas Solar
+# CRM Solar
+
+CRM de energia solar (antigo Gerador de Propostas Solar): da proposta à obra entregue — **dashboard** de vendas, propostas, contratos, instalações e ordens de serviço.
 
 Plataforma web para elaborar **propostas comerciais de energia solar fotovoltaica** — sistemas **On-Grid**, **Híbridos (com baterias)** e **BESS** (armazenamento em gabinetes) para clientes do **grupo A e B** nas tarifas **convencional, branca, verde e azul** — com dimensionamento técnico automático, **comparação de até 4 cenários** (geração solar, backup, uso da bateria em horários estratégicos e redução de picos de demanda), análise financeira de 25 anos (Lei 14.300/2022 — Fio B) e emissão em **PDF** e **Word (.docx)** no mesmo layout do modelo Gênesis Engenharia.
+
+A **tela principal é o dashboard**: vendido no período (com a variação contra o período anterior), propostas emitidas, taxa de conversão, ticket médio, valor em aberto, obras em andamento e ordens de serviço em aberto; gráficos de **vendas por mês** (12 meses, com os meses do período em destaque), **funil de vendas** e **vendas por tipo de sistema** (cada gráfico com dica ao passar o mouse e a mesma informação em tabela); **obras em andamento** com o progresso; **propostas para acompanhar** (validade vencida, vencendo em até 3 dias ou paradas há 7 dias) e a **agenda de ordens de serviço**. O período (este mês, 3 meses, 12 meses, este ano ou tudo) vale para todos os números e fica lembrado no aparelho. A data de aprovação e de recusa de cada proposta é registrada ao mudar a situação (as antigas contam pela data de emissão).
 
 Inclui também **contratos de prestação de serviços** (no layout do contrato modelo) gerados a partir das propostas e **propostas avulsas** para serviços complementares (manutenção, limpeza, laudos, projetos, carregador veicular…).
 
@@ -111,7 +115,7 @@ Acesse o endereço publicado (veja "Publicar no GitHub" abaixo).
 
 ### Como aplicativo (ícone no computador e no celular)
 
-A plataforma é instalável (PWA): abre em janela própria, com o ícone **Propostas Solar** (o "G" com o sol e o raio da Gênesis), e funciona sem internet depois de aberta uma vez.
+A plataforma é instalável (PWA): abre em janela própria, com o ícone **CRM Solar** (o "G" com o sol e o raio da Gênesis), e funciona sem internet depois de aberta uma vez.
 
 - O botão **📲 Instalar aplicativo** fica no menu lateral enquanto o app não estiver instalado: quando o navegador permite, abre a instalação; senão, mostra o passo a passo do navegador em uso (inclusive quando o link foi aberto dentro de outro aplicativo, como WhatsApp ou Claude, que não instalam — é preciso abrir no Chrome ou no Safari).
 - **Computador (Chrome ou Edge)**: botão **📲 Instalar aplicativo** no menu lateral (ou o ícone de instalar na barra de endereço). O ícone vai para a área de trabalho, o menu Iniciar e a barra de tarefas; com o botão direito no ícone há atalhos para Nova proposta, Propostas e Contratos.
@@ -225,6 +229,7 @@ js/arte.js            Artes da proposta: faixa da capa e ilustração "Como func
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, checklist, equipamentos instalados, progresso e histórico
 js/ordem.js           Ordens de serviço das instalações (tipos, prioridades, situação, atrasos)
+js/crm.js             CRM: indicadores do dashboard (vendas, conversão, funil, tipos, obras, OS, acompanhamento) e datas de aprovação/recusa
 js/fotos.js           Fotos das etiquetas: banco de fotos do navegador (IndexedDB) com cópia na nuvem, lida sob demanda
 js/assinatura.js      Assinatura na tela (dedo, caneta ou mouse), guardada como imagem em App.Fotos
 js/relatorios.js      PDFs da execução: ordem de serviço e relatório de instalação com as assinaturas
@@ -236,7 +241,7 @@ js/pdf.js             Documento PDF no layout do modelo (jsPDF + fonte Arimo, ca
 js/docx-parts.js      Estilos/tema/fontes extraídos do modelo original
 js/logo-default.js    Logotipo padrão (gerado a partir de assets/logo-genesis.jpg)
 js/ui.js              Roteador, diálogos, campos e cadastro genérico
-js/pages/*.js         Telas (painel, propostas, formulário, contratos, instalações, cadastros, configurações)
+js/pages/*.js         Telas (dashboard, propostas, formulário, contratos, instalações, cadastros, configurações)
 tests/index.html      Testes automáticos do cálculo e do .docx
 tests/equipamentos-teste.js  Módulos, inversores e baterias usados nos cenários de teste (antigo catálogo)
 tools/serve.ps1       Servidor local opcional (Windows/PowerShell)

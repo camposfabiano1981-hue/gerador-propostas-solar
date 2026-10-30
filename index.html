@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Plataforma para elaboração de propostas comerciais de energia solar fotovoltaica (On-Grid e Híbrido) com geração em Word (.docx).">
-  <title>Propostas Solar</title>
+  <title>CRM Solar</title>
   <meta name="theme-color" content="#1E3A8A">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="assets/icones/icone.svg">
@@ -12,27 +12,27 @@
   <link rel="apple-touch-icon" href="assets/icones/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Propostas Solar">
+  <meta name="apple-mobile-web-app-title" content="CRM Solar">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="css/app.css?v=2026.10.29.13">
+  <link rel="stylesheet" href="css/app.css?v=2026.10.30.1">
 </head>
 <body>
   <header class="barra-mobile">
     <button id="btn-menu" class="btn-icone" type="button" aria-label="Abrir menu">☰</button>
-    <span>Propostas Solar</span>
+    <span>CRM Solar</span>
   </header>
   <div id="veu"></div>
 
   <aside class="lateral">
     <a class="marca" href="#/painel">
       <img id="marca-logo" alt="Logotipo da empresa">
-      <span class="marca-texto"><strong>Propostas Solar</strong><small id="marca-empresa"></small></span>
+      <span class="marca-texto"><strong>CRM Solar</strong><small id="marca-empresa"></small></span>
     </a>
     <a id="nuvem-status" class="nuvem-status" href="#/nuvem"></a>
     <a id="btn-instalar" class="btn-instalar" href="#" hidden>📲 Instalar aplicativo</a>
     <nav class="nav" aria-label="Menu principal">
       <div class="nav-grupo">Propostas</div>
-      <a href="#/painel">🏠 Painel</a>
+      <a href="#/painel">📊 Dashboard</a>
       <a href="#/proposta/nova">➕ Nova proposta</a>
       <a href="#/propostas">📄 Propostas</a>
       <a href="#/avulsas">🧰 Propostas avulsas</a>
@@ -65,41 +65,43 @@
   <noscript><p style="padding:24px">Esta plataforma precisa de JavaScript habilitado.</p></noscript>
 
   <!-- ?v= força o navegador a baixar os arquivos novos a cada publicação: altere junto com App.VERSAO_APP (js/app.js) -->
-  <script src="js/util.js?v=2026.10.29.13"></script>
-  <script src="js/defaults.js?v=2026.10.29.13"></script>
-  <script src="js/store.js?v=2026.10.29.13"></script>
-  <script src="js/energia.js?v=2026.10.29.13"></script>
-  <script src="js/datasheet.js?v=2026.10.29.13"></script>
-  <script src="js/datasheet-local.js?v=2026.10.29.13"></script>
-  <script src="js/calc.js?v=2026.10.29.13"></script>
-  <script src="js/chart.js?v=2026.10.29.13"></script>
-  <script src="js/zip.js?v=2026.10.29.13"></script>
-  <script src="js/docx-parts.js?v=2026.10.29.13"></script>
-  <script src="js/logo-default.js?v=2026.10.29.13"></script>
-  <script src="js/passos.js?v=2026.10.29.13"></script>
-  <script src="js/arte.js?v=2026.10.29.13"></script>
-  <script src="js/documento.js?v=2026.10.29.13"></script>
-  <script src="js/docx.js?v=2026.10.29.13"></script>
-  <script src="js/pdf.js?v=2026.10.29.13"></script>
-  <script src="js/contrato.js?v=2026.10.29.13"></script>
-  <script src="js/fotos.js?v=2026.10.29.13"></script>
-  <script src="js/instalacao.js?v=2026.10.29.13"></script>
-  <script src="js/ordem.js?v=2026.10.29.13"></script>
-  <script src="js/assinatura.js?v=2026.10.29.13"></script>
-  <script src="js/relatorios.js?v=2026.10.29.13"></script>
-  <script src="js/avulsa.js?v=2026.10.29.13"></script>
-  <script src="js/ui.js?v=2026.10.29.13"></script>
-  <script src="js/ia.js?v=2026.10.29.13"></script>
-  <script src="js/nuvem-config.js?v=2026.10.29.13"></script>
-  <script src="js/nuvem.js?v=2026.10.29.13"></script>
-  <script src="js/pages/propostas.js?v=2026.10.29.13"></script>
-  <script src="js/pages/proposta.js?v=2026.10.29.13"></script>
-  <script src="js/pages/contratos.js?v=2026.10.29.13"></script>
-  <script src="js/pages/instalacoes.js?v=2026.10.29.13"></script>
-  <script src="js/pages/ordens.js?v=2026.10.29.13"></script>
-  <script src="js/pages/avulsas.js?v=2026.10.29.13"></script>
-  <script src="js/pages/cadastros.js?v=2026.10.29.13"></script>
-  <script src="js/pages/config.js?v=2026.10.29.13"></script>
-  <script src="js/app.js?v=2026.10.29.13"></script>
+  <script src="js/util.js?v=2026.10.30.1"></script>
+  <script src="js/defaults.js?v=2026.10.30.1"></script>
+  <script src="js/store.js?v=2026.10.30.1"></script>
+  <script src="js/energia.js?v=2026.10.30.1"></script>
+  <script src="js/datasheet.js?v=2026.10.30.1"></script>
+  <script src="js/datasheet-local.js?v=2026.10.30.1"></script>
+  <script src="js/calc.js?v=2026.10.30.1"></script>
+  <script src="js/chart.js?v=2026.10.30.1"></script>
+  <script src="js/zip.js?v=2026.10.30.1"></script>
+  <script src="js/docx-parts.js?v=2026.10.30.1"></script>
+  <script src="js/logo-default.js?v=2026.10.30.1"></script>
+  <script src="js/passos.js?v=2026.10.30.1"></script>
+  <script src="js/arte.js?v=2026.10.30.1"></script>
+  <script src="js/documento.js?v=2026.10.30.1"></script>
+  <script src="js/docx.js?v=2026.10.30.1"></script>
+  <script src="js/pdf.js?v=2026.10.30.1"></script>
+  <script src="js/contrato.js?v=2026.10.30.1"></script>
+  <script src="js/fotos.js?v=2026.10.30.1"></script>
+  <script src="js/instalacao.js?v=2026.10.30.1"></script>
+  <script src="js/ordem.js?v=2026.10.30.1"></script>
+  <script src="js/assinatura.js?v=2026.10.30.1"></script>
+  <script src="js/relatorios.js?v=2026.10.30.1"></script>
+  <script src="js/crm.js?v=2026.10.30.1"></script>
+  <script src="js/avulsa.js?v=2026.10.30.1"></script>
+  <script src="js/ui.js?v=2026.10.30.1"></script>
+  <script src="js/ia.js?v=2026.10.30.1"></script>
+  <script src="js/nuvem-config.js?v=2026.10.30.1"></script>
+  <script src="js/nuvem.js?v=2026.10.30.1"></script>
+  <script src="js/pages/dashboard.js?v=2026.10.30.1"></script>
+  <script src="js/pages/propostas.js?v=2026.10.30.1"></script>
+  <script src="js/pages/proposta.js?v=2026.10.30.1"></script>
+  <script src="js/pages/contratos.js?v=2026.10.30.1"></script>
+  <script src="js/pages/instalacoes.js?v=2026.10.30.1"></script>
+  <script src="js/pages/ordens.js?v=2026.10.30.1"></script>
+  <script src="js/pages/avulsas.js?v=2026.10.30.1"></script>
+  <script src="js/pages/cadastros.js?v=2026.10.30.1"></script>
+  <script src="js/pages/config.js?v=2026.10.30.1"></script>
+  <script src="js/app.js?v=2026.10.30.1"></script>
 </body>
 </html>

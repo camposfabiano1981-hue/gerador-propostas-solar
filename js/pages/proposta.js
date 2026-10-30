@@ -160,7 +160,8 @@
         { k: 'numero', label: 'Nº da proposta', readonly: true, help: p.id ? 'Gerado automaticamente.' : 'Automático — confirmado ao salvar.' },
         { k: 'data', label: 'Data de emissão', type: 'date' },
         { k: 'validadeDias', label: 'Validade', type: 'int', suffix: 'dias' },
-        { k: 'status', label: 'Situação', type: 'select', options: D.STATUS.map(function (s) { return { v: s.id, t: s.label }; }) }
+        { k: 'status', label: 'Situação', type: 'select', options: D.STATUS.map(function (s) { return { v: s.id, t: s.label }; }),
+          onChange: function (nv) { p.statusEm = ''; App.Crm.mudarStatus(p, nv); } } // data da aprovação/recusa para o dashboard
       ], p, mudou, 4));
     });
 

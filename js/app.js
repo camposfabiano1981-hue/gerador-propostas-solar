@@ -3,7 +3,7 @@
   'use strict';
 
   /** Versão publicada — a mesma usada em ?v= no index.html (evita o navegador usar arquivos antigos em cache). */
-  App.VERSAO_APP = '2026.10.29.13';
+  App.VERSAO_APP = '2026.10.30.1';
 
   App.atualizarMarca = function () {
     const emp = App.Store.config().empresa;
@@ -11,7 +11,7 @@
     if (img) img.src = emp.logo || App.LOGO_PADRAO;
     const nome = document.getElementById('marca-empresa');
     if (nome) nome.textContent = emp.nomeCurto || emp.razao || '';
-    document.title = 'Propostas Solar — ' + (emp.nomeCurto || emp.razao || 'Gerador');
+    document.title = 'CRM Solar — ' + (emp.nomeCurto || emp.razao || 'Gerador');
   };
 
   /* ------------------------------------------------------------ aplicativo instalável (PWA) */
@@ -28,7 +28,7 @@
     pedidoInstalacao = null;
     const btn = document.getElementById('btn-instalar');
     if (btn) btn.hidden = true;
-    if (App.UI) App.UI.toast('Aplicativo instalado. Procure o ícone Propostas Solar na área de trabalho ou na tela inicial.', 'ok');
+    if (App.UI) App.UI.toast('Aplicativo instalado. Procure o ícone CRM Solar na área de trabalho ou na tela inicial.', 'ok');
   });
 
   function aplicativoAberto() {
@@ -68,7 +68,7 @@
         h('ol',
           h('li', 'Toque no botão ', h('strong', 'Compartilhar'), ' (quadrado com a seta para cima)' + (a.safari ? ' na barra do Safari.' : ', na barra de endereço.')),
           h('li', 'Role as opções e escolha ', h('strong', 'Adicionar à Tela de Início'), '.'),
-          h('li', 'Toque em ', h('strong', 'Adicionar'), '. O ícone Propostas Solar aparece na tela inicial.')),
+          h('li', 'Toque em ', h('strong', 'Adicionar'), '. O ícone CRM Solar aparece na tela inicial.')),
         h('p.ajuda-sec', 'O aplicativo instalado guarda os dados separado do navegador: ao abrir pela primeira vez, entre com a conta Google em ☁️ Sincronização para trazer seus cadastros.'));
     }
     if (a.android) {
@@ -77,7 +77,7 @@
         h('ol', a.samsung
           ? [h('li', 'Toque no menu ', h('strong', '≡'), ' do Samsung Internet.'), h('li', 'Escolha ', h('strong', 'Adicionar página a › Tela inicial'), '.')]
           : [h('li', 'Toque no menu ', h('strong', '⋮'), ' do Chrome (canto superior direito).'), h('li', 'Escolha ', h('strong', 'Instalar app'), ' (ou ', h('strong', 'Adicionar à tela inicial › Instalar'), ').'),
-            h('li', 'Confirme. O ícone Propostas Solar aparece na tela inicial e na gaveta de aplicativos.')]),
+            h('li', 'Confirme. O ícone CRM Solar aparece na tela inicial e na gaveta de aplicativos.')]),
         h('p.ajuda-sec', 'Se a opção não aparecer, recarregue a página e aguarde alguns segundos.'));
     }
     if (a.firefox) {

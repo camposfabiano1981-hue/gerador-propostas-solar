@@ -1,7 +1,7 @@
 {
-  "name": "Propostas Solar — Gênesis Engenharia",
-  "short_name": "Propostas Solar",
-  "description": "Propostas comerciais de energia solar, contratos e serviços complementares.",
+  "name": "CRM Solar — Gênesis Engenharia",
+  "short_name": "CRM Solar",
+  "description": "CRM de energia solar: propostas, contratos, instalações, ordens de serviço e dashboards.",
   "id": "./",
   "start_url": "./#/painel",
   "scope": "./",

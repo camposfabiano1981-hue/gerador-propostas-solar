@@ -633,7 +633,7 @@ window.App = window.App || {};
         console.warn('Falha ao registrar a fonte Arimo; usando Helvetica.', e);
       }
     }
-    doc.setProperties({ title: meta.titulo, subject: meta.assunto || '', author: meta.autor, creator: 'Gerador de Propostas Solar' });
+    doc.setProperties({ title: meta.titulo, subject: meta.assunto || '', author: meta.autor, creator: 'CRM Solar' });
     if (doc.setLanguage) doc.setLanguage('pt-BR');
     const recursos = {
       logo: { url: rec.logo.dataURL, formato: rec.logo.ext === 'png' ? 'PNG' : 'JPEG' },

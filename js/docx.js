@@ -259,7 +259,7 @@ window.App = window.App || {};
       '<dcterms:created xsi:type="dcterms:W3CDTF">' + agora + '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' + agora + '</dcterms:modified>' +
       '</cp:coreProperties>');
     zip.add('docProps/app.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
-      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Gerador de Propostas Solar</Application></Properties>');
+      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>CRM Solar</Application></Properties>');
     zip.add('word/document.xml', partes.documento);
     zip.add('word/styles.xml', App.docxParts.styles);
     zip.add('word/settings.xml', settingsXml());

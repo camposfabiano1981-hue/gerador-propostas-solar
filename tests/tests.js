@@ -1073,6 +1073,42 @@
     ok('instalações: coleções sincronizadas e no backup', ['instalacoes', 'ordens'].every(function (c) { return App.Store.COLECOES.indexOf(c) >= 0 && Array.isArray(App.Store.exportar().colecoes[c]); }));
   })();
 
+  // ---------------------------------------------------------------- CRM Solar: indicadores do dashboard
+  (function () {
+    const K = App.Crm;
+    igual('CRM: período deste mês e o anterior de mesma duração', JSON.stringify(K.intervalo('mes', '2026-10-30')), JSON.stringify({ ini: '2026-10-01', fim: '2026-10-30', iniAnt: '2026-09-01', fimAnt: '2026-09-30' }));
+    igual('CRM: últimos 3 meses começam no 1º dia de 2 meses atrás', K.intervalo('3m', '2026-10-30').ini, '2026-08-01');
+    igual('CRM: este ano', K.intervalo('ano', '2026-10-30').ini, '2026-01-01');
+    ok('CRM: "tudo" sem período anterior', K.intervalo('tudo', '2026-10-30').iniAnt === null);
+    const pp = { status: 'enviada', data: '2026-10-01' };
+    K.mudarStatus(pp, 'aprovada', '2026-10-20');
+    ok('CRM: aprovar registra a data da aprovação e da mudança', pp.status === 'aprovada' && pp.aprovadaEm === '2026-10-20' && pp.statusEm === '2026-10-20');
+    K.mudarStatus(pp, 'negociacao', '2026-10-25'); K.mudarStatus(pp, 'aprovada', '2026-10-28');
+    ok('CRM: reaprovar mantém a primeira data de aprovação', pp.aprovadaEm === '2026-10-20' && pp.statusEm === '2026-10-28');
+    igual('CRM: venda antiga (sem data de aprovação) conta pela emissão', K.dataVenda({ data: '2026-05-03' }), '2026-05-03');
+    const pr = function (o) { return Object.assign({ tipoSistema: 'ongrid', validadeDias: 5 }, o); };
+    const lista = [
+      pr({ status: 'aprovada', data: '2026-10-02', aprovadaEm: '2026-10-10', resumo: { total: 20000, kwp: 8 } }),
+      pr({ status: 'aprovada', data: '2026-09-20', aprovadaEm: '2026-10-05', tipoSistema: 'hibrido', resumo: { total: 40000, kwp: 6 } }),
+      pr({ status: 'aprovada', data: '2026-09-02', aprovadaEm: '2026-09-15', resumo: { total: 30000, kwp: 10 } }),
+      pr({ status: 'recusada', data: '2026-10-03', recusadaEm: '2026-10-12', resumo: { total: 15000 } }),
+      pr({ status: 'enviada', data: '2026-10-01', statusEm: '2026-10-01', resumo: { total: 12000 } }),
+      pr({ status: 'negociacao', data: '2026-10-27', statusEm: '2026-10-27', resumo: { total: 18000 } }),
+      pr({ status: 'rascunho', data: '2026-10-29', resumo: { total: 9000 } })
+    ];
+    const d = K.indicadores({ propostas: lista, instalacoes: [], ordens: [], validadePadrao: 5 }, 'mes', '2026-10-30');
+    ok('CRM: vendido no mês, nº de vendas, kWp e ticket médio', d.vendido === 60000 && d.nVendas === 2 && d.kwpVendido === 14 && d.ticket === 30000, JSON.stringify([d.vendido, d.nVendas, d.kwpVendido, d.ticket]));
+    ok('CRM: variação contra o mês anterior', d.vendidoAnt === 30000);
+    ok('CRM: conversão = aprovadas ÷ decididas no período', Math.abs(d.conversao - 2 / 3) < 1e-9 && d.decididas === 3);
+    ok('CRM: emitidas no período e em aberto agora', d.emitidas === 5 && d.abertas.n === 3 && d.abertas.valor === 39000, JSON.stringify([d.emitidas, d.abertas]));
+    igual('CRM: funil das emitidas no período', d.funil.map(function (e) { return e.id + ':' + e.n; }).join(',') + ',recusada:' + d.funilRecusadas.n, 'rascunho:1,enviada:1,negociacao:1,aprovada:1,recusada:1');
+    ok('CRM: vendas por mês (12 meses) com os meses do período marcados', d.porMes.length === 12 && d.porMes[11].mes === '2026-10' && d.porMes[11].valor === 60000 && d.porMes[11].noPeriodo && d.porMes[10].valor === 30000 && !d.porMes[10].noPeriodo);
+    igual('CRM: vendas do período por tipo', d.porTipo.map(function (t) { return t.id + ':' + t.valor; }).join(','), 'ongrid:20000,hibrido:40000,bess:0');
+    igual('CRM: acompanhar — validade vencida primeiro, depois a que vence em até 3 dias', d.acompanhar.map(function (x) { return x.motivo; }).join(' | '), 'Validade vencida há 24 dias | Vence em 2 dias');
+    const d12 = K.indicadores({ propostas: lista }, '12m', '2026-10-30');
+    ok('CRM: 12 meses somam todas as vendas', d12.vendido === 90000 && d12.porMes.every(function (m) { return m.noPeriodo; }));
+  })();
+
   // ---------------------------------------------------------------- numeração automática (somente leitura do armazenamento)
   const num = App.Store.proximoNumero('2026-09-29');
   ok('número automático no formato PREFIXO-AAAAMMDD-NNN', /^[A-Z0-9]+-20260929-\d{3}$/.test(num.numero), num.numero);
