@@ -139,6 +139,9 @@ window.App = window.App || {};
     }).filter(function (l) { return l.celulas.length; });
   }
 
+  /** Biblioteca PDF.js (carregada do CDN na primeira vez); também usada para visualizar os documentos do app. */
+  LL.pdfjs = pdfjs;
+
   /** Linhas de texto do PDF (até MAX_PAGINAS páginas). */
   LL.linhasDoPdf = async function (file) {
     const lib = await pdfjs();

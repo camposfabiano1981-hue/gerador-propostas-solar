@@ -594,36 +594,6 @@ window.App = window.App || {};
     b.push(TBL(fone ? [6160, 3200] : [9360], [TR(cta, false, { naoQuebrar: true })]));
 
 
-    /* ---------- O QUE ESTÁ INCLUSO */
-    abrir('O que está incluso', 'Do projeto à energia gerando: tudo o que fazemos por você, e o que fica fora do escopo.', true);
-    const extraInc = hib ? textos.inclusosHibrido || [] : (r.bessAtivo ? textos.inclusosBess || [] : []);
-    const extraNinc = hib ? textos.naoInclusosHibrido || [] : (r.bessAtivo ? textos.naoInclusosBess || [] : []);
-    const inc = (textos.inclusos || []).concat(extraInc).map(t).filter(Boolean);
-    const ninc = (textos.naoInclusos || []).concat(extraNinc).map(t).filter(Boolean);
-    const itensMarcados = function (lista, simbolo, cor) {
-      return lista.map(function (x) { return P([R(simbolo + '  ', { b: true, color: cor }), R(x, { sz: 19 })], { after: 60 }); });
-    };
-    b.push(TBL([5160, 200, 4000], [
-      TR([TC(T('Está incluso', null, { b: true, color: BRANCO, sz: 22 }), { w: 5160, fill: '15803D', borda: { sz: 4, cor: '15803D' }, mar: { t: 120, b: 120, l: 200, r: 120 } }),
-        espaco(200),
-        TC(T('Não está incluso', null, { b: true, color: BRANCO, sz: 22 }), { w: 4000, fill: '64748B', borda: { sz: 4, cor: '64748B' }, mar: { t: 120, b: 120, l: 200, r: 120 } })], true),
-      TR([TC(itensMarcados(inc, '✓', '15803D'), { w: 5160, fill: 'F0FDF4', borda: { sz: 4, cor: 'BBF7D0' }, mar: { t: 140, b: 120, l: 200, r: 160 }, vAlign: 'top' }),
-        espaco(200),
-        TC(itensMarcados(ninc, '✗', 'DC2626').concat([T('Se algum desses itens for necessário (por exemplo, exigência da ' + (conc || 'concessionária') + ' na vistoria), avisamos antes e passamos o orçamento à parte.',
-          { before: 120, top: { sz: 4, space: 4, color: 'CBD5E1' } }, { color: CINZA, sz: 16 })]), { w: 4000, fill: 'F8FAFC', borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 140, b: 120, l: 200, r: 160 }, vAlign: 'top' })])
-    ]));
-    const garantias = [];
-    if (mod) garantias.push({ rot: 'Módulos', valor: (C.garantiaModulo(mod).match(/^\d+\s*anos?/) || [C.garantiaModulo(mod)])[0], sub: C.garantiaModulo(mod), sz: 26 });
-    if (inv) garantias.push({ rot: r.micro ? 'Microinversores' : (hib ? 'Inversor híbrido' : 'Inversor'), valor: garantiaAnos(inv), sub: 'pelo fabricante ' + (inv.fabricante || ''), sz: 26 });
-    if (temArm && bat) garantias.push({ rot: r.bessAtivo ? 'BESS' : 'Baterias', valor: garantiaAnos(bat), sub: 'pelo fabricante ' + (bat.fabricante || ''), sz: 26 });
-    if (textos.garantiaInstalacao) garantias.push({ rot: 'Instalação', valor: t(textos.garantiaInstalacao), sub: 'pela ' + (emp.nomeCurto || emp.razao) + ': mão de obra e conexões', sz: 26 });
-    if (garantias.length) {
-      b.push(subtitulo('Garantias'));
-      b.push(grade(garantias, Math.max(2, garantias.length), cartao));
-    }
-    b.push(P([R('Depois da instalação: ', { b: true, color: '92400E' }), R('você recebe o acesso ao aplicativo de monitoramento, a documentação do projeto e as orientações de limpeza dos módulos' +
-      (fone ? '. Qualquer dúvida, fale com a gente pelo WhatsApp ' + fone + '.' : '.'), { color: '57534E', sz: 19 })], { left: { sz: 18, space: 6, color: 'F6A81C' }, shd: 'FFFBEB', before: 220, after: 80 }));
-
     /* ---------- QUANTO VOCÊ ECONOMIZA */
     abrir('Quanto você economiza', 'Valores estimados com a tarifa atual, reajuste de ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano' + (temFV ? ' e as regras da Lei 14.300/2022.' : '.'), true);
     const caixa = function (rot, valor, sub, fundo, cor, w) {
@@ -707,6 +677,36 @@ window.App = window.App || {};
     linhasT.push(TR([TC(P([R('Somando os ' + f.anos.length + ' anos, a economia na conta de luz chega a ', { color: BRANCO, sz: 20 }), R(valorCurto(somaEco), { b: true, color: BRANCO, sz: 24 })], { jc: 'center' }),
       { w: 9360, span: colsT.length, fill: '15803D', borda: { sz: 4, cor: '15803D' }, mar: { t: 90, b: 90, l: 160, r: 160 } })], false, { naoQuebrar: true }));
     b.push(TBL(LCT, linhasT));
+
+    /* ---------- O QUE ESTÁ INCLUSO */
+    abrir('O que está incluso', 'Do projeto à energia gerando: tudo o que fazemos por você, e o que fica fora do escopo.', true);
+    const extraInc = hib ? textos.inclusosHibrido || [] : (r.bessAtivo ? textos.inclusosBess || [] : []);
+    const extraNinc = hib ? textos.naoInclusosHibrido || [] : (r.bessAtivo ? textos.naoInclusosBess || [] : []);
+    const inc = (textos.inclusos || []).concat(extraInc).map(t).filter(Boolean);
+    const ninc = (textos.naoInclusos || []).concat(extraNinc).map(t).filter(Boolean);
+    const itensMarcados = function (lista, simbolo, cor) {
+      return lista.map(function (x) { return P([R(simbolo + '  ', { b: true, color: cor }), R(x, { sz: 19 })], { after: 60 }); });
+    };
+    b.push(TBL([5160, 200, 4000], [
+      TR([TC(T('Está incluso', null, { b: true, color: BRANCO, sz: 22 }), { w: 5160, fill: '15803D', borda: { sz: 4, cor: '15803D' }, mar: { t: 120, b: 120, l: 200, r: 120 } }),
+        espaco(200),
+        TC(T('Não está incluso', null, { b: true, color: BRANCO, sz: 22 }), { w: 4000, fill: '64748B', borda: { sz: 4, cor: '64748B' }, mar: { t: 120, b: 120, l: 200, r: 120 } })], true),
+      TR([TC(itensMarcados(inc, '✓', '15803D'), { w: 5160, fill: 'F0FDF4', borda: { sz: 4, cor: 'BBF7D0' }, mar: { t: 140, b: 120, l: 200, r: 160 }, vAlign: 'top' }),
+        espaco(200),
+        TC(itensMarcados(ninc, '✗', 'DC2626').concat([T('Se algum desses itens for necessário (por exemplo, exigência da ' + (conc || 'concessionária') + ' na vistoria), avisamos antes e passamos o orçamento à parte.',
+          { before: 120, top: { sz: 4, space: 4, color: 'CBD5E1' } }, { color: CINZA, sz: 16 })]), { w: 4000, fill: 'F8FAFC', borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 140, b: 120, l: 200, r: 160 }, vAlign: 'top' })])
+    ]));
+    const garantias = [];
+    if (mod) garantias.push({ rot: 'Módulos', valor: (C.garantiaModulo(mod).match(/^\d+\s*anos?/) || [C.garantiaModulo(mod)])[0], sub: C.garantiaModulo(mod), sz: 26 });
+    if (inv) garantias.push({ rot: r.micro ? 'Microinversores' : (hib ? 'Inversor híbrido' : 'Inversor'), valor: garantiaAnos(inv), sub: 'pelo fabricante ' + (inv.fabricante || ''), sz: 26 });
+    if (temArm && bat) garantias.push({ rot: r.bessAtivo ? 'BESS' : 'Baterias', valor: garantiaAnos(bat), sub: 'pelo fabricante ' + (bat.fabricante || ''), sz: 26 });
+    if (textos.garantiaInstalacao) garantias.push({ rot: 'Instalação', valor: t(textos.garantiaInstalacao), sub: 'pela ' + (emp.nomeCurto || emp.razao) + ': mão de obra e conexões', sz: 26 });
+    if (garantias.length) {
+      b.push(subtitulo('Garantias'));
+      b.push(grade(garantias, Math.max(2, garantias.length), cartao));
+    }
+    b.push(P([R('Depois da instalação: ', { b: true, color: '92400E' }), R('você recebe o acesso ao aplicativo de monitoramento, a documentação do projeto e as orientações de limpeza dos módulos' +
+      (fone ? '. Qualquer dúvida, fale com a gente pelo WhatsApp ' + fone + '.' : '.'), { color: '57534E', sz: 19 })], { left: { sz: 18, space: 6, color: 'F6A81C' }, shd: 'FFFBEB', before: 220, after: 80 }));
 
     /* ---------- PRÓXIMOS PASSOS */
     abrir('Próximos passos', 'Gostou? Em três passos começamos o seu projeto.', true);

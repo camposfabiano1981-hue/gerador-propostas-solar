@@ -461,6 +461,35 @@ window.App = window.App || {};
   };
   C.infraValor = function (p) { return p && p.infraModo === 'lista' ? C.totalMateriaisCA(p.materiaisCA) : U.numOr(p && p.infraValor, 0); };
 
+  /**
+   * Proposta em aberto acompanha os custos do cadastro alterados depois da última gravação (pedidos de compra lançados em
+   * Materiais e acessórios): custo da lista de materiais CA e preço dos materiais da lista do kit. Preços digitados depois da
+   * última compra ficam como estão. Devolve {n, infraAntes, infraDepois} ou null quando nada mudou.
+   */
+  C.atualizarCustosProposta = function (p, ctx) {
+    const desde = String(p.atualizadoEm || '');
+    const eqs = {};
+    (ctx.equipamentos || []).forEach(function (e) { eqs[e.id] = e; });
+    const mudou = function (eq) { return !!eq && eq.tipo === 'material' && String(eq.custoAtualizadoEm || eq.atualizadoEm || '') > desde; };
+    const infraAntes = C.infraValor(p);
+    let n = 0;
+    (p.materiaisCA || []).forEach(function (m) {
+      const eq = eqs[m.equipamentoId];
+      if (!mudou(eq)) return;
+      const c = U.num(eq.custo) > 0 ? U.num(eq.custo) : U.numOr(eq.preco, 0);
+      if (c > 0 && Math.abs(c - U.numOr(m.custo, 0)) > 0.00005) { m.custo = c; n++; }
+    });
+    (p.itens || []).forEach(function (it) {
+      const eq = !it.manual && eqs[it.equipamentoId];
+      if (!mudou(eq)) return;
+      const pr = U.numOr(eq.preco, 0);
+      if (pr > 0 && Math.abs(pr - U.numOr(it.precoUnit, 0)) > 0.005) { it.precoUnit = pr; n++; }
+    });
+    if (!n) return null;
+    if (p.infraModo === 'lista') p.infraValor = C.totalMateriaisCA(p.materiaisCA);
+    return { n: n, infraAntes: infraAntes, infraDepois: C.infraValor(p) };
+  };
+
   /** Combinação de kits de estrutura (ex.: kits p/ 4 e p/ 2 módulos) cobrindo N módulos. */
   C.combinarKits = function (kits, nMod) {
     const ord = kits.slice().filter(function (k) { return pos(k.fator); }).sort(function (a, b) { return b.fator - a.fator; });

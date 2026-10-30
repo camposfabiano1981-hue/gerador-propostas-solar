@@ -403,15 +403,16 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 .equip-instalado { border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .equip-instalado h3 { margin: 0; font-size: 15px; color: var(--azul); }
 .fotos-grade { display: flex; flex-wrap: wrap; gap: 10px; }
-.foto-mini, .foto-add { position: relative; width: 132px; height: 100px; border-radius: 8px; border: 1px solid var(--borda); background: #F8FAFC; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.foto-card { width: 176px; display: flex; flex-direction: column; gap: 4px; }
+.foto-mini { position: relative; width: 176px; height: 132px; border-radius: 8px; border: 1px solid var(--borda); background: #F8FAFC; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .foto-mini img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
 .foto-aviso { font-size: 11px; color: var(--muted); padding: 6px; text-align: center; }
 .foto-remover { position: absolute; top: 4px; right: 4px; background: rgba(255, 255, 255, .92); }
-.foto-add { flex-direction: column; gap: 2px; border-style: dashed; border-color: var(--azul-borda); color: var(--azul-2); cursor: pointer; }
-.foto-add:hover { background: var(--azul-claro); }
-.foto-add input { display: none; }
-.foto-add span { font-size: 24px; }
-.foto-add small { font-size: 12px; font-weight: 600; }
+.foto-legenda { width: 100%; padding: 4px 7px; border: 1px solid var(--borda-forte); border-radius: 6px; background: #fff; font-size: 12px; line-height: 1.3; resize: none; }
+.fotos-botoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.fotos-botoes label.btn input { display: none; }
+.fotos-botoes .ajuda { flex-basis: 100%; }
+@media (max-width: 700px) { .foto-card, .foto-mini { width: calc(50vw - 40px); } .foto-mini { height: calc((50vw - 40px) * .75); } }
 .foto-ampliada { display: block; max-width: 100%; max-height: 75vh; margin: 0 auto; }
 .checklist-grupo { border: 1px solid var(--borda); border-left: 5px solid var(--borda-forte); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
 .checklist-grupo.completo { border-left-color: #16A34A; }
@@ -537,7 +538,11 @@ label.btn input[type=file] { display: none; }
 .tabela-compra .compra-cod { grid-column: 1; grid-row: 1; }
 .tabela-compra .compra-desc { grid-column: 2 / span 4; grid-row: 1; }
 .tabela-compra .compra-marca { grid-column: 6; grid-row: 1; }
-.tabela-compra .compra-cad { align-self: end; padding-bottom: 8px !important; white-space: nowrap; }
+.tabela-compra .compra-cad { grid-column: 6; grid-row: 3; align-self: end; padding-bottom: 8px !important; white-space: nowrap; }
+.tabela-compra .compra-custo { grid-column: 1 / span 5; grid-row: 3; }
+.compra-custo-val { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 22px; }
+.compra-custo-val strong { color: var(--azul); font-variant-numeric: tabular-nums; }
+.compra-custo-val small { color: var(--muted); font-size: 12px; }
 .tabela-compra a.badge { text-decoration: none; }
 .tabela-materiais tr { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .tabela-materiais.obra tr { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -555,8 +560,19 @@ label.btn input[type=file] { display: none; }
   .tabela-compra tr, .tabela-materiais tr, .tabela-materiais.obra tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tabela-compra tr { padding-right: 12px; }
   .tabela-compra .compra-desc { grid-column: 1 / -1; grid-row: 1; padding-right: 36px !important; }
-  .tabela-compra .compra-cod, .tabela-compra .compra-marca { grid-column: auto; grid-row: auto; }
+  .tabela-compra .compra-cod, .tabela-compra .compra-marca, .tabela-compra .compra-custo, .tabela-compra .compra-cad { grid-column: auto; grid-row: auto; }
+  .tabela-compra .compra-custo { grid-column: 1 / span 2; }
   .tabela-materiais .materiais-subtotal { grid-column: 1 / -1; padding-bottom: 0 !important; }
   .compra-totais { max-width: none; }
 }
 }
+
+/* ---------- visualização dos documentos */
+dialog.modal.visualizar { width: min(940px, calc(100vw - 16px)); height: calc(100vh - 24px); }
+dialog.modal.visualizar .modal-corpo { flex: 1; background: #E2E8F0; padding: 12px; }
+.visualizador-status { margin: 0 0 10px !important; font-size: 13px; color: var(--texto-2); }
+.visualizador-status.erro { color: var(--vermelho); font-weight: 600; }
+.visualizador-paginas { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.visualizador-pagina { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, .18); border-radius: 2px; }
+.btn-formato.ver { font-size: 12px; padding: 2px 6px; }
+@media (max-width: 700px) { dialog.modal.visualizar { width: calc(100vw - 8px); height: calc(100vh - 12px); } dialog.modal.visualizar .modal-corpo { padding: 6px; } }

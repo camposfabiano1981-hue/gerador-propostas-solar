@@ -62,6 +62,7 @@
         h('td.num', rs.total ? U.brl(rs.total) : '—'),
         h('td', statusBadge(p.status), sel),
         h('td.acoes-col',
+          App.Visualizar.botao(function () { return App.Pdf.gerar(p, C.contexto()); }, 'Proposta ' + p.numero),
           btnPdf,
           btnDocx,
           h('button.btn-icone', { type: 'button', title: 'Gerar contrato', 'aria-label': 'Gerar contrato', onclick: function () { UI.ir('#/contrato/novo?proposta=' + p.id); } }, '✍'),

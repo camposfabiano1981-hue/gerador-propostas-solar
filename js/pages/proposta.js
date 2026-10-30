@@ -54,6 +54,9 @@
       if (qs && (qs.get('tipo') === 'hibrido' || qs.get('tipo') === 'bess')) p.tipoSistema = qs.get('tipo');
       if (p.tipoSistema === 'hibrido') p.cargas = U.clone(D.cargasExemplo);
     }
+    // proposta em aberto: custos dos materiais lançados por pedidos de compra depois da última gravação
+    const resumoSalvo = id ? U.numOr((p.resumo || {}).total, 0) : 0;
+    const custosNovos = id && ['aprovada', 'recusada'].indexOf(p.status) < 0 ? C.atualizarCustosProposta(p, ctx) : null;
     const ehArm = function () { return p.tipoSistema === 'hibrido' || p.tipoSistema === 'bess'; };
     const grupoA = function () { return App.Energia.modalidade(p.modalidade).grupo === 'A'; };
     const garantirCenarios = function () { p.cenarios = C.cenariosConfig(p); return p.cenarios; };
@@ -72,8 +75,15 @@
     const btnSalvar = h('button.btn', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar');
     const btnPdf = h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ Proposta em PDF');
     const btnDocx = h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ Word (.docx)');
+    const btnVer = h('button.btn', {
+      type: 'button', onclick: function () {
+        if (!p.clienteId) { UI.toast('Selecione o cliente.', 'erro'); return; }
+        atualizar();
+        App.Visualizar.abrir(function () { return App.Pdf.gerar(p, ctx); }, { titulo: 'Proposta ' + p.numero });
+      }
+    }, '👁 Visualizar');
     const titulo = h('h1', id ? 'Proposta ' + p.numero : 'Nova proposta');
-    cont.appendChild(h('div.pagina-topo', h('div', titulo, subtitulo), h('div.acoes', btnSalvar, btnDocx, btnPdf)));
+    cont.appendChild(h('div.pagina-topo', h('div', titulo, subtitulo), h('div.acoes', btnSalvar, btnVer, btnDocx, btnPdf)));
 
     const nav = h('nav.passos');
     const colForm = h('div.form-col');
@@ -501,6 +511,10 @@
       if (!Array.isArray(p.materiaisCA)) p.materiaisCA = [];
       const box = h('div.bloco-infra');
       box.appendChild(h('p.rotulo-campo', 'Infraestrutura elétrica CA'));
+      if (custosNovos && sujo) {
+        box.appendChild(h('p.nota.ok', 'Custos atualizados pelos pedidos de compra ao abrir a proposta (' + custosNovos.n + (custosNovos.n === 1 ? ' material' : ' materiais') + ')' +
+          (Math.abs(custosNovos.infraDepois - custosNovos.infraAntes) >= 0.01 ? ' — infraestrutura CA de ' + U.brl(custosNovos.infraAntes) + ' para ' + U.brl(custosNovos.infraDepois) : '') + '. Salve para manter.'));
+      }
       box.appendChild(h('div.opcoes-cartao.compacto', [
         ['lista', 'Lista de materiais CA', 'Quadro, DPS, disjuntores, cabos e eletrodutos da obra — o valor é a soma da lista'],
         ['manual', 'Valor informado', 'Digite o valor direto, sem lista']
@@ -1062,5 +1076,11 @@
     atualizar();
     // proposta nova ainda não alterada pelo usuário: sair sem pedir confirmação
     if (!id) inicial = JSON.stringify(p);
+    if (custosNovos) {
+      sujo = true;
+      UI.toast('Custos atualizados pelos pedidos de compra (' + custosNovos.n + (custosNovos.n === 1 ? ' material' : ' materiais') + ')' +
+        (r && resumoSalvo && Math.abs(r.total - resumoSalvo) >= 0.01 ? ': valor da proposta ' + U.brl(resumoSalvo) + ' → ' + U.brl(r.total) : '') + '. Salve para manter.', 'ok');
+      desenhar('materiais');
+    }
   }
 })(window.App);

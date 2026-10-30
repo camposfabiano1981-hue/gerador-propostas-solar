@@ -41,8 +41,8 @@ window.App = window.App || {};
    */
   function placasVazias() {
     return {
-      modulo: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [] },
-      inversor: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [] }
+      modulo: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [], legendas: {} },
+      inversor: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [], legendas: {} }
     };
   }
 

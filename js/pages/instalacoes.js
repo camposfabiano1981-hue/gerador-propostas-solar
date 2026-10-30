@@ -55,7 +55,7 @@
         h('td', barra(inst)),
         h('td', U.dataBR(I.previsaoConclusao(inst)) || '—', atraso.length && st !== 'pausada' ? h('div', UI.badge(atraso.length === 1 ? '1 etapa atrasada' : atraso.length + ' etapas atrasadas', 'erro')) : null),
         h('td', statusBadge(inst)),
-        h('td.acoes-col', h('button.btn-icone.perigo', {
+        h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfInstalacao(inst, C.contexto()); }, 'Relatório de instalação — ' + (inst.titulo || inst.clienteNome || '')), h('button.btn-icone.perigo', {
           type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
             if (await UI.confirmar('Excluir a instalação "' + (inst.titulo || inst.clienteNome) + '"? O histórico da obra será perdido.', 'Excluir', true)) {
               S.remove('instalacoes', inst.id);
@@ -138,6 +138,7 @@
     inst.placas.inversor = Object.assign(pv.inversor, inst.placas.inversor || {});
     ['modulo', 'inversor'].forEach(function (k) {
       if (!Array.isArray(inst.placas[k].fotos)) inst.placas[k].fotos = [];
+      if (!inst.placas[k].legendas || typeof inst.placas[k].legendas !== 'object' || Array.isArray(inst.placas[k].legendas)) inst.placas[k].legendas = {};
       I.vincularCadastro(inst.placas[k], ctx.equipamentos, k);
     });
     // sem marca e modelo: puxa da proposta de origem
@@ -156,48 +157,68 @@
 
   const MAX_FOTOS = 6;
 
-  /** Fotos das etiquetas: miniaturas (deste aparelho ou da nuvem), tirar/escolher foto, ampliar e remover. */
-  function campoFotos(rotulo, lista, aoMudar) {
+  /**
+   * Fotos do equipamento (etiqueta e instalação): botões para tirar a foto com a câmera ou escolher imagens, miniaturas
+   * (deste aparelho ou da nuvem) com legenda digitada (opcional; sem ela, o relatório usa a padrão), ampliar e remover.
+   */
+  function campoFotos(rotulo, lista, legendas, padrao, aoMudar, aoDigitar) {
     const F = App.Fotos;
+    const box = h('div.campo.campo-fotos');
     const grade = h('div.fotos-grade');
+    const botoes = h('div.fotos-botoes');
+    async function incluir(arquivos) {
+      const arqs = Array.prototype.slice.call(arquivos, 0, MAX_FOTOS - lista.length);
+      for (const a of arqs) {
+        try { lista.push(await F.salvar(await F.preparar(a))); } catch (e) { console.error(e); UI.toast('Não foi possível ler a imagem. Use JPG ou PNG.', 'erro'); }
+      }
+      aoMudar();
+      desenhar();
+    }
+    const seletor = function (cls, texto, camera) {
+      const input = h('input', { type: 'file', accept: 'image/*', multiple: camera ? null : true, capture: camera ? 'environment' : null,
+        onchange: function () { const fs = input.files; const l = Array.prototype.slice.call(fs); input.value = ''; incluir(l); } });
+      return h('label.btn.pequeno.' + cls, input, texto);
+    };
     function desenhar() {
       grade.innerHTML = '';
       lista.forEach(function (fid, i) {
         const aviso = h('span.foto-aviso', 'carregando…');
-        const img = h('img', { alt: rotulo + ' ' + (i + 1), hidden: true });
+        const img = h('img', { alt: (legendas[fid] || padrao + ' — foto ' + (i + 1)), hidden: true });
         F.obter(fid).then(function (f) {
           if (f) { img.src = f.dataURL; img.hidden = false; aviso.remove(); } else aviso.textContent = 'foto na nuvem — entre na sincronização para ver';
         });
         img.addEventListener('click', function () {
-          UI.modal({ titulo: rotulo, largo: true, corpo: h('img.foto-ampliada', { src: img.src, alt: rotulo }), acoes: [{ label: 'Fechar' }] });
+          UI.modal({ titulo: legendas[fid] || rotulo, largo: true, corpo: h('img.foto-ampliada', { src: img.src, alt: legendas[fid] || rotulo }), acoes: [{ label: 'Fechar' }] });
         });
-        grade.appendChild(h('div.foto-mini', aviso, img, h('button.btn-icone.perigo.foto-remover', {
-          type: 'button', title: 'Remover foto', 'aria-label': 'Remover foto', onclick: async function () {
-            if (!(await UI.confirmar('Remover esta foto?', 'Remover', true))) return;
-            await F.remover(fid);
-            lista.splice(lista.indexOf(fid), 1);
-            aoMudar();
-            desenhar();
-          }
-        }, '×')));
-      });
-      if (lista.length < MAX_FOTOS) {
-        const input = h('input', {
-          type: 'file', accept: 'image/*', multiple: true, onchange: async function () {
-            const arqs = Array.prototype.slice.call(input.files, 0, MAX_FOTOS - lista.length);
-            input.value = '';
-            for (const a of arqs) {
-              try { lista.push(await F.salvar(await F.preparar(a))); } catch (e) { console.error(e); UI.toast('Não foi possível ler a imagem. Use JPG ou PNG.', 'erro'); }
+        const legenda = h('textarea.foto-legenda', {
+          rows: 2, value: legendas[fid] || '', maxlength: 90, placeholder: padrao + ' — foto ' + (i + 1), 'aria-label': 'Legenda da foto ' + (i + 1),
+          oninput: function () { const v = legenda.value.trim(); if (v) legendas[fid] = legenda.value; else delete legendas[fid]; if (aoDigitar) aoDigitar(); }
+        });
+        grade.appendChild(h('div.foto-card',
+          h('div.foto-mini', aviso, img, h('button.btn-icone.perigo.foto-remover', {
+            type: 'button', title: 'Remover foto', 'aria-label': 'Remover foto', onclick: async function () {
+              if (!(await UI.confirmar('Remover esta foto?', 'Remover', true))) return;
+              await F.remover(fid);
+              lista.splice(lista.indexOf(fid), 1);
+              delete legendas[fid];
+              aoMudar();
+              desenhar();
             }
-            aoMudar();
-            desenhar();
-          }
-        });
-        grade.appendChild(h('label.foto-add', input, h('span', '📷'), h('small', lista.length ? 'Mais uma foto' : 'Foto da etiqueta')));
-      }
+          }, '×')),
+          legenda));
+      });
+      botoes.innerHTML = '';
+      if (lista.length < MAX_FOTOS) {
+        botoes.appendChild(seletor('foto-camera', '📷 Tirar foto', true));
+        botoes.appendChild(seletor('foto-escolher', '🖼️ Escolher imagens', false));
+        botoes.appendChild(h('small.ajuda', lista.length ? (MAX_FOTOS - lista.length) + ' de ' + MAX_FOTOS + ' fotos disponíveis. A legenda é opcional e sai no relatório.' : 'Até ' + MAX_FOTOS + ' fotos (etiqueta, equipamento instalado…). A legenda é opcional e sai no relatório.'));
+      } else botoes.appendChild(h('small.ajuda', 'Limite de ' + MAX_FOTOS + ' fotos. Remova uma para incluir outra.'));
     }
     desenhar();
-    return h('div.campo', h('label', rotulo), grade);
+    box.appendChild(h('label', rotulo));
+    box.appendChild(grade);
+    box.appendChild(botoes);
+    return box;
   }
 
   function formulario(cont, id, qs) {
@@ -379,7 +400,7 @@
       const prop = inst.propostaId ? S.get('propostas', inst.propostaId) : null;
       c.appendChild(h('div.linha-campo',
         h('p.ajuda-sec.cresce', 'Módulo e inversor vêm da proposta; escolha outro da lista do cadastro ou, se não estiver cadastrado, digite marca e modelo. ',
-          'As fotos das etiquetas ficam neste aparelho e na nuvem, sem ocupar o armazenamento do app.'),
+          'As fotos (etiquetas e equipamentos instalados) ficam neste aparelho e na nuvem, sem ocupar o armazenamento do app, e saem no relatório com a legenda digitada.'),
         prop ? h('button.btn.pequeno', {
           type: 'button', onclick: async function () {
             if (!(await UI.confirmar('Puxar marca, modelo, potência e quantidade do módulo e do inversor da proposta ' + prop.numero + '? Nº de série e fotos são mantidos.', 'Puxar'))) return;
@@ -388,7 +409,7 @@
           }
         }, '↻ Puxar da proposta') : null));
       const fotoMudou = function () { mudou(); if (inst.id) salvar(false); };
-      const bloco = function (qual, titulo, un, rotFotos) {
+      const bloco = function (qual, titulo, un, rotFotos, padraoFotos) {
         const pl = inst.placas[qual];
         const lista = I.opcoesCadastro(ctx.equipamentos, qual);
         const doCadastro = !!(pl.equipamentoId && lista.some(function (e) { return e.id === pl.equipamentoId; }));
@@ -411,10 +432,10 @@
           { k: 'serie', label: qual === 'modulo' ? 'Nº de série / lote' : 'Nº de série', cls: qual === 'modulo' ? 'span-all' : 'span2',
             placeholder: qual === 'modulo' ? 'Um ou mais, separados por vírgula' : '' }
         ];
-        return h('div.equip-instalado', h('h3', titulo), UI.grade(defs, pl, mudou, 4), campoFotos(rotFotos, pl.fotos, fotoMudou));
+        return h('div.equip-instalado', h('h3', titulo), UI.grade(defs, pl, mudou, 4), campoFotos(rotFotos, pl.fotos, pl.legendas, padraoFotos, fotoMudou, mudou));
       };
-      c.appendChild(bloco('modulo', '☀️ Módulos fotovoltaicos', 'Wp', 'Fotos da etiqueta do módulo'));
-      c.appendChild(bloco('inversor', '🔌 Inversor (ou microinversores)', 'kW', 'Fotos da etiqueta do inversor'));
+      c.appendChild(bloco('modulo', '☀️ Módulos fotovoltaicos', 'Wp', 'Fotos dos módulos (etiqueta e instalação)', 'Módulos'));
+      c.appendChild(bloco('inversor', '🔌 Inversor (ou microinversores)', 'kW', 'Fotos do inversor (etiqueta e instalação)', 'Inversor'));
     });
 
     /* ---------- materiais consumidos (infraestrutura CA) */
@@ -627,6 +648,9 @@
         }
       }, '⬇ Relatório de instalação (PDF)');
       links.unshift(btnRel);
+      links.unshift(h('button.btn', { type: 'button', onclick: function () {
+        App.Visualizar.abrir(function () { return App.Relatorios.pdfInstalacao(inst, ctx); }, { titulo: 'Relatório de instalação — ' + (inst.titulo || inst.clienteNome || '') });
+      } }, '👁 Visualizar relatório'));
       if (links.length) resumo.appendChild(h('div.resumo-links', links));
       resumo.appendChild(h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'));
     }

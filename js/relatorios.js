@@ -1,6 +1,6 @@
 /*
  * PDFs da execução: ordem de serviço, relatório de instalação (termo de entrega), com as assinaturas colhidas na tela e,
- * no relatório, as fotos das etiquetas, e pedido de compra para o fornecedor. Mesmo motor de documento da proposta (App.Pdf), sem capa.
+ * no relatório, as fotos dos equipamentos com as legendas, e pedido de compra para o fornecedor. Mesmo motor de documento da proposta (App.Pdf), sem capa.
  */
 window.App = window.App || {};
 
@@ -244,7 +244,7 @@ window.App = window.App || {};
     // fotos das etiquetas
     const fotos = Object.keys(rec.imagens).filter(function (r) { return /^foto/.test(r); });
     if (fotos.length) {
-      b.push(secao('Fotos das etiquetas'));
+      b.push(secao('Fotos dos equipamentos'));
       const wc = 3120, linhas = [];
       for (let i = 0; i < fotos.length; i += 3) {
         const cel = [];
@@ -315,8 +315,14 @@ window.App = window.App || {};
     const refs = { assCliente: as.cliente && as.cliente.fotoId, assTecnico: as.tecnico && as.tecnico.fotoId };
     const legendas = {};
     const pl = inst.placas || {};
-    [['modulo', 'Etiqueta do módulo'], ['inversor', 'Etiqueta do inversor']].forEach(function (x) {
-      ((pl[x[0]] && pl[x[0]].fotos) || []).forEach(function (id, i, l) { const ref = 'foto' + x[0] + i; refs[ref] = id; legendas[ref] = x[1] + (l.length > 1 ? ' (' + (i + 1) + ')' : ''); });
+    [['modulo', 'Módulos'], ['inversor', 'Inversor']].forEach(function (x) {
+      const leg = (pl[x[0]] && pl[x[0]].legendas) || {};
+      ((pl[x[0]] && pl[x[0]].fotos) || []).forEach(function (id, i, l) {
+        const ref = 'foto' + x[0] + i;
+        refs[ref] = id;
+        // legenda digitada na instalação ou a padrão
+        legendas[ref] = String(leg[id] || '').trim() || x[1] + (l.length > 1 ? ' — foto ' + (i + 1) : '');
+      });
     });
     const rec = await carregar(ctx, refs);
     rec.legendas = legendas;

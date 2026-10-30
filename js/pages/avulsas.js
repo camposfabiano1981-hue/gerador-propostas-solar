@@ -79,7 +79,7 @@
         h('td', h('div.texto-curto', (a.itens || []).map(function (i) { return i.descricao; }).join(', ') || '—')),
         h('td.num', U.brl(r.total)),
         h('td', statusBadge(a.status), sel),
-        h('td.acoes-col', btnPdf, btnDocx,
+        h('td.acoes-col', App.Visualizar.botao(function () { return A.gerarPdf(a, C.contexto()); }, 'Proposta avulsa ' + a.numero), btnPdf, btnDocx,
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
               if (await UI.confirmar('Excluir a proposta ' + a.numero + '?', 'Excluir', true)) {
@@ -149,8 +149,15 @@
     const btnSalvar = h('button.btn', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar');
     const btnPdf = h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ Proposta em PDF');
     const btnDocx = h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ Word (.docx)');
+    const btnVer = h('button.btn', {
+      type: 'button', onclick: function () {
+        if (!a.clienteId) { UI.toast('Selecione o cliente.', 'erro'); return; }
+        if (!a.itens.length) { UI.toast('Adicione ao menos um serviço.', 'erro'); return; }
+        App.Visualizar.abrir(function () { return A.gerarPdf(a, C.contexto()); }, { titulo: 'Proposta avulsa ' + (a.numero || '') });
+      }
+    }, '👁 Visualizar');
     const titulo = h('h1', id ? 'Proposta ' + a.numero : 'Nova proposta de serviços');
-    cont.appendChild(h('div.pagina-topo', h('div', titulo, h('p.sub', 'Serviços complementares à energia solar.')), h('div.acoes', btnSalvar, btnDocx, btnPdf)));
+    cont.appendChild(h('div.pagina-topo', h('div', titulo, h('p.sub', 'Serviços complementares à energia solar.')), h('div.acoes', btnSalvar, btnVer, btnDocx, btnPdf)));
 
     const colForm = h('div.form-col');
     const nav = h('nav.passos');

@@ -77,6 +77,20 @@ window.App = window.App || {};
     return { itens: itens, desconto: desconto, frete: frete, outras: outras, total: total, fator: itens > 0 ? total / itens : 1 };
   }
 
+  /**
+   * Rateio do item pelo valor (CPC 16 — custo de aquisição): parte do desconto, do frete e das outras despesas do pedido,
+   * custo total e unitário do item.
+   */
+  function rateio(c, it) {
+    const t = totais(c);
+    const v = totalItem(it), q = U.numOr(it.qtd, 0);
+    const parte = function (x) { return t.itens > 0 ? arred(x * v / t.itens) : 0; };
+    const r = { valor: v, desconto: parte(t.desconto), frete: parte(t.frete), outras: parte(t.outras) };
+    r.custoTotal = arred(v * t.fator);
+    r.custoUnit = q > 0 ? arred(v * t.fator / q, 4) : arred(U.numOr(it.preco, 0), 4);
+    return r;
+  }
+
   /** Custo unitário de aquisição do item (com o rateio, salvo ratear === false). */
   function custoUnitario(c, it, ratear) {
     const q = U.numOr(it.qtd, 0);
@@ -427,6 +441,7 @@ window.App = window.App || {};
       }
       reg.custo = custo;
       reg.custoEm = c.data || U.todayISO();
+      reg.custoAtualizadoEm = new Date().toISOString(); // as propostas em aberto acompanham o custo novo ao serem abertas
       reg.fornecedor = (c.fornecedor && c.fornecedor.nome) || reg.fornecedor || '';
       if (it.codigo) reg.codigoFornecedor = it.codigo;
       const hist = { compraId: c.id || '', numero: c.numero || '', data: c.data || '', fornecedor: reg.fornecedor, custo: custo, qtd: U.numOr(it.qtd, 0), unidade: un };
@@ -440,7 +455,7 @@ window.App = window.App || {};
   function rotulo(id) { return (SITUACOES.find(function (s) { return s.id === id; }) || SITUACOES[0]).label; }
 
   App.Compra = {
-    SITUACOES: SITUACOES, nova: nova, novoItem: novoItem, totalItem: totalItem, totais: totais, custoUnitario: custoUnitario,
+    SITUACOES: SITUACOES, nova: nova, novoItem: novoItem, totalItem: totalItem, totais: totais, custoUnitario: custoUnitario, rateio: rateio,
     unidade: unidade, numero: numero, lerLinhas: lerLinhas, conciliar: conciliar, aplicarLeitura: aplicarLeitura,
     semelhanca: semelhanca, sugerir: sugerir, paraCadastro: paraCadastro, rotulo: rotulo, semAcento: semAcento
   };

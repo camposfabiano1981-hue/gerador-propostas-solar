@@ -70,7 +70,7 @@
           h('td', obra ? obra.titulo || obra.clienteNome : '—'),
           h('td', v.total && v.n === v.total ? UI.badge('No cadastro', 'ok') : (v.n ? UI.badge(v.n + ' de ' + v.total, 'ambar') : UI.badge('Pendente', 'cinza'))),
           h('td', badge(c.situacao)),
-          h('td.acoes-col', (function () {
+          h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfCompra(c, App.Calc.contexto()); }, 'Pedido de compra ' + (c.numero || '')), (function () {
             const btn = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar o pedido em PDF', onclick: function () { baixarPdf(c, btn); } }, 'PDF');
             return btn;
           })(), h('button.btn-icone.perigo', {
@@ -146,8 +146,13 @@
       baixarPdf(c, botao);
     };
     const btnPdfTopo = h('button.btn', { type: 'button', onclick: function () { gerarPdf(btnPdfTopo); } }, '⬇ Pedido em PDF');
+    const visualizar = function () {
+      if (!String(c.fornecedor.nome || '').trim()) { UI.toast('Informe o fornecedor.', 'erro'); return; }
+      App.Visualizar.abrir(function () { return App.Relatorios.pdfCompra(c, App.Calc.contexto()); }, { titulo: 'Pedido de compra ' + (c.numero || '') });
+    };
     cont.appendChild(h('div.pagina-topo', h('div', titulo, subt), h('div.acoes',
       h('a.btn', { href: '#/compras' }, '← Pedidos de compra'),
+      h('button.btn', { type: 'button', onclick: visualizar }, '👁 Visualizar'),
       btnPdfTopo,
       h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'))));
 
@@ -321,13 +326,27 @@
       S.list('equipamentos').forEach(function (e) { eqs[e.id] = e; });
       const totaisBox = h('div.compra-totais');
       const tb = h('tbody');
+      // custo final de cada item: preço com a parte do desconto, do frete e das outras despesas (rateio pelo valor)
+      const custos = [];
+      const pintarCustos = function () {
+        custos.forEach(function (x) {
+          const r = Cp.rateio(c, x.it);
+          const rateados = r.frete + r.outras;
+          x.el.replaceChildren(h('strong', U.brl(r.custoUnit) + ' / ' + (x.it.unidade || 'un')),
+            rateados || r.desconto ? h('small', [rateados ? '+ ' + U.brl(rateados) + ' frete/desp.' : '', r.desconto ? '− ' + U.brl(r.desconto) + ' desc.' : ''].filter(Boolean).join(' · ')) : null);
+          x.el.title = 'Valor ' + U.brl(r.valor) + (r.desconto ? ' − desconto ' + U.brl(r.desconto) : '') + (r.frete ? ' + frete ' + U.brl(r.frete) : '') +
+            (r.outras ? ' + outras despesas ' + U.brl(r.outras) : '') + ' = ' + U.brl(r.custoTotal);
+        });
+      };
       c.itens.forEach(function (it, i) {
-        const totalEl = campoNum({ k: 'total', type: 'money' }, it, function () { desenharTotais(); mudou(); });
+        const totalEl = campoNum({ k: 'total', type: 'money' }, it, function () { desenharTotais(); pintarCustos(); mudou(); });
         const recalcular = function () {
           it.total = U.round(U.numOr(it.qtd, 0) * U.numOr(it.preco, 0), 2);
           totalEl.querySelector('input').value = String(it.total).replace('.', ',');
-          desenharTotais(); mudou();
+          desenharTotais(); pintarCustos(); mudou();
         };
+        const custoEl = h('div.compra-custo-val');
+        custos.push({ it: it, el: custoEl });
         const eq = it.equipamentoId && eqs[it.equipamentoId];
         tb.appendChild(h('tr',
           h('td.compra-cod', { 'data-rotulo': 'Código' }, campoNum({ k: 'codigo' }, it, mudou)),
@@ -337,6 +356,7 @@
           h('td.compra-qtd', { 'data-rotulo': 'Qtd.' }, campoNum({ k: 'qtd', type: 'number' }, it, recalcular)),
           h('td.compra-preco', { 'data-rotulo': 'Preço unit.' }, campoNum({ k: 'preco', type: 'money' }, it, recalcular)),
           h('td.compra-total', { 'data-rotulo': 'Total' }, totalEl),
+          h('td.compra-custo', { 'data-rotulo': 'Custo final (c/ frete)' }, custoEl),
           h('td.compra-cad', { 'data-rotulo': 'Cadastro' }, eq ? h('a.badge.ok', { href: '#/equipamentos?tipo=material', title: eq.descricao }, 'No cadastro') : h('span.mini', '—')),
           h('td.acoes-col', h('button.btn-icone.perigo', {
             type: 'button', title: 'Remover item', 'aria-label': 'Remover item', onclick: function () { c.itens.splice(i, 1); mudou(); desenhar('itens'); }
@@ -358,7 +378,7 @@
           { k: 'desconto', label: 'Desconto', type: 'money' },
           { k: 'frete', label: 'Frete', type: 'money' },
           { k: 'outras', label: 'Outras despesas', type: 'money' }
-        ], c, function () { atualizarTotal(); mudou(); }, 3));
+        ], c, function () { atualizarTotal(); pintarCustos(); mudou(); }, 3));
         const totalLinha = h('div.compra-linha.total');
         const notas = h('div');
         const atualizarTotal = function () {
@@ -369,9 +389,11 @@
           notas.innerHTML = '';
           const doc = U.num(c.totalDocumento);
           if (doc > 0 && Math.abs(doc - tt.total) > 0.05) notas.appendChild(h('p.nota.aviso', 'O total impresso no documento é ' + U.brl(doc) + ': confira itens, desconto e frete.'));
-          if (tt.itens > 0 && Math.abs(tt.fator - 1) > 0.0001) {
-            notas.appendChild(h('p.ajuda-sec', 'Custo de aquisição: ' + (tt.fator < 1 ? 'o desconto' : 'frete e despesas') + ' entram no custo de cada item na proporção do valor (' +
-              (tt.fator < 1 ? '−' : '+') + U.fmtSmart(Math.abs(tt.fator - 1) * 100, 2) + '% em cada preço).'));
+          if (tt.itens > 0 && (tt.desconto || tt.frete || tt.outras)) {
+            const partes = [tt.frete ? 'frete de ' + U.brl(tt.frete) : '', tt.outras ? 'outras despesas de ' + U.brl(tt.outras) : '', tt.desconto ? 'desconto de ' + U.brl(tt.desconto) : ''].filter(Boolean);
+            const lista = partes.length > 1 ? partes.slice(0, -1).join('; ') + ' e ' + partes[partes.length - 1] : partes[0];
+            notas.appendChild(h('p.ajuda-sec', 'Custo de aquisição: ' + lista + ' atribuídos aos itens na proporção do valor de cada um (' +
+              (tt.fator < 1 ? '−' : '+') + U.fmtSmart(Math.abs(tt.fator - 1) * 100, 2) + '% em cada preço). O custo final de cada item é o que vai para Materiais e acessórios.'));
           }
         };
         atualizarTotal();
@@ -379,6 +401,7 @@
         totaisBox.appendChild(notas);
       }
       desenharTotais();
+      pintarCustos();
       box.appendChild(totaisBox);
     });
 
@@ -463,6 +486,7 @@
         kpi('Materiais e acessórios', v.total ? v.n + ' de ' + v.total + ' no cadastro' : '—', c.cadastradoEm ? 'Lançado em ' + U.dataBR(c.cadastradoEm) : null)));
       const links = [];
       const btnPdf = h('button.btn', { type: 'button', onclick: function () { gerarPdf(btnPdf); } }, '⬇ Pedido em PDF');
+      links.push(h('button.btn', { type: 'button', onclick: visualizar }, '👁 Visualizar'));
       links.push(btnPdf);
       if (c.itens.length) links.push(h('button.btn', { type: 'button', onclick: cadastrar }, '📦 Lançar em Materiais'));
       if (c.instalacaoId && S.get('instalacoes', c.instalacaoId)) links.push(h('a.btn', { href: '#/instalacao/' + c.instalacaoId }, '🏗 Abrir a obra'));

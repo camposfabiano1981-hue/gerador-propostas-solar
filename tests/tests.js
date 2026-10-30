@@ -835,7 +835,9 @@
   const mSemP = App.Documento.montar(p, r, ctx, ctx.clientes[0], { w: 1400, h: 752 });
   igual('sem projetos: seções na ordem da proposta amigável', titulos(textoModelo(mSemP)).join(' | '),
     '1 Apresentação da empresa | 2 Como a energia solar funciona na sua casa | 3 Seu sistema solar | 4 Seu investimento e retorno | ' +
-    '5 O que está incluso | 6 Quanto você economiza | 7 Próximos passos');
+    '5 Quanto você economiza | 6 O que está incluso | 7 Próximos passos');
+  igual('com projetos: Quanto você economiza (6) logo depois de Seu investimento e retorno (5)', titulos(txP).slice(4).join(' | '),
+    '5 Seu investimento e retorno | 6 Quanto você economiza | 7 O que está incluso | 8 Próximos passos');
   ok('passo a passo: fora da proposta por padrão', D.textos.passoNaProposta === false && !mSemP.imagens.passos && textoModelo(mSemP).indexOf(D.textos.passoIntro) < 0);
   const ctxPassos = U.clone(ctxP); ctxPassos.textos = Object.assign(U.clone(ctxP.textos || D.textos), { passoNaProposta: true });
   const mPassos = App.Documento.montar(p, rP, ctxPassos, ctxP.clientes[0], { w: 1400, h: 752 });
@@ -1007,6 +1009,26 @@
     M.copiar(destino, fts[0], ctxM.equipamentos, true);
     ok('materiais CA: copiar substituindo a lista', destino.length === 2 && destino[0].qtd === 8);
 
+    // rateio do frete, das outras despesas e do desconto por item (custo final)
+    const pr = Object.assign(Cp.nova(), { desconto: 20, frete: 30, outras: 10, itens: [Cp.novoItem({ descricao: 'A', qtd: 4, preco: 75, total: 300 }), Cp.novoItem({ descricao: 'B', qtd: 10, preco: 10, total: 100 })] });
+    const ra = Cp.rateio(pr, pr.itens[0]), rb = Cp.rateio(pr, pr.itens[1]);
+    ok('compras: frete e outras despesas atribuídos aos itens pelo valor (75% e 25%)', ra.frete === 22.5 && ra.outras === 7.5 && ra.desconto === 15 && rb.frete === 7.5 && rb.outras === 2.5 && rb.desconto === 5 &&
+      ra.custoTotal === 315 && rb.custoTotal === 105 && ra.custoUnit === 78.75 && rb.custoUnit === 10.5 && ra.custoUnit === Cp.custoUnitario(pr, pr.itens[0]) && U.round(ra.custoTotal + rb.custoTotal, 2) === Cp.totais(pr).total,
+      JSON.stringify([ra, rb]));
+
+    // proposta em aberto acompanha os custos lançados pelos pedidos de compra depois da última gravação
+    const eqC = [{ id: 'm-dps', tipo: 'material', descricao: 'DPS', preco: 60, custo: 58.3, atualizadoEm: '2026-10-30T12:00:00.000Z', custoAtualizadoEm: '2026-10-30T12:00:00.000Z' },
+      { id: 'm-cabo', tipo: 'material', descricao: 'Cabo', preco: 5, atualizadoEm: '2026-10-01T10:00:00.000Z' },
+      { id: 'm-mc4', tipo: 'material', descricao: 'MC4', preco: 14, custoAtualizadoEm: '2026-10-30T12:00:00.000Z' }];
+    const pAb = { status: 'enviada', infraModo: 'lista', atualizadoEm: '2026-10-20T09:00:00.000Z', infraValor: 104,
+      materiaisCA: [{ equipamentoId: 'm-dps', descricao: 'DPS', qtd: 2, custo: 50 }, { equipamentoId: 'm-cabo', descricao: 'Cabo', qtd: 1, custo: 4 }],
+      itens: [{ equipamentoId: 'm-mc4', categoria: 'material', qtd: 2, precoUnit: 12 }, { equipamentoId: 'm-mc4', manual: true, qtd: 1, precoUnit: 9 }] };
+    const atu = C.atualizarCustosProposta(pAb, { equipamentos: eqC });
+    ok('proposta: custos novos da compra ao abrir (lista CA e materiais do kit); o que não mudou desde a gravação fica', atu && atu.n === 2 && pAb.materiaisCA[0].custo === 58.3 && pAb.materiaisCA[1].custo === 4 &&
+      pAb.itens[0].precoUnit === 14 && pAb.itens[1].precoUnit === 9 && atu.infraAntes === 104 && atu.infraDepois === 120.6 && pAb.infraValor === 120.6, JSON.stringify(atu));
+    pAb.atualizadoEm = '2026-10-31T08:00:00.000Z';
+    ok('proposta: depois de salva com os custos novos, abrir de novo não muda nada', C.atualizarCustosProposta(pAb, { equipamentos: eqC }) === null);
+
     // numeração e coleção
     ok('compras: coleção sincronizada e no backup', S.COLECOES.indexOf('compras') >= 0 && Array.isArray(S.exportar().colecoes.compras));
     ok('compras: número PC-AAAAMMDD-NNN com sequência própria', /^PC-20261030-\d{3}$/.test(S.proximoNumero('2026-10-30', 'compra').numero) && S.proximoNumero('2026-10-30', 'compra').chave === 'PC:20261030');
@@ -1051,7 +1073,12 @@
       const gOS = await App.Relatorios.pdfOS(osA, ctxA);
       ok('PDF da OS gerado com a assinatura do cliente', new TextDecoder().decode(await gOS.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && Object.keys(gOS.modelo.imagens).join(',') === 'assCliente' && /^OS_OS-20261029-009_/.test(gOS.nome), gOS.nome);
       const instA = Object.assign(App.Instalacao.nova(ctxA), { titulo: 'Obra teste', clienteNome: 'Cliente Exemplo', assinaturas: { cliente: { fotoId: idA, nome: 'Cliente Exemplo', em: '2026-10-29T10:00:00' }, tecnico: { fotoId: idA, nome: 'Técnico', em: '2026-10-29T10:01:00' } } });
+      instA.placas.modulo.fotos = [idA, idA + '-x'];
+      instA.placas.modulo.legendas = { [idA]: 'Arranjo no telhado, lado norte' };
+      instA.placas.inversor.fotos = [idA];
       const gIn = await App.Relatorios.pdfInstalacao(instA, ctxA);
+      const txIn = JSON.stringify(gIn.modelo.corpo);
+      ok('relatório: fotos dos equipamentos com a legenda digitada (ou a padrão)', /Fotos dos equipamentos/.test(txIn) && /Arranjo no telhado, lado norte/.test(txIn) && /"Inversor"/.test(txIn), txIn.match(/Fotos dos equipamentos/) ? 'ok' : 'sem seção');
       ok('PDF do relatório de instalação gerado com as duas assinaturas', new TextDecoder().decode(await gIn.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && ['assCliente', 'assTecnico'].every(function (k) { return !!gIn.modelo.imagens[k]; }), gIn.nome);
       await F.remover(idA);
       // pedido de compra em PDF (para o fornecedor)
