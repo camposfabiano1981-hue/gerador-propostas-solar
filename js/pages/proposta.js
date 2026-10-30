@@ -82,8 +82,16 @@
         App.Visualizar.abrir(function () { return App.Pdf.gerar(p, ctx); }, { titulo: 'Proposta ' + p.numero });
       }
     }, '👁 Visualizar');
+    const btnEnviar = h('button.btn', {
+      type: 'button', onclick: function () {
+        if (!p.clienteId) { UI.toast('Selecione o cliente.', 'erro'); return; }
+        atualizar();
+        if ((sujo || !p.id) && !salvar(false)) return;
+        App.enviarProposta(p, function () { salvar(false); desenhar('ident'); });
+      }
+    }, '📲 Enviar ao cliente');
     const titulo = h('h1', id ? 'Proposta ' + p.numero : 'Nova proposta');
-    cont.appendChild(h('div.pagina-topo', h('div', titulo, subtitulo), h('div.acoes', btnSalvar, btnVer, btnDocx, btnPdf)));
+    cont.appendChild(h('div.pagina-topo', h('div', titulo, subtitulo), h('div.acoes', btnSalvar, btnEnviar, btnVer, btnDocx, btnPdf)));
 
     const nav = h('nav.passos');
     const colForm = h('div.form-col');

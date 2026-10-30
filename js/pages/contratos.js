@@ -133,7 +133,7 @@
         h('td', h('div.texto-curto', ct.objeto || '—')),
         h('td.num', U.brl(K.total(ct))),
         h('td', statusBadge(ct.status), sel),
-        h('td.acoes-col', btnPdf, btnDocx,
+        h('td.acoes-col', App.Visualizar.botao(function () { return K.gerarPdf(ct, C.contexto()); }, 'Contrato ' + (ct.numero || '')), btnPdf, btnDocx,
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
               if (await UI.confirmar('Excluir o contrato ' + ct.numero + '?', 'Excluir', true)) {
@@ -219,7 +219,8 @@
     const btnDocx = h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ Word (.docx)');
     const titulo = h('h1', id ? 'Contrato ' + ct.numero : 'Novo contrato');
     const subt = h('p.sub', ct.propostaNumero ? 'Gerado a partir da proposta ' + ct.propostaNumero + '.' : 'Contrato em branco — preencha os dados ou importe de uma proposta.');
-    cont.appendChild(h('div.pagina-topo', h('div', titulo, subt), h('div.acoes', btnSalvar, btnDocx, btnPdf)));
+    const btnVer = h('button.btn', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return K.gerarPdf(ct, C.contexto()); }, { titulo: 'Contrato ' + (ct.numero || '') }); } }, '👁 Visualizar');
+    cont.appendChild(h('div.pagina-topo', h('div', titulo, subt), h('div.acoes', btnSalvar, btnVer, btnDocx, btnPdf)));
 
     const colForm = h('div.form-col');
     const nav = h('nav.passos');
@@ -443,7 +444,8 @@
           h('div.kpi', h('span', 'Prazo'), h('strong', U.numOr(ct.prazoDias, 0) + ' dias'))),
         h('p.mini', cli ? cli.nome : 'Sem contratante'),
         pend.length ? h('div.nota.aviso', h('ul', pend.map(function (x) { return h('li', x); }))) : h('div.nota.ok', 'Pronto para gerar.'),
-        h('div.resumo-acoes', h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ PDF'), h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ DOCX'))));
+        h('div.resumo-acoes', h('button.btn', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return K.gerarPdf(ct, C.contexto()); }, { titulo: 'Contrato ' + (ct.numero || '') }); } }, '👁 Visualizar'),
+          h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ PDF'), h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ DOCX'))));
     }
 
     function salvar(avisar) {

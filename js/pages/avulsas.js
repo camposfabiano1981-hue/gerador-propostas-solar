@@ -62,6 +62,25 @@
     });
   });
 
+  /** Envio da proposta avulsa ao cliente pelo WhatsApp (link do PDF); guardar() grava o registro. */
+  App.enviarAvulsa = function (a, guardar) {
+    const ctx = C.contexto();
+    const cli = ctx.clientes.find(function (x) { return x.id === a.clienteId; }) || {};
+    const validade = U.dataBR(App.Crm.vencimento(a, ctx.empresa.validadeDias));
+    const nome = cli.nome || a.clienteNome;
+    App.Envio.abrir({
+      titulo: 'Enviar a proposta ' + a.numero + ' ao cliente', tipoDoc: 'Proposta de serviços', numero: a.numero, validade: validade,
+      clienteNome: nome, telefone: cli.telefone || '', registro: a,
+      gerar: function () { return A.gerarPdf(a, ctx); },
+      mensagem: function (link) { return App.Envio.mensagem(ctx, 'envioAvulsa', { cliente: nome, numero: a.numero, validade: validade, link: link }); },
+      aoPublicar: function (ld) { a.linkDoc = ld; guardar(); },
+      aoEnviar: function () {
+        if (!a.status || a.status === 'rascunho') { a.status = 'enviada'; UI.toast('Proposta ' + a.numero + ': situação Enviada.', 'ok'); }
+        guardar();
+      }
+    }, ctx);
+  };
+
   /* ------------------------------------------------------------ lista */
 
   function tabela(lista, recarregar) {
@@ -79,7 +98,7 @@
         h('td', h('div.texto-curto', (a.itens || []).map(function (i) { return i.descricao; }).join(', ') || '—')),
         h('td.num', U.brl(r.total)),
         h('td', statusBadge(a.status), sel),
-        h('td.acoes-col', App.Visualizar.botao(function () { return A.gerarPdf(a, C.contexto()); }, 'Proposta avulsa ' + a.numero), btnPdf, btnDocx,
+        h('td.acoes-col', App.Envio.botao(function () { App.enviarAvulsa(a, function () { S.save('avulsas', a); recarregar(); }); }, 'proposta ' + a.numero), App.Visualizar.botao(function () { return A.gerarPdf(a, C.contexto()); }, 'Proposta avulsa ' + a.numero), btnPdf, btnDocx,
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
               if (await UI.confirmar('Excluir a proposta ' + a.numero + '?', 'Excluir', true)) {
@@ -156,8 +175,16 @@
         App.Visualizar.abrir(function () { return A.gerarPdf(a, C.contexto()); }, { titulo: 'Proposta avulsa ' + (a.numero || '') });
       }
     }, '👁 Visualizar');
+    const btnEnviar = h('button.btn', {
+      type: 'button', onclick: function () {
+        if (!a.clienteId) { UI.toast('Selecione o cliente.', 'erro'); return; }
+        if (!a.itens.length) { UI.toast('Adicione ao menos um serviço.', 'erro'); return; }
+        if ((sujo || !a.id) && !salvar(false)) return;
+        App.enviarAvulsa(a, function () { salvar(false); desenhar('ident'); });
+      }
+    }, '📲 Enviar ao cliente');
     const titulo = h('h1', id ? 'Proposta ' + a.numero : 'Nova proposta de serviços');
-    cont.appendChild(h('div.pagina-topo', h('div', titulo, h('p.sub', 'Serviços complementares à energia solar.')), h('div.acoes', btnSalvar, btnVer, btnDocx, btnPdf)));
+    cont.appendChild(h('div.pagina-topo', h('div', titulo, h('p.sub', 'Serviços complementares à energia solar.')), h('div.acoes', btnSalvar, btnEnviar, btnVer, btnDocx, btnPdf)));
 
     const colForm = h('div.form-col');
     const nav = h('nav.passos');

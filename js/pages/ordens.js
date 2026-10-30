@@ -26,6 +26,19 @@
     }
   }
 
+  /** Envio da OS ao cliente pelo WhatsApp (link do PDF); guardar() grava o registro. */
+  App.enviarOS = function (os, guardar) {
+    const ctx = C.contexto();
+    const situacao = os.status === 'concluida' ? ', concluída' + (os.concluidaEm ? ' em ' + U.dataBR(os.concluidaEm) : '') : '';
+    App.Envio.abrir({
+      titulo: 'Enviar a OS ' + (os.numero || '') + ' ao cliente', tipoDoc: 'Ordem de serviço', numero: os.numero, clienteNome: os.clienteNome, telefone: os.telefone, registro: os,
+      gerar: function () { return App.Relatorios.pdfOS(os, ctx); },
+      mensagem: function (link) { return App.Envio.mensagem(ctx, 'envioOS', { cliente: os.clienteNome, numero: os.numero, tipo: O.rotulo(O.TIPOS, os.tipo).toLowerCase(), situacao: situacao, link: link }); },
+      aoPublicar: function (ld) { os.linkDoc = ld; guardar(); },
+      aoEnviar: function () { guardar(); }
+    }, ctx);
+  };
+
   /** Tabela de ordens (lista geral e seção da instalação). */
   App.tabelaOrdens = function (lista, recarregar, semObra) {
     const hoje = U.todayISO();
@@ -39,7 +52,7 @@
         h('td', os.status === 'concluida' ? 'Concluída em ' + U.dataBR(os.concluidaEm) : (U.dataBR(os.agendadaPara) || '—'),
           O.atrasada(os, hoje) ? h('div', UI.badge('Atrasada', 'erro')) : null),
         h('td', badge(O.STATUS, os.status)),
-        recarregar ? h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfOS(os, C.contexto()); }, 'Ordem de serviço ' + (os.numero || '')), (function () {
+        recarregar ? h('td.acoes-col', App.Envio.botao(function () { App.enviarOS(os, function () { S.save('ordens', os); }); }, 'OS ' + (os.numero || '')), App.Visualizar.botao(function () { return App.Relatorios.pdfOS(os, C.contexto()); }, 'Ordem de serviço ' + (os.numero || '')), (function () {
           const btn = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar a OS em PDF', onclick: function () { baixarPdf(os, btn); } }, 'PDF');
           return btn;
         })(), h('button.btn-icone.perigo', {
@@ -238,6 +251,11 @@
       resumo.appendChild(h('div.resumo-links', acoes));
       const btnPdf = h('button.btn', { type: 'button', onclick: function () { baixarPdf(os, btnPdf); } }, '⬇ OS em PDF');
       resumo.appendChild(h('div.resumo-links',
+        h('button.btn', { type: 'button', onclick: function () {
+          if (!os.clienteNome && !os.instalacaoId) { UI.toast('Escolha a instalação ou o cliente.', 'erro'); return; }
+          if ((sujo || !os.id) && !salvar(false)) return;
+          App.enviarOS(os, function () { salvar(false); });
+        } }, '📲 Enviar ao cliente'),
         h('button.btn', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return App.Relatorios.pdfOS(os, C.contexto()); }, { titulo: 'Ordem de serviço ' + (os.numero || '') }); } }, '👁 Visualizar OS'),
         btnPdf));
       if (os.instalacaoId && S.get('instalacoes', os.instalacaoId)) resumo.appendChild(h('a.btn', { href: '#/instalacao/' + os.instalacaoId }, '🏗 Abrir a instalação'));

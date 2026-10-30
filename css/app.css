@@ -586,3 +586,13 @@ dialog.modal.visualizar .modal-corpo { flex: 1; background: #E2E8F0; padding: 12
 .link-acompanhamento { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--borda-forte); border-radius: 8px; background: #F8FAFC; font-size: 13px; color: var(--texto-2); }
 .situacao-publicacao { margin: 8px 0 0; font-size: 13px; color: #15803D; }
 .situacao-publicacao.erro { color: var(--vermelho); font-weight: 600; }
+
+/* ---------- envio dos documentos ao cliente */
+.envio-status { margin: 0 !important; font-size: 13px; color: var(--azul-2); font-weight: 600; }
+.envio-status.ok { color: #15803D; }
+.envio-status.aviso { color: var(--ambar); }
+.envio-status.erro { color: var(--vermelho); }
+.envio-link { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.envio-link[hidden] { display: none; }
+.envio-link input { flex: 1 1 260px; }
+.btn-formato.enviar { font-size: 12px; padding: 2px 6px; border-color: #86EFAC; }

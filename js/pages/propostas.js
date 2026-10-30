@@ -31,6 +31,25 @@
     }
   }
 
+  /** Envio da proposta ao cliente pelo WhatsApp (link do PDF); guardar() grava o registro (lista ou formulário). */
+  App.enviarProposta = function (p, guardar) {
+    const ctx = C.contexto();
+    const cli = ctx.clientes.find(function (x) { return x.id === p.clienteId; }) || {};
+    const validade = U.dataBR(App.Crm.vencimento(p, ctx.empresa.validadeDias));
+    const nome = cli.nome || p.clienteNome;
+    App.Envio.abrir({
+      titulo: 'Enviar a proposta ' + p.numero + ' ao cliente', tipoDoc: 'Proposta de energia solar', numero: p.numero, validade: validade,
+      clienteNome: nome, telefone: cli.telefone || '', registro: p,
+      gerar: function () { return App.Pdf.gerar(p, ctx); },
+      mensagem: function (link) { return App.Envio.mensagem(ctx, 'envioProposta', { cliente: nome, numero: p.numero, validade: validade, link: link }); },
+      aoPublicar: function (ld) { p.linkDoc = ld; guardar(); },
+      aoEnviar: function () {
+        if (!p.status || p.status === 'rascunho') { App.Crm.mudarStatus(p, 'enviada'); UI.toast('Proposta ' + p.numero + ': situação Enviada.', 'ok'); }
+        guardar();
+      }
+    }, ctx);
+  };
+
   function duplicar(p) {
     const n = S.proximoNumero(U.todayISO());
     const copia = U.clone(p);
@@ -62,6 +81,7 @@
         h('td.num', rs.total ? U.brl(rs.total) : '—'),
         h('td', statusBadge(p.status), sel),
         h('td.acoes-col',
+          App.Envio.botao(function () { App.enviarProposta(p, function () { S.save('propostas', p); recarregar(); }); }, 'proposta ' + p.numero),
           App.Visualizar.botao(function () { return App.Pdf.gerar(p, C.contexto()); }, 'Proposta ' + p.numero),
           btnPdf,
           btnDocx,
@@ -114,7 +134,7 @@
       h('option', { value: '' }, 'Todas as situações'), D.STATUS.map(function (s) { return h('option', { value: s.id }, s.label); }));
     const selTipo = h('select', { 'aria-label': 'Filtrar por tipo', onchange: function () { filtro.tipo = selTipo.value; desenhar(); } },
       h('option', { value: '' }, 'Todos os tipos'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'), h('option', { value: 'bess' }, 'BESS'));
-    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. PDF / DOCX baixam a proposta, ✍ gera o contrato, 🏗 abre a instalação, ⧉ duplica.', [
+    cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. 📲 envia ao cliente pelo WhatsApp, 👁 visualiza, PDF / DOCX baixam, ✍ gera o contrato, 🏗 abre a instalação, ⧉ duplica.', [
       busca, selStatus, selTipo, h('a.btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta')
     ]));
     cont.appendChild(box);

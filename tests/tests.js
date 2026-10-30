@@ -1070,6 +1070,24 @@
       !/acompanhamento[\s\S]*allow (read|list)/.test(regras), regras);
   })();
 
+  // ---------------------------------------------------------------- envio dos documentos ao cliente
+  (function () {
+    const E = App.Envio;
+    const ctxE = ctxReferencia();
+    ctxE.empresa = Object.assign({}, ctxE.empresa, { nomeCurto: 'Gênesis', telefone: '(67) 99999-0000', email: 'contato@exemplo.com.br' });
+    igual('envio: link da página do documento', E.linkDocumento('tok123', 'https://exemplo.github.io/app/'), 'https://exemplo.github.io/app/ver.html?d=tok123');
+    const mP = E.mensagem(ctxE, 'envioProposta', { cliente: 'JOÃO PEREIRA', numero: 'GE-20261030-001', validade: '04/11/2026', link: 'https://x.test/ver.html?d=a' });
+    ok('envio: mensagem da proposta (nome, número, validade, link e empresa)', /^Olá, João! 👋/.test(mP) && /nº GE-20261030-001, válida até 04\/11\/2026/.test(mP) && /https:\/\/x\.test\/ver\.html\?d=a/.test(mP) && /Gênesis$/.test(mP), mP);
+    const mSem = E.mensagem(ctxE, 'envioProposta', { cliente: 'João', numero: 'GE-1', validade: '04/11/2026', link: '' });
+    ok('envio: sem link, a linha do link sai da mensagem', mSem.indexOf('{link}') < 0 && !/https?:/.test(mSem) && mSem.indexOf('Abra pelo link') < 0 && /válida até 04\/11\/2026\.\n\nQualquer dúvida/.test(mSem), mSem);
+    const mOS = E.mensagem(ctxE, 'envioOS', { cliente: 'Ana', numero: 'OS-20261030-001', tipo: 'limpeza dos módulos', situacao: ', concluída em 30/10/2026', link: 'https://x.test/v' });
+    ok('envio: mensagem da OS com tipo e situação', /ordem de serviço nº OS-20261030-001 \(limpeza dos módulos, concluída em 30\/10\/2026\)/.test(mOS), mOS);
+    ok('envio: modelos editáveis em Textos padrão', ['envioProposta', 'envioAvulsa', 'envioOS'].every(function (k) { return /\{link\}/.test(D.textos[k]) && /\{cliente\}/.test(D.textos[k]); }));
+    const meta = E.metaDocumento({ tipoDoc: 'Proposta de energia solar', numero: 'GE-1', validade: '04/11/2026', clienteNome: 'Maria da Silva' }, { nome: 'Proposta_Solar_Maria.pdf' }, ctxE, 'data:image/jpeg;base64,xx');
+    ok('envio: página do documento com primeiro nome, número, validade e contato da empresa', meta.cliente === 'Maria' && meta.numero === 'GE-1' && meta.validade === '04/11/2026' && meta.arquivo === 'Proposta_Solar_Maria.pdf' &&
+      meta.empresa.telefone === '(67) 99999-0000' && meta.empresa.logo === 'data:image/jpeg;base64,xx' && JSON.stringify(meta).indexOf('Silva') < 0, JSON.stringify(meta));
+  })();
+
   // ---------------------------------------------------------------- docx
   async function testarFotos() {
     const F = App.Fotos;

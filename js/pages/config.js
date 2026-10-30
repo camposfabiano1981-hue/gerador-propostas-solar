@@ -267,6 +267,15 @@
         { k: 'avisoLink', label: 'Envio do link de acompanhamento', type: 'textarea', rows: 5, cls: 'span2' }
       ], tx, marcar)));
 
+    cont.appendChild(h('div.card', h('h3', 'Envio dos documentos pelo WhatsApp'),
+      h('p.ajuda-sec', 'Mensagens do botão 📲 Enviar ao cliente das propostas, propostas avulsas e ordens de serviço. Marcadores: {cliente} (primeiro nome), {numero}, {validade} (propostas), ',
+        '{tipo} e {situacao} (OS), {link} (página com o PDF) e {empresa}. Sem a sincronização ligada, a linha do {link} sai e o PDF vai pelo compartilhamento do aparelho.'),
+      UI.grade([
+        { k: 'envioProposta', label: 'Proposta de energia solar', type: 'textarea', rows: 6, cls: 'span2' },
+        { k: 'envioAvulsa', label: 'Proposta avulsa (serviços)', type: 'textarea', rows: 6, cls: 'span2' },
+        { k: 'envioOS', label: 'Ordem de serviço', type: 'textarea', rows: 6, cls: 'span2' }
+      ], tx, marcar)));
+
     cont.appendChild(h('div.card', h('h3', 'Propostas avulsas (serviços complementares)'), UI.grade([
       { k: 'avulsaApresentacao', label: 'Apresentação', type: 'textarea', rows: 3, cls: 'span2' },
       { k: 'avulsaGarantia', label: 'Garantia padrão dos serviços', type: 'textarea', rows: 2, cls: 'span2' },

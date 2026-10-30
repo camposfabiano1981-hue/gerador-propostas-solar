@@ -104,6 +104,11 @@ window.App = window.App || {};
     });
   }
 
+  /** Logotipo da empresa reduzido para as páginas públicas (vazio se não abrir). */
+  function logoPequeno(ctx) {
+    return reduzir((ctx.empresa && ctx.empresa.logo) || App.LOGO_PADRAO, 360, 0.86).catch(function () { return ''; });
+  }
+
   const miniaturas = {}; // fotoId → miniatura (não refaz a cada gravação)
 
   /** Fotos dos equipamentos para a página: miniaturas de até 720 px com a legenda digitada (ou a padrão). */
@@ -169,8 +174,7 @@ window.App = window.App || {};
       return s;
     }
     try {
-      let logo = '';
-      try { logo = await reduzir(ctx.empresa.logo || App.LOGO_PADRAO, 360, 0.86); } catch (e) { logo = ''; }
+      const logo = await logoPequeno(ctx);
       const d = dadosPublicos(inst, ctx, { logo: logo, fotos: a.fotos ? await fotosPublicas(inst) : [] });
       const chave = JSON.stringify(Object.assign({}, d, { atualizadoEm: '' }));
       if (publicados[a.token] === chave && situacao[a.token] && situacao[a.token].estado === 'ok') return situacao[a.token];
@@ -228,7 +232,7 @@ window.App = window.App || {};
 
   App.Acompanhamento = {
     novoToken: novoToken, primeiroNome: primeiroNome, telefoneWhats: telefoneWhats, linkWhats: linkWhats, linkAcompanhamento: linkAcompanhamento,
-    preencher: preencher, mensagemEtapa: mensagemEtapa, mensagemLink: mensagemLink, dadosPublicos: dadosPublicos, publicar: publicar, despublicar: despublicar, testarLink: testarLink,
+    logoPequeno: logoPequeno, preencher: preencher, mensagemEtapa: mensagemEtapa, mensagemLink: mensagemLink, dadosPublicos: dadosPublicos, publicar: publicar, despublicar: despublicar, testarLink: testarLink,
     situacao: function (token) { return situacao[token] || null; }
   };
 })(window.App);

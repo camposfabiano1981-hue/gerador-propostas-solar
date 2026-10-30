@@ -70,7 +70,8 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - na proposta, o campo **Infraestrutura elétrica CA** tem duas formas: **lista de materiais CA** (escolha do cadastro ou digitação, quantidade e custo; o valor do campo é a soma da lista, que acompanha cada alteração) ou **valor informado** (lançamento manual, como antes). **↻ Atualizar custos pelo cadastro** usa o custo da última compra; **📋 Copiar de outra obra ou proposta** traz o consumo real de uma obra já feita como base da nova previsão. Propostas gravadas antes desta versão continuam com o valor informado. **Ao abrir uma proposta em aberto** (rascunho, enviada ou em negociação), os custos dos materiais lançados por pedidos de compra depois da última gravação entram sozinhos na lista de materiais CA e na lista do kit, com aviso na tela (o valor só fica gravado ao salvar); propostas aprovadas ou recusadas mantêm os custos da época;
   - na instalação, **Materiais consumidos**: o **previsto** vem da lista da proposta e o **usado** é lançado na obra — à mão, com "= Usado igual ao previsto" ou pelo botão **🛒 Lançar pedido de compra** (itens iguais somam à quantidade, com o custo de aquisição do pedido). Totais previsto × usado e a diferença aparecem na seção e no resumo da obra.
 - **Termos de aceite** da OS e do relatório de instalação editáveis em Configurações › Textos padrão. As assinaturas são imagens guardadas como as fotos (banco de fotos do navegador, com cópia na nuvem e no backup).
-- **👁 Visualizar** (propostas, propostas avulsas, ordens de serviço, pedidos de compra e relatório de instalação, nas listas e nos formulários): o documento abre dentro do app, página por página — também no celular —, com **⬇ Baixar PDF** e **Abrir em nova aba** (para imprimir).
+- **📲 Enviar ao cliente pelo WhatsApp** (propostas, propostas avulsas e ordens de serviço, nas listas e nos formulários): janela com a mensagem pronta e editável (primeiro nome, número, validade ou tipo/conclusão da OS) e o botão que abre o WhatsApp na conversa do cliente. Com a sincronização ligada, o PDF é publicado e vai um **link** para o cliente abrir o documento no celular (página com as páginas do PDF, ⬇ Baixar e o WhatsApp da empresa) — o mesmo link a cada reenvio, sempre com a versão atual, e **Desativar link** quando quiser; sem a nuvem, a mensagem vai sem link e o PDF segue pelo **📤 Compartilhar** do aparelho (ou baixado e anexado). Proposta em rascunho passa a **Enviada**. Modelos das mensagens em Configurações › Textos padrão; sem custo (o seu próprio WhatsApp).
+- **👁 Visualizar** (propostas, propostas avulsas, contratos, ordens de serviço, pedidos de compra e relatório de instalação, nas listas e nos formulários): o documento abre dentro do app, página por página — também no celular —, com **⬇ Baixar PDF** e **Abrir em nova aba** (para imprimir).
 - **Emissão em PDF e em Word (.docx)** com o mesmo conteúdo e paginação. O PDF usa a fonte Arimo (métrica idêntica à Arial do modelo), carregada da internet na primeira emissão; sem internet, o .docx continua disponível.
 - Situação (rascunho, enviada, em negociação, aprovada, recusada) e duplicação de propostas.
 
@@ -224,6 +225,7 @@ A tarifa e a COSIP são reajustadas anualmente pelas taxas definidas em **Premis
 
 ```
 index.html            Aplicação (abre direto no navegador)
+ver.html              Página pública do documento enviado ao cliente (proposta, avulsa ou OS): páginas do PDF, baixar e contato
 acompanhe.html        Página pública "Acompanhe sua obra" (link enviado ao cliente; lê o Firestore sem login)
 manifest.webmanifest  Aplicativo instalável: nome, cores, ícones e atalhos
 sw.js                 Service worker: abre sem internet e atualiza o cache a cada versão
@@ -246,6 +248,8 @@ js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, checklist, equipamentos instalados, progresso e histórico
 js/ordem.js           Ordens de serviço das instalações (tipos, prioridades, situação, atrasos)
 js/acompanhamento.js  Avisos ao cliente: mensagens do WhatsApp por etapa, link e publicação da página de acompanhamento
+js/envio.js           Envio dos documentos ao cliente: mensagem do WhatsApp, PDF publicado em partes (link) ou compartilhado
+js/ver.js             Página pública do documento (lê as partes do PDF pela API REST do Firestore e mostra com o PDF.js)
 js/acompanhe.js       Página pública do cliente (etapas, progresso, fotos e contato), lida pela API REST do Firestore
 js/crm.js             CRM: indicadores do dashboard (vendas, conversão, funil, tipos, obras, OS, acompanhamento) e datas de aprovação/recusa
 js/compra.js          Pedidos de compra: leitura dos itens do PDF do fornecedor, conciliação dos totais, custo de aquisição e lançamento no cadastro de materiais

@@ -3,10 +3,10 @@
  * - Página (index.html): primeiro a rede (versão publicada mais recente); sem internet, a cópia guardada.
  * - Arquivos do app (js/css/ícones, com ?v= da versão) e bibliotecas dos CDNs (versões fixas): cópia guardada, senão a rede.
  * - Firebase (login e banco), API do Claude e demais endereços passam direto, sem cache; a página pública do cliente
- *   (acompanhe.html) também, sem virar a cópia do app.
+ *   (acompanhe.html) e a do documento enviado (ver.html) também, sem virar a cópia do app.
  * A versão abaixo acompanha a do app (index.html e js/app.js): ao publicar, o navegador instala este arquivo novo e limpa o cache antigo.
  */
-const VERSAO = '2026.10.30.6';
+const VERSAO = '2026.10.30.7';
 const CACHE = 'propostas-solar-' + VERSAO;
 const CDNS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -40,7 +40,7 @@ self.addEventListener('fetch', function (ev) {
   const url = new URL(req.url);
   const local = url.origin === self.location.origin;
   // página pública de acompanhamento do cliente: sempre da rede, fora do cache do app
-  if (local && /\/acompanhe\.html$/.test(url.pathname)) return;
+  if (local && /\/(acompanhe|ver)\.html$/.test(url.pathname)) return;
   if (req.mode === 'navigate' && local) {
     const ehApp = /\/(index\.html)?$/.test(url.pathname);
     ev.respondWith((async function () {

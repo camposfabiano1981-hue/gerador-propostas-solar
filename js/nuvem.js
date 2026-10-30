@@ -6,7 +6,8 @@
  * Dados: usuarios/{uid}/{coleção}/{id} = {json, partes, atualizadoEm, excluido}; configuração em usuarios/{uid}/config/geral.
  * Registros grandes (fotos) são divididos em usuarios/{uid}/partes/{coleção}__{id}__{n} (limite de 1 MiB por documento).
  * Fotos das instalações (App.Fotos): usuarios/{uid}/fotos/{id}, gravadas ao tirar e lidas sob demanda (fora das coleções acompanhadas).
- * Página pública do cliente (App.Acompanhamento): acompanhamento/{código} = {json, atualizadoEm}, lida sem login pela acompanhe.html.
+ * Página pública do cliente (App.Acompanhamento): acompanhamento/{código} = {json, atualizadoEm}, lida sem login pela acompanhe.html;
+ * documentos enviados ao cliente (App.Envio): acompanhamento/doc-{código} e as partes do PDF, lidos pela ver.html.
  * Conflitos: vale a versão com a data de alteração (atualizadoEm) mais recente; exclusões ficam marcadas (excluido: true).
  */
 window.App = window.App || {};
@@ -247,6 +248,39 @@ window.App = window.App || {};
   N.removerAcompanhamento = function (codigo) {
     if (!N.usuario || !fb) return Promise.reject(new Error('Sincronização desligada.'));
     const p = fb.m.fs.deleteDoc(fb.m.fs.doc(fb.db, 'acompanhamento', codigo));
+    acompanhar(p);
+    return p;
+  };
+
+  const PARTE_DOC = 700000; // caracteres do PDF (base64) por documento público
+
+  /**
+   * PDF enviado ao cliente (App.Envio): acompanhamento/{id} = {json (tipo, número, empresa, partes…)} e o arquivo em base64 em
+   * acompanhamento/{id}-1, -2…, lidos sem login só pelo código do link. Partes que sobraram de uma versão maior são apagadas.
+   */
+  N.publicarDocumento = function (id, meta, base64) {
+    if (!N.usuario || !fb) return Promise.reject(new Error('Sincronização desligada.'));
+    const fs = fb.m.fs, lote = fs.writeBatch(fb.db);
+    const ref = function (x) { return fs.doc(fb.db, 'acompanhamento', x); };
+    const n = Math.max(1, Math.ceil(base64.length / PARTE_DOC));
+    for (let i = 0; i < n; i++) lote.set(ref(id + '-' + (i + 1)), { parte: base64.slice(i * PARTE_DOC, (i + 1) * PARTE_DOC) });
+    for (let i = n; i < n + 4; i++) lote.delete(ref(id + '-' + (i + 1)));
+    lote.set(ref(id), { json: JSON.stringify(Object.assign({}, meta, { partes: n })), atualizadoEm: meta.atualizadoEm || new Date().toISOString() });
+    const p = lote.commit();
+    acompanhar(p);
+    return p;
+  };
+
+  N.removerDocumento = async function (id) {
+    if (!N.usuario || !fb) throw new Error('Sincronização desligada.');
+    const fs = fb.m.fs;
+    const ref = function (x) { return fs.doc(fb.db, 'acompanhamento', x); };
+    let n = 0;
+    try { const snap = await fs.getDoc(ref(id)); if (snap.exists()) n = (JSON.parse(snap.data().json || '{}').partes || 0); } catch (e) { n = 0; }
+    const lote = fs.writeBatch(fb.db);
+    lote.delete(ref(id));
+    for (let i = 0; i < n + 4; i++) lote.delete(ref(id + '-' + (i + 1)));
+    const p = lote.commit();
     acompanhar(p);
     return p;
   };

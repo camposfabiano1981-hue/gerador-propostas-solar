@@ -242,6 +242,10 @@ window.App = window.App || {};
     // avisos ao cliente pelo WhatsApp (Instalações): {cliente} {etapa} {numeroEtapa} {totalEtapas} {proxima} {progresso} {link} {empresa}
     avisoEtapa: 'Olá, {cliente}! 👋\n\nConcluímos a etapa {numeroEtapa} de {totalEtapas} da instalação do seu sistema solar: *{etapa}*.\n\n{proxima}\n\nAcompanhe cada etapa por aqui: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',
     avisoLink: 'Olá, {cliente}! 👋\n\nA partir de agora você acompanha cada etapa da instalação do seu sistema solar por este link:\n{link}\n\nA cada etapa concluída, avisamos por aqui.\n{empresa}',
+    // envio dos documentos pelo WhatsApp: {cliente} {numero} {validade} {link} {empresa} (OS: também {tipo} e {situacao})
+    envioProposta: 'Olá, {cliente}! 👋\n\nSegue a sua proposta de energia solar nº {numero}, válida até {validade}.\n\n📄 Abra pelo link: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',
+    envioAvulsa: 'Olá, {cliente}! 👋\n\nSegue a proposta de serviços nº {numero}, válida até {validade}.\n\n📄 Abra pelo link: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',
+    envioOS: 'Olá, {cliente}! 👋\n\nSegue a ordem de serviço nº {numero} ({tipo}{situacao}).\n\n📄 Abra pelo link: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',
     termoInstalacao: 'Declaro que recebi da {empresaCurta} o sistema de energia solar descrito neste relatório, instalado e em funcionamento, e que fui orientado(a) sobre o uso, o acompanhamento da geração pelo aplicativo e os cuidados de manutenção.',
     passoNaProposta: false, // linha do tempo fora da proposta por enquanto (liga em Configurações › Textos padrão)
     passoIntro: 'Da aprovação da proposta ao sistema gerando energia: veja como conduzimos cada etapa e os prazos estimados.',
