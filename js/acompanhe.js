@@ -39,8 +39,8 @@
     return d.length === 10 || d.length === 11 ? '55' + d : '';
   }
 
-  function aviso(titulo, texto) {
-    pagina.replaceChildren(el('div', 'card aviso', [el('h1', null, titulo), el('p', null, texto)]));
+  function aviso(titulo, texto, detalhe) {
+    pagina.replaceChildren(el('div', 'card aviso', [el('h1', null, titulo), el('p', null, texto), detalhe ? el('p', 'detalhe', detalhe) : null]));
   }
 
   function ampliar(src, legenda) {
@@ -143,7 +143,14 @@
     try {
       const r = await fetch(url, { cache: 'no-store' });
       if (r.status === 404) { aviso('Acompanhamento não encontrado', 'Este link não está mais ativo. Fale com a empresa responsável pela instalação para receber o link atualizado.'); return; }
-      if (!r.ok) { aviso('Acompanhamento indisponível no momento', 'Tente de novo em alguns minutos. Se continuar, fale com a empresa responsável pela instalação.'); return; }
+      if (r.status === 403) {
+        const t = await r.text().catch(function () { return ''; });
+        aviso('Página ainda não liberada', 'A empresa responsável está concluindo a configuração desta página. Tente de novo mais tarde.',
+          /refer/i.test(t) ? 'Para a empresa: a chave do Firebase (apiKey) não permite este endereço — libere-o nas restrições da chave.'
+            : 'Para a empresa: o Firebase negou a leitura (403). Publique as regras do Firestore do passo 5 de Configurações › Sincronização (nuvem).');
+        return;
+      }
+      if (!r.ok) { aviso('Acompanhamento indisponível no momento', 'Tente de novo em alguns minutos. Se continuar, fale com a empresa responsável pela instalação.', 'Código ' + r.status + '.'); return; }
       const doc = await r.json();
       const json = doc && doc.fields && doc.fields.json && doc.fields.json.stringValue;
       if (!json) { aviso('Acompanhamento indisponível no momento', 'Tente de novo em alguns minutos.'); return; }

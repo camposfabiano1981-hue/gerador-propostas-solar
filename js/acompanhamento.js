@@ -190,6 +190,33 @@ window.App = window.App || {};
     }
   }
 
+  /**
+   * Abre o link como o cliente (sem login) e diz o que falta quando não abre: página não publicada (404), regras do Firestore
+   * sem o trecho da página (403) ou chave do Firebase restrita a outros endereços.
+   */
+  async function testarLink(token) {
+    const N = App.Nuvem;
+    const c = N && N.config && N.config();
+    if (!c) return { estado: 'erro', mensagem: 'O Firebase não está configurado neste aparelho (Configurações › Sincronização (nuvem)).' };
+    const url = 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(c.projectId) + '/databases/(default)/documents/acompanhamento/' +
+      encodeURIComponent(token) + '?key=' + encodeURIComponent(c.apiKey);
+    let r;
+    try { r = await fetch(url, { cache: 'no-store' }); } catch (e) { return { estado: 'erro', mensagem: 'Sem conexão para testar o link.' }; }
+    if (r.ok) {
+      let em = '';
+      try { const d = JSON.parse((await r.json()).fields.json.stringValue); em = d.atualizadoEm; } catch (e) { em = ''; }
+      return { estado: 'ok', em: em, mensagem: 'O link abre normalmente para o cliente' + (em ? ' (página de ' + App.Assinatura.dataHora(em) + ')' : '') + '.' };
+    }
+    if (r.status === 404) return { estado: 'erro', codigo: 404, mensagem: 'O link ainda não tem página publicada: ligue a sincronização (nuvem) neste aparelho e clique em "↻ Atualizar a página agora".' };
+    if (r.status === 403) {
+      const t = await r.text().catch(function () { return ''; });
+      return { estado: 'erro', codigo: 403, mensagem: /refer/i.test(t)
+        ? 'A chave do Firebase (apiKey) não permite este endereço: libere o site nas restrições da chave (Google Cloud › Credenciais).'
+        : 'O Firebase negou a leitura (403): as regras do Firestore ainda não têm o trecho da página de acompanhamento. Copie as regras do passo 5 em Configurações › Sincronização (nuvem), publique no console do Firebase (Firestore Database › Regras) e depois clique em "↻ Atualizar a página agora".' };
+    }
+    return { estado: 'erro', codigo: r.status, mensagem: 'O link não abriu (erro ' + r.status + '). Tente de novo em alguns minutos.' };
+  }
+
   /** Tira a página do ar (o link deixa de funcionar). */
   function despublicar(token) {
     delete publicados[token];
@@ -201,7 +228,7 @@ window.App = window.App || {};
 
   App.Acompanhamento = {
     novoToken: novoToken, primeiroNome: primeiroNome, telefoneWhats: telefoneWhats, linkWhats: linkWhats, linkAcompanhamento: linkAcompanhamento,
-    preencher: preencher, mensagemEtapa: mensagemEtapa, mensagemLink: mensagemLink, dadosPublicos: dadosPublicos, publicar: publicar, despublicar: despublicar,
+    preencher: preencher, mensagemEtapa: mensagemEtapa, mensagemLink: mensagemLink, dadosPublicos: dadosPublicos, publicar: publicar, despublicar: despublicar, testarLink: testarLink,
     situacao: function (token) { return situacao[token] || null; }
   };
 })(window.App);

@@ -412,7 +412,7 @@
       situacaoEl.className = 'situacao-publicacao' + (s && (s.estado === 'erro' || s.estado === 'semNuvem') ? ' erro' : '');
       situacaoEl.replaceChildren();
       if (!s) { situacaoEl.textContent = 'A página é atualizada a cada gravação da instalação.'; return; }
-      if (s.estado === 'ok') situacaoEl.textContent = '✅ Página atualizada às ' + App.Assinatura.dataHora(s.em).split(' às ')[1] + '.';
+      if (s.estado === 'ok') situacaoEl.textContent = '✅ ' + (s.teste ? s.mensagem : 'Página atualizada às ' + App.Assinatura.dataHora(s.em).split(' às ')[1] + '.');
       else if (s.estado === 'enviando') situacaoEl.textContent = '⏳ ' + s.mensagem;
       else { situacaoEl.appendChild(document.createTextNode('⚠️ ' + s.mensagem + ' ')); situacaoEl.appendChild(h('a', { href: '#/nuvem' }, 'Abrir Sincronização (nuvem)')); }
     };
@@ -494,6 +494,16 @@
       pintarSituacao();
       c.appendChild(h('div.barra-itens',
         h('button.btn.pequeno', { type: 'button', onclick: function () { if (inst.id) salvar(false); publicarPagina(); } }, '↻ Atualizar a página agora'),
+        h('button.btn.pequeno', {
+          type: 'button', onclick: async function (ev) {
+            const b = ev.currentTarget;
+            b.disabled = true;
+            pintarSituacao({ estado: 'enviando', mensagem: 'Testando o link como o cliente…' });
+            const s = await A.testarLink(a.token);
+            b.disabled = false;
+            pintarSituacao(Object.assign({ teste: true }, s));
+          }
+        }, '🔎 Testar o link'),
         h('button.btn.pequeno.perigo', {
           type: 'button', onclick: async function () {
             if (!(await UI.confirmar('Desativar o link? O cliente deixa de ver a página; um link novo pode ser criado depois.', 'Desativar', true))) return;
