@@ -1054,6 +1054,15 @@
       const gIn = await App.Relatorios.pdfInstalacao(instA, ctxA);
       ok('PDF do relatório de instalação gerado com as duas assinaturas', new TextDecoder().decode(await gIn.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && ['assCliente', 'assTecnico'].every(function (k) { return !!gIn.modelo.imagens[k]; }), gIn.nome);
       await F.remover(idA);
+      // pedido de compra em PDF (para o fornecedor)
+      const pcPdf = Object.assign(App.Compra.nova(), { numero: 'PC-20261030-001', data: '2026-10-30', situacao: 'pedido', fornecedor: { nome: 'Distribuidora Exemplo', cnpj: '11.222.333/0001-81', telefone: '', cidade: 'Campo Grande-MS' },
+        condicao: '28 dias', prazoEntrega: '3 dias úteis', observacoes: 'Entregar em horário comercial.', desconto: 10, frete: 25,
+        itens: [App.Compra.novoItem({ codigo: '10', descricao: 'Disjuntor bipolar 40A', marca: 'Soprano', unidade: 'pç', qtd: 2, preco: 30, total: 60 }), App.Compra.novoItem({ descricao: 'Cabo flexível 4mm', unidade: 'm', qtd: 100, preco: 4.5 })] });
+      const gPc = await App.Relatorios.pdfCompra(pcPdf, ctxA);
+      const txPc = JSON.stringify(gPc.modelo.corpo);
+      ok('pedido de compra em PDF: fornecedor, comprador, itens, desconto, frete, total e autorização', new TextDecoder().decode(await gPc.blob.slice(0, 5).arrayBuffer()) === '%PDF-' &&
+        gPc.nome === 'Pedido_PC-20261030-001_DistribuidoraExemplo.pdf' && /Distribuidora Exemplo/.test(txPc) && /Comprador/.test(txPc) && /Disjuntor bipolar 40A — Soprano/.test(txPc) &&
+        /R\$ 450,00/.test(txPc) && /− R\$ 10,00/.test(txPc) && /R\$ 525,00/.test(txPc) && /Total do pedido/.test(txPc) && /Fornecedor — de acordo/.test(txPc) && /28 dias/.test(txPc), gPc.nome);
     } catch (e) {
       ok('fotos: IndexedDB', false, e && e.stack || String(e));
     }

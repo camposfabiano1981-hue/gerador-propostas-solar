@@ -1,6 +1,6 @@
 /*
- * PDFs da execução: ordem de serviço e relatório de instalação (termo de entrega), com as assinaturas colhidas na tela e,
- * no relatório, as fotos das etiquetas. Mesmo motor de documento da proposta (App.Pdf), sem capa.
+ * PDFs da execução: ordem de serviço, relatório de instalação (termo de entrega), com as assinaturas colhidas na tela e,
+ * no relatório, as fotos das etiquetas, e pedido de compra para o fornecedor. Mesmo motor de documento da proposta (App.Pdf), sem capa.
  */
 window.App = window.App || {};
 
@@ -325,5 +325,84 @@ window.App = window.App || {};
     return { blob: out.blob, nome: 'Relatorio_Instalacao_' + U.slug(inst.clienteNome || inst.titulo || 'obra') + '_' + U.todayISO().replace(/-/g, '') + '.pdf', modelo: modelo };
   }
 
-  App.Relatorios = { montarOS: montarOS, pdfOS: pdfOS, montarInstalacao: montarInstalacao, pdfInstalacao: pdfInstalacao };
+  /* ------------------------------------------------------------ pedido de compra */
+
+  function montarCompra(c, ctx, rec) {
+    const Cp = App.Compra;
+    const emp = ctx.empresa;
+    const papel = papelDe(emp);
+    const k = (papel.w - 2880) / 9360;
+    const f = c.fornecedor || {};
+    const t = Cp.totais(c);
+    const itens = (c.itens || []).filter(function (it) { return String(it.descricao || '').trim(); });
+    const st = Cp.SITUACOES.find(function (s) { return s.id === c.situacao; }) || Cp.SITUACOES[0];
+    const corSt = { ok: '15803D', azul: AZUL, cinza: '475569', erro: 'DC2626' };
+    const obra = c.instalacaoId ? (ctx.instalacoes || []).find(function (x) { return x.id === c.instalacaoId; }) : null;
+    const b = [];
+    b.push(faixa('PEDIDO DE COMPRA', c.numero + '  ·  emitido em ' + U.dataBR(c.data), [
+      ['Situação:', st.label, corSt[st.cor]], ['Itens:', String(itens.length), AZUL], ['Total:', U.brl(t.total), AZUL]
+    ]));
+    b.push(secao('Fornecedor'));
+    b.push(pares([
+      ['Fornecedor', f.nome], ['CNPJ', f.cnpj], ['Telefone', f.telefone], ['Cidade', f.cidade],
+      ['Vendedor / contato', c.vendedor], ['Orçamento / pedido do fornecedor', c.docFornecedor]
+    ]));
+    b.push(secao('Comprador'));
+    b.push(pares([
+      ['Empresa', emp.razaoSocial || emp.razao], ['CNPJ', emp.cnpj],
+      ['Endereço', [emp.endereco, emp.bairro].filter(Boolean).join(', ')], ['Cidade / UF', [emp.cidade, emp.uf].filter(Boolean).join(' / ')],
+      ['Telefone / WhatsApp', emp.telefone], ['E-mail', emp.email],
+      ['Responsável pela compra', emp.responsavel], obra ? ['Obra de destino', obra.titulo || obra.clienteNome] : null
+    ]));
+    if (c.condicao || c.prazoEntrega) {
+      b.push(secao('Condições'));
+      b.push(pares([['Condição de pagamento', c.condicao], ['Prazo de entrega', c.prazoEntrega]]));
+    }
+    b.push(secao('Itens do pedido'));
+    b.push(tabela([{ t: '#', w: 480, jc: 'center' }, { t: 'Código', w: 1000 }, { t: 'Descrição', w: 3980 }, { t: 'Un.', w: 560, jc: 'center' },
+      { t: 'Qtd.', w: 760, jc: 'right' }, { t: 'Preço unit.', w: 1240, jc: 'right' }, { t: 'Total', w: 1340, jc: 'right' }],
+      itens.map(function (it, i) {
+        return [String(i + 1), it.codigo || '—', (it.descricao || '') + (it.marca ? ' — ' + it.marca : ''), it.unidade || 'un',
+          U.fmtSmart(U.numOr(it.qtd, 0), 3), U.brl(U.numOr(it.preco, 0)), { t: U.brl(Cp.totalItem(it)), b: true }];
+      }), 16));
+    // totais à direita
+    const linhaTot = function (rot, val, forte) {
+      return TR([
+        TC(P([]), { w: 5600, semBorda: true }),
+        TC(T(rot, { jc: 'right' }, { color: forte ? BRANCO : CINZA, sz: forte ? 19 : 17, b: !!forte }), { w: 2260, fill: forte ? AZUL : 'F8FAFC', borda: { sz: 4, cor: forte ? AZUL : 'E2E8F0' }, mar: { t: 60, b: 60, l: 120, r: 120 } }),
+        TC(T(val, { jc: 'right' }, { color: forte ? BRANCO : GRAFITE, sz: forte ? 21 : 18, b: true }), { w: 1500, fill: forte ? AZUL : BRANCO, borda: { sz: 4, cor: forte ? AZUL : 'E2E8F0' }, mar: { t: 60, b: 60, l: 120, r: 120 } })
+      ], false, { naoQuebrar: true });
+    };
+    const tot = [linhaTot('Soma dos itens', U.brl(t.itens))];
+    if (t.desconto) tot.push(linhaTot('Desconto', '− ' + U.brl(t.desconto)));
+    if (t.frete) tot.push(linhaTot('Frete', U.brl(t.frete)));
+    if (t.outras) tot.push(linhaTot('Outras despesas', U.brl(t.outras)));
+    tot.push(linhaTot('Total do pedido', U.brl(t.total), true));
+    b.push(P([], { after: 80 }));
+    b.push(TBL([5600, 2260, 1500], tot, { manterJunto: true }));
+    if (String(c.observacoes || '').trim()) {
+      b.push(secao('Observações'));
+      b.push(quadro(c.observacoes));
+    }
+    const termo = 'Favor confirmar o recebimento deste pedido, o prazo de entrega e emitir a nota fiscal em nome de ' + (emp.razaoSocial || emp.razao) +
+      (emp.cnpj ? ' (CNPJ ' + emp.cnpj + ')' : '') + ', com o número ' + c.numero + ' na observação.';
+    b.push(P([], { after: 160 }));
+    b.push(blocoAceite('Autorização', termo, [
+      { nome: emp.responsavel || emp.razao, papel: 'Comprador — ' + (emp.nomeCurto || emp.razao) },
+      { nome: f.nome || ' ', papel: 'Fornecedor — de acordo' }
+    ], rec.imagens));
+    const cr = cabecalhoRodape(emp, rec.logo, 'Pedido de compra ' + c.numero);
+    return { papel: papel, k: k, corpo: b, cabecalho: cr.cabecalho, rodape: cr.rodape, imagens: rec.imagens };
+  }
+
+  async function pdfCompra(c, ctx) {
+    ctx = Object.assign({}, ctx || App.Calc.contexto(), { instalacoes: App.Store.list('instalacoes') });
+    const rec = await carregar(ctx, {});
+    const modelo = montarCompra(c, ctx, rec);
+    const forn = (c.fornecedor && c.fornecedor.nome) || '';
+    const out = await App.Pdf.pacote(modelo, { logo: rec.logo }, { titulo: 'Pedido de compra ' + c.numero + (forn ? ' — ' + forn : ''), assunto: 'Pedido de compra', autor: ctx.empresa.razao });
+    return { blob: out.blob, nome: 'Pedido_' + c.numero + (forn ? '_' + U.slug(forn) : '') + '.pdf', modelo: modelo };
+  }
+
+  App.Relatorios = { montarOS: montarOS, pdfOS: pdfOS, montarInstalacao: montarInstalacao, pdfInstalacao: pdfInstalacao, montarCompra: montarCompra, pdfCompra: pdfCompra };
 })(window.App);

@@ -19,6 +19,22 @@
     return { n: itens.filter(function (it) { return it.equipamentoId && ids[it.equipamentoId]; }).length, total: itens.length };
   }
 
+  /** Pedido de compra em PDF (para enviar ao fornecedor). */
+  async function baixarPdf(c, botao) {
+    const rotulo = botao ? botao.textContent : '';
+    if (botao) { botao.disabled = true; botao.textContent = 'Gerando…'; }
+    try {
+      const g = await App.Relatorios.pdfCompra(c, App.Calc.contexto());
+      U.download(g.blob, g.nome);
+      UI.toast('PDF gerado: ' + g.nome, 'ok');
+    } catch (e) {
+      console.error(e);
+      UI.toast('Falha ao gerar o PDF: ' + e.message, 'erro');
+    } finally {
+      if (botao) { botao.disabled = false; botao.textContent = rotulo; }
+    }
+  }
+
   function seletorArquivo(rotulo, aoEscolher, cls) {
     const input = h('input', { type: 'file', accept: 'application/pdf,image/*', onchange: function () { const f = input.files[0]; input.value = ''; if (f) aoEscolher(f); } });
     return h('label.btn' + (cls ? '.' + cls : ''), input, rotulo);
@@ -54,7 +70,10 @@
           h('td', obra ? obra.titulo || obra.clienteNome : '—'),
           h('td', v.total && v.n === v.total ? UI.badge('No cadastro', 'ok') : (v.n ? UI.badge(v.n + ' de ' + v.total, 'ambar') : UI.badge('Pendente', 'cinza'))),
           h('td', badge(c.situacao)),
-          h('td.acoes-col', h('button.btn-icone.perigo', {
+          h('td.acoes-col', (function () {
+            const btn = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar o pedido em PDF', onclick: function () { baixarPdf(c, btn); } }, 'PDF');
+            return btn;
+          })(), h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
               if (!(await UI.confirmar('Excluir o pedido de compra ' + (c.numero || '') + '? Os materiais já lançados no cadastro continuam lá.', 'Excluir', true))) return;
               (c.anexos || []).forEach(function (a) { F.remover(a.fotoId); });
@@ -121,8 +140,15 @@
         'Carregue o PDF ou a foto do orçamento do fornecedor, ou digite os itens.';
     };
     atualizarTopo();
+    // o PDF sai do pedido gravado (com o número definitivo)
+    const gerarPdf = function (botao) {
+      if ((sujo || !c.id) && !salvar(false)) return;
+      baixarPdf(c, botao);
+    };
+    const btnPdfTopo = h('button.btn', { type: 'button', onclick: function () { gerarPdf(btnPdfTopo); } }, '⬇ Pedido em PDF');
     cont.appendChild(h('div.pagina-topo', h('div', titulo, subt), h('div.acoes',
       h('a.btn', { href: '#/compras' }, '← Pedidos de compra'),
+      btnPdfTopo,
       h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'))));
 
     const colForm = h('div.form-col');
@@ -436,6 +462,8 @@
         kpi('Total do pedido', U.brl(t.total), t.desconto || t.frete || t.outras ? [t.desconto ? '− ' + U.brl(t.desconto) + ' desconto' : '', t.frete ? '+ ' + U.brl(t.frete) + ' frete' : '', t.outras ? '+ ' + U.brl(t.outras) + ' despesas' : ''].filter(Boolean).join(' · ') : null),
         kpi('Materiais e acessórios', v.total ? v.n + ' de ' + v.total + ' no cadastro' : '—', c.cadastradoEm ? 'Lançado em ' + U.dataBR(c.cadastradoEm) : null)));
       const links = [];
+      const btnPdf = h('button.btn', { type: 'button', onclick: function () { gerarPdf(btnPdf); } }, '⬇ Pedido em PDF');
+      links.push(btnPdf);
       if (c.itens.length) links.push(h('button.btn', { type: 'button', onclick: cadastrar }, '📦 Lançar em Materiais'));
       if (c.instalacaoId && S.get('instalacoes', c.instalacaoId)) links.push(h('a.btn', { href: '#/instalacao/' + c.instalacaoId }, '🏗 Abrir a obra'));
       if (links.length) resumo.appendChild(h('div.resumo-links', links));

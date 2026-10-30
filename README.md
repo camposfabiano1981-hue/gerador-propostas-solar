@@ -61,6 +61,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - **leitura automática dos itens**: PDF com texto é lido **no navegador, sem custo** (código, descrição, marca, unidade, quantidade, preço e total; fornecedor, CNPJ, nº do orçamento, data, vendedor, condição de pagamento, prazo e os totais impressos); **foto ou PDF escaneado** são lidos pela **IA** (mesma chave da leitura de datasheet). A leitura aceita orçamentos com o código colado à descrição, preço unitário arredondado, nota fiscal (NCM, CFOP e impostos ficam de fora) e quantidade no início da linha; antes de usar, os dados lidos aparecem para conferência;
   - **conciliação dos totais**: quando a soma dos itens já é o total do pedido, o desconto impresso está nos preços e não é descontado de novo; diferenças entre o calculado e o impresso aparecem como aviso;
   - itens editáveis, desconto, frete e outras despesas; situação (cotação, pedido feito, recebido, cancelado) e a obra de destino;
+  - **⬇ Pedido em PDF** (no topo e no resumo do pedido e na lista): documento para enviar ao fornecedor, com fornecedor, comprador (dados de Configurações › Empresa), condições, itens, desconto, frete, total, observações e as linhas de assinatura do comprador e do fornecedor;
   - **📦 Lançar em Materiais e acessórios**: cada item vira um material novo ou atualiza o já cadastrado (sugestão pelo código do fornecedor ou pela descrição parecida), com o **custo de aquisição** — preço com desconto, frete e outras despesas rateados pelo valor de cada item —, marca, fornecedor, código e o histórico das últimas compras. Os materiais novos ficam disponíveis nas propostas solares e avulsas (sem entrar sozinhos na lista do kit) e podem ser marcados como **infraestrutura CA**.
 - **Materiais CA e custo da infraestrutura**:
   - na proposta, o campo **Infraestrutura elétrica CA** tem duas formas: **lista de materiais CA** (escolha do cadastro ou digitação, quantidade e custo; o valor do campo é a soma da lista, que acompanha cada alteração) ou **valor informado** (lançamento manual, como antes). **↻ Atualizar custos pelo cadastro** usa o custo da última compra; **📋 Copiar de outra obra ou proposta** traz o consumo real de uma obra já feita como base da nova previsão. Propostas gravadas antes desta versão continuam com o valor informado;
@@ -244,7 +245,7 @@ js/compra.js          Pedidos de compra: leitura dos itens do PDF do fornecedor,
 js/materiais.js       Lista de materiais CA (valor da infraestrutura na proposta) e materiais consumidos na instalação (previsto × usado)
 js/fotos.js           Fotos das etiquetas e documentos dos fornecedores (PDF/foto): banco do navegador (IndexedDB) com cópia na nuvem, lida sob demanda
 js/assinatura.js      Assinatura na tela (dedo, caneta ou mouse), guardada como imagem em App.Fotos
-js/relatorios.js      PDFs da execução: ordem de serviço e relatório de instalação com as assinaturas
+js/relatorios.js      PDFs da execução: ordem de serviço e relatório de instalação com as assinaturas, e o pedido de compra
 js/avulsa.js          Proposta avulsa de serviços complementares (dados e documento)
 js/zip.js             Montagem do pacote .docx (ZIP com DEFLATE nativo do navegador)
 js/documento.js       Conteúdo da proposta (modelo comum ao Word e ao PDF)
