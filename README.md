@@ -49,6 +49,8 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
   - **checklist da instalação em três grupos** — estrutura de fixação e módulos, string box e inversor —, com campo para anotar medições (ex.: Voc de cada string), itens extras por obra e "não se aplica" (com microinversores a string box já começa assim); os itens padrão ficam em Configurações › Textos padrão;
   - **dados da obra** (UC, ART, protocolo de homologação, medidor, data da ligação), telefone do cliente e link da pasta de fotos da obra;
   - **histórico** com cada mudança de etapa e as anotações — base para avisar o cliente a cada avanço;
+  - **avisos ao cliente pelo WhatsApp** (sem custo, pelo seu próprio WhatsApp): ao concluir uma etapa, abre a janela com a mensagem pronta e editável (primeiro nome do cliente, etapa concluída, próxima etapa com a data prevista e o link de acompanhamento) e o botão **📲 Abrir o WhatsApp** já na conversa do cliente — é só apertar enviar. Cada aviso fica no histórico e a etapa mostra **📲 Avisado ✓** (o botão reenvia). A pergunta automática pode ser desligada ("não perguntar"); os modelos das mensagens ficam em Configurações › Textos padrão;
+  - **página "Acompanhe sua obra"** (seção Avisos ao cliente): um link só da obra (código aleatório) para o cliente ver no celular o progresso, as etapas com as datas (concluída, em andamento, prevista), a previsão de conclusão, as fotos dos equipamentos com as legendas (opcional) e os botões de WhatsApp e e-mail da empresa. **Sem valores, endereço, telefone ou sobrenome do cliente.** A página é atualizada a cada gravação da instalação, usa a sincronização (Firebase, plano gratuito) e pode ser desativada a qualquer momento (o link deixa de funcionar);
   - **termo de entrega com assinaturas** do cliente e do responsável técnico, feitas na tela (dedo, caneta ou mouse), e o **relatório de instalação em PDF** — cliente e obra, sistema e equipamentos instalados, fotos das etiquetas, etapas, checklist com as medições, documentos, ordens de serviço, termo e assinaturas (sem assinatura, sai a linha para assinar à mão);
   - progresso, etapa atual, checklist e previsão de conclusão na lista, no resumo da obra e no painel; ao concluir, a obra pode virar uma ficha em **Projetos realizados** (sem o nome do cliente — faltam só as 2 fotos).
 - **Ordens de serviço** (Execução › Ordens de serviço, ou "+ Nova ordem de serviço" dentro da instalação), para as demais demandas das instalações:
@@ -114,7 +116,7 @@ Funciona 100% no navegador: **não precisa de servidor, banco de dados nem insta
 - No **primeiro login**, os registros que já existem no aparelho são enviados e mantidos; se outro aparelho já tiver enviado os dele, as bases são somadas. Quando o mesmo registro é alterado em dois aparelhos, vale a alteração mais recente; exclusões ficam marcadas para não voltarem. A numeração de propostas e contratos guarda o maior número reservado em qualquer aparelho.
 - A **chave da API do Claude** e as preferências do aparelho **não** vão para a nuvem (cadastre a chave em cada aparelho que for usar a IA).
 - Registros grandes (fotos dos projetos) são divididos em partes (limite de 1 MiB por documento do Firestore). Importar um backup ou restaurar os padrões passa a valer em todos os aparelhos conectados.
-- Configuração única em **Configurações › Sincronização (nuvem)**: passo a passo do console do Firebase, regras de segurança prontas (acesso só da sua conta e do seu e-mail) e campo para colar o `firebaseConfig` — ou publicá-lo em `js/nuvem-config.js` para valer em todos os aparelhos. O indicador ☁️ no menu mostra a situação (sincronizado, enviando, sem internet, erro).
+- Configuração única em **Configurações › Sincronização (nuvem)**: passo a passo do console do Firebase, regras de segurança prontas (acesso só da sua conta e do seu e-mail; a página "Acompanhe sua obra" é lida só pelo código do link, sem listar as obras — quem publicou as regras antes da versão 2026.10.30.5 precisa publicá-las de novo) e campo para colar o `firebaseConfig` — ou publicá-lo em `js/nuvem-config.js` para valer em todos os aparelhos. O indicador ☁️ no menu mostra a situação (sincronizado, enviando, sem internet, erro).
 
 **Configurações**: dados da empresa e logotipo (inclusive dados do contrato e bancários, que ficam só no navegador), premissas técnicas/financeiras (PR, degradação, inflação, TMA/SELIC, cronograma do Fio B, disponibilidade, limites, parâmetros de baterias e BESS), textos padrão da proposta, modelo de contrato, sincronização (nuvem) e backup/importação dos dados.
 
@@ -222,6 +224,7 @@ A tarifa e a COSIP são reajustadas anualmente pelas taxas definidas em **Premis
 
 ```
 index.html            Aplicação (abre direto no navegador)
+acompanhe.html        Página pública "Acompanhe sua obra" (link enviado ao cliente; lê o Firestore sem login)
 manifest.webmanifest  Aplicativo instalável: nome, cores, ícones e atalhos
 sw.js                 Service worker: abre sem internet e atualiza o cache a cada versão
 assets/icones/        Ícone do aplicativo (SVG e PNG: 192, 512, adaptável do Android, Apple e favicon)
@@ -242,6 +245,8 @@ js/arte.js            Artes da proposta: faixa da capa e ilustração "Como func
 js/contrato.js        Contrato de prestação de serviços (dados e documento)
 js/instalacao.js      Gestão das instalações: etapas do cronograma, datas previstas, checklist, equipamentos instalados, progresso e histórico
 js/ordem.js           Ordens de serviço das instalações (tipos, prioridades, situação, atrasos)
+js/acompanhamento.js  Avisos ao cliente: mensagens do WhatsApp por etapa, link e publicação da página de acompanhamento
+js/acompanhe.js       Página pública do cliente (etapas, progresso, fotos e contato), lida pela API REST do Firestore
 js/crm.js             CRM: indicadores do dashboard (vendas, conversão, funil, tipos, obras, OS, acompanhamento) e datas de aprovação/recusa
 js/compra.js          Pedidos de compra: leitura dos itens do PDF do fornecedor, conciliação dos totais, custo de aquisição e lançamento no cadastro de materiais
 js/materiais.js       Lista de materiais CA (valor da infraestrutura na proposta) e materiais consumidos na instalação (previsto × usado)

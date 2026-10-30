@@ -1034,6 +1034,42 @@
     ok('compras: número PC-AAAAMMDD-NNN com sequência própria', /^PC-20261030-\d{3}$/.test(S.proximoNumero('2026-10-30', 'compra').numero) && S.proximoNumero('2026-10-30', 'compra').chave === 'PC:20261030');
   })();
 
+  // ---------------------------------------------------------------- avisos ao cliente (WhatsApp) e página de acompanhamento
+  (function () {
+    const A = App.Acompanhamento, I = App.Instalacao;
+    ok('avisos: telefone no formato do WhatsApp', A.telefoneWhats('(67) 98888-7777') === '5567988887777' && A.telefoneWhats('67 3316-6288') === '556733166288' &&
+      A.telefoneWhats('+55 (67) 99999-0000') === '5567999990000' && A.telefoneWhats('0 67 99999-0000') === '5567999990000' && A.telefoneWhats('') === '');
+    igual('avisos: link do WhatsApp com a mensagem', A.linkWhats('(67) 98888-7777', 'Olá, Maria! *Etapa* 1'), 'https://wa.me/5567988887777?text=Ol%C3%A1%2C%20Maria!%20*Etapa*%201');
+    igual('avisos: sem telefone, o WhatsApp pede o contato', A.linkWhats('', 'oi'), 'https://wa.me/?text=oi');
+    igual('avisos: linha com marcador vazio sai da mensagem', A.preencher('Olá, {cliente}!\n\n{proxima}\n\nAcompanhe: {link}\nFim', { cliente: 'Ana', proxima: '', link: '' }), 'Olá, Ana!\n\nFim');
+    const tk = A.novoToken(), tk2 = A.novoToken();
+    ok('avisos: código do link aleatório de 22 caracteres', /^[A-HJ-NP-Za-km-z2-9]{22}$/.test(tk) && tk !== tk2, tk);
+    igual('avisos: endereço da página do cliente', A.linkAcompanhamento('abc123', 'https://exemplo.github.io/app/'), 'https://exemplo.github.io/app/acompanhe.html?o=abc123');
+    const ctxA = ctxReferencia();
+    ctxA.empresa = Object.assign({}, ctxA.empresa, { nomeCurto: 'Gênesis', telefone: '(67) 99999-0000' });
+    const inst = Object.assign(I.nova(ctxA), { clienteNome: 'MARIA DA SILVA', telefone: '(67) 98888-7777', endereco: 'Rua Secreta, 10', cidade: 'Corumbá', uf: 'MS', kwp: 5.6, valor: 25000, tipoSistema: 'ongrid' });
+    inst.etapas.forEach(function (e, i) { e.previsto = '2026-11-' + String(10 + i).padStart(2, '0'); });
+    I.mudarEtapa(inst, inst.etapas[0], 'concluida', '2026-10-30');
+    const msg = A.mensagemEtapa(inst, ctxA, inst.etapas[0], 'https://x.test/acompanhe.html?o=abc');
+    ok('avisos: mensagem da etapa concluída (nome, etapa, próxima com data, link e empresa)', /^Olá, Maria! 👋/.test(msg) && msg.indexOf('etapa 1 de ' + inst.etapas.length) >= 0 && msg.indexOf('*' + inst.etapas[0].titulo + '*') >= 0 &&
+      msg.indexOf('Próxima etapa: ' + inst.etapas[1].titulo + ', prevista para ' + U.dataBR(inst.etapas[1].previsto) + '.') >= 0 && /Acompanhe cada etapa por aqui: https:\/\/x\.test/.test(msg) && /Gênesis$/.test(msg), msg);
+    const semLink = A.mensagemEtapa(inst, ctxA, inst.etapas[0], '');
+    ok('avisos: sem página de acompanhamento, a linha do link sai', semLink.indexOf('Acompanhe') < 0 && semLink.indexOf('{link}') < 0, semLink);
+    inst.etapas.forEach(function (e) { I.mudarEtapa(inst, e, 'concluida', '2026-11-20'); });
+    ok('avisos: última etapa avisa que o sistema está pronto', A.mensagemEtapa(inst, ctxA, inst.etapas[inst.etapas.length - 1], '').indexOf('Todas as etapas foram concluídas') >= 0);
+    ok('avisos: mensagem do link de acompanhamento', /acompanha cada etapa[\s\S]*https:\/\/x\.test\/o/.test(A.mensagemLink(inst, ctxA, 'https://x.test/o')));
+    I.mudarEtapa(inst, inst.etapas[2], 'andamento', '2026-11-21');
+    const pub = A.dadosPublicos(inst, ctxA, { logo: '', fotos: [] });
+    const txt = JSON.stringify(pub);
+    ok('avisos: página pública sem valor, endereço nem telefone do cliente', txt.indexOf('Rua Secreta') < 0 && txt.indexOf('98888') < 0 && txt.indexOf('25000') < 0 && txt.indexOf('SILVA') < 0 && pub.cliente === 'Maria', txt.slice(0, 200));
+    ok('avisos: página pública com sistema, progresso, etapas e a etapa atual', pub.sistema.kwp === 5.6 && pub.sistema.cidade === 'Corumbá' && pub.progresso.total === inst.etapas.length &&
+      pub.progresso.feitas === inst.etapas.length - 1 && pub.etapas[2].status === 'andamento' && pub.etapas[2].atual === true && pub.etapas.filter(function (e) { return e.atual; }).length === 1 &&
+      pub.empresa.telefone === '(67) 99999-0000' && pub.situacao.label === 'Em andamento', JSON.stringify(pub.progresso));
+    const regras = App.Nuvem.regras('dono@gmail.com');
+    ok('avisos: regras do Firestore liberam só a leitura pelo código (sem listar) e a gravação da conta', /match \/acompanhamento\/\{codigo\} \{\n\s+allow get: if true;\n\s+allow create, update, delete: if request\.auth != null && request\.auth\.token\.email == "dono@gmail\.com";/.test(regras) &&
+      !/acompanhamento[\s\S]*allow (read|list)/.test(regras), regras);
+  })();
+
   // ---------------------------------------------------------------- docx
   async function testarFotos() {
     const F = App.Fotos;
@@ -1081,6 +1117,32 @@
       ok('relatório: fotos dos equipamentos com a legenda digitada (ou a padrão)', /Fotos dos equipamentos/.test(txIn) && /Arranjo no telhado, lado norte/.test(txIn) && /"Inversor"/.test(txIn), txIn.match(/Fotos dos equipamentos/) ? 'ok' : 'sem seção');
       ok('PDF do relatório de instalação gerado com as duas assinaturas', new TextDecoder().decode(await gIn.blob.slice(0, 5).arrayBuffer()) === '%PDF-' && ['assCliente', 'assTecnico'].every(function (k) { return !!gIn.modelo.imagens[k]; }), gIn.nome);
       await F.remover(idA);
+      // página de acompanhamento publicada com a nuvem simulada (sem gravar de novo o mesmo conteúdo; erro de permissão orienta as regras)
+      const Nv = App.Nuvem, usuarioAntes = Nv.usuario, publicarAntes = Nv.publicarAcompanhamento;
+      try {
+        const gravados = [];
+        Nv.usuario = { uid: 'teste' };
+        Nv.publicarAcompanhamento = function (codigo, dados) { gravados.push({ codigo: codigo, dados: dados }); return Promise.resolve(); };
+        const instP = Object.assign(App.Instalacao.nova(ctxA), { clienteNome: 'Ana Souza', acompanhamento: { token: 'tokTeste1234567890abcd', ativo: true, fotos: true } });
+        const idP = await F.salvar({ dataURL: cvA.toDataURL('image/png'), w: 600, h: 200 });
+        instP.placas.modulo.fotos = [idP];
+        instP.placas.modulo.legendas = { [idP]: 'Módulos no telhado' };
+        const s1 = await App.Acompanhamento.publicar(instP, ctxA);
+        const s2 = await App.Acompanhamento.publicar(instP, ctxA);
+        ok('avisos: página publicada com a foto e a legenda; o mesmo conteúdo não é gravado de novo', s1.estado === 'ok' && s2.estado === 'ok' && gravados.length === 1 && gravados[0].codigo === 'tokTeste1234567890abcd' &&
+          gravados[0].dados.fotos.length === 1 && gravados[0].dados.fotos[0].legenda === 'Módulos no telhado' && /^data:image\/jpeg/.test(gravados[0].dados.fotos[0].src) && /^data:image\/jpeg/.test(gravados[0].dados.empresa.logo), JSON.stringify(s1));
+        App.Instalacao.mudarEtapa(instP, instP.etapas[0], 'concluida', '2026-10-30');
+        await App.Acompanhamento.publicar(instP, ctxA);
+        ok('avisos: etapa concluída atualiza a página', gravados.length === 2 && gravados[1].dados.progresso.feitas === 1);
+        Nv.publicarAcompanhamento = function () { const e = new Error('Missing or insufficient permissions.'); e.code = 'permission-denied'; return Promise.reject(e); };
+        App.Instalacao.mudarEtapa(instP, instP.etapas[1], 'concluida', '2026-10-31');
+        const s3 = await App.Acompanhamento.publicar(instP, ctxA);
+        ok('avisos: sem permissão no Firebase, orienta a atualizar as regras', s3.estado === 'erro' && /regras do Firestore/.test(s3.mensagem), s3.mensagem);
+        Nv.usuario = null;
+        const s4 = await App.Acompanhamento.publicar(instP, ctxA);
+        ok('avisos: sem a sincronização ligada, orienta entrar na nuvem', s4.estado === 'semNuvem');
+        await F.remover(idP);
+      } finally { Nv.usuario = usuarioAntes; Nv.publicarAcompanhamento = publicarAntes; }
       // pedido de compra em PDF (para o fornecedor)
       const pcPdf = Object.assign(App.Compra.nova(), { numero: 'PC-20261030-001', data: '2026-10-30', situacao: 'pedido', fornecedor: { nome: 'Distribuidora Exemplo', cnpj: '11.222.333/0001-81', telefone: '', cidade: 'Campo Grande-MS' },
         condicao: '28 dias', prazoEntrega: '3 dias úteis', observacoes: 'Entregar em horário comercial.', desconto: 10, frete: 25,

@@ -576,3 +576,13 @@ dialog.modal.visualizar .modal-corpo { flex: 1; background: #E2E8F0; padding: 12
 .visualizador-pagina { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, .18); border-radius: 2px; }
 .btn-formato.ver { font-size: 12px; padding: 2px 6px; }
 @media (max-width: 700px) { dialog.modal.visualizar { width: calc(100vw - 8px); height: calc(100vh - 12px); } dialog.modal.visualizar .modal-corpo { padding: 6px; } }
+
+/* ---------- avisos ao cliente (WhatsApp) e página de acompanhamento */
+.btn-avisar { border-color: #86EFAC; color: #15803D; }
+.btn-avisar.avisado { background: #F0FDF4; }
+.aviso-whats { display: flex; flex-direction: column; gap: 10px; }
+.aviso-whats textarea { font-size: 14px; line-height: 1.45; }
+.sub-avisos { margin: 14px 0 6px; font-size: 15px; color: var(--azul); }
+.link-acompanhamento { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--borda-forte); border-radius: 8px; background: #F8FAFC; font-size: 13px; color: var(--texto-2); }
+.situacao-publicacao { margin: 8px 0 0; font-size: 13px; color: #15803D; }
+.situacao-publicacao.erro { color: var(--vermelho); font-weight: 600; }

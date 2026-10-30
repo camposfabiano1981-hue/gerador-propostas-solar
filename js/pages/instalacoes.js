@@ -58,6 +58,7 @@
         h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfInstalacao(inst, C.contexto()); }, 'Relatório de instalação — ' + (inst.titulo || inst.clienteNome || '')), h('button.btn-icone.perigo', {
           type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
             if (await UI.confirmar('Excluir a instalação "' + (inst.titulo || inst.clienteNome) + '"? O histórico da obra será perdido.', 'Excluir', true)) {
+              if (inst.acompanhamento && inst.acompanhamento.token) App.Acompanhamento.despublicar(inst.acompanhamento.token);
               S.remove('instalacoes', inst.id);
               UI.toast('Instalação excluída.');
               recarregar();
@@ -338,6 +339,7 @@
               desenhar('etapas'); desenhar('historico');
               if (inst.id) salvar(false);
               UI.toast(rotulo === '✓ Concluir' ? 'Etapa concluída' + (inst.id ? ' e salva.' : '.') : (novo === 'andamento' ? 'Etapa em andamento.' : 'Etapa reaberta.'), 'ok');
+              if (novo === 'concluida' && perguntarAviso()) avisarEtapa(e);
             }
           }, rotulo);
         };
@@ -348,6 +350,10 @@
           UI.badge(stEtapa.label, e.status === 'concluida' ? 'ok' : (e.status === 'andamento' ? 'azul' : 'cinza')),
           atrasada ? UI.badge('Atrasada', 'erro') : null,
           e.status === 'pendente' ? acao('andamento', '▶ Iniciar') : null,
+          e.status === 'concluida' ? h('button.btn.pequeno.btn-avisar' + (e.avisadoEm ? '.avisado' : ''), {
+            type: 'button', title: e.avisadoEm ? 'Cliente avisado em ' + App.Assinatura.dataHora(e.avisadoEm) + ' — clique para avisar de novo' : 'Avisar o cliente pelo WhatsApp',
+            onclick: function () { avisarEtapa(e); }
+          }, e.avisadoEm ? '📲 Avisado ✓' : '📲 Avisar cliente') : null,
           e.status !== 'concluida' ? acao('concluida', '✓ Concluir', 'primario') : acao('andamento', '↺ Reabrir'),
           h('span.etapa-ordem',
             h('button.btn-icone', { type: 'button', title: 'Subir', 'aria-label': 'Subir', disabled: i === 0, onclick: function () {
@@ -393,6 +399,110 @@
       c.appendChild(h('div.barra-itens',
         h('button.btn.pequeno', { type: 'button', onclick: function () { inst.etapas.push(I.novaEtapa('', '')); I.preverDatas(inst); mudou(); desenhar('etapas'); } }, '+ Adicionar etapa'),
         h('button.btn.pequeno', { type: 'button', onclick: function () { I.preverDatas(inst); mudou(); desenhar('etapas'); UI.toast('Previsões recalculadas.'); } }, '↻ Recalcular previsões')));
+    });
+
+    /* ---------- avisos ao cliente: WhatsApp a cada etapa e página "Acompanhe sua obra" */
+    const A = App.Acompanhamento;
+    const linkPagina = function () { const a = inst.acompanhamento; return a && a.ativo && a.token ? A.linkAcompanhamento(a.token) : ''; };
+    const perguntarAviso = function () { try { return localStorage.getItem('crm.aviso.perguntar') !== 'nao'; } catch (e) { return true; } };
+    let situacaoEl = null;
+    const pintarSituacao = function (s) {
+      if (!situacaoEl || !inst.acompanhamento) return;
+      s = s || A.situacao(inst.acompanhamento.token);
+      situacaoEl.className = 'situacao-publicacao' + (s && (s.estado === 'erro' || s.estado === 'semNuvem') ? ' erro' : '');
+      situacaoEl.replaceChildren();
+      if (!s) { situacaoEl.textContent = 'A página é atualizada a cada gravação da instalação.'; return; }
+      if (s.estado === 'ok') situacaoEl.textContent = '✅ Página atualizada às ' + App.Assinatura.dataHora(s.em).split(' às ')[1] + '.';
+      else if (s.estado === 'enviando') situacaoEl.textContent = '⏳ ' + s.mensagem;
+      else { situacaoEl.appendChild(document.createTextNode('⚠️ ' + s.mensagem + ' ')); situacaoEl.appendChild(h('a', { href: '#/nuvem' }, 'Abrir Sincronização (nuvem)')); }
+    };
+    const publicarPagina = function () { if (inst.acompanhamento && inst.acompanhamento.ativo) A.publicar(inst, ctx, pintarSituacao); };
+
+    /** Janela do aviso: a mensagem (editável) e o botão que abre o WhatsApp com ela, na conversa do cliente. */
+    function avisarCliente(texto, aoEnviar, o) {
+      o = o || {};
+      const est = { texto: texto, naoPerguntar: !perguntarAviso() };
+      const guardar = function () { if (o.etapa) { try { localStorage.setItem('crm.aviso.perguntar', est.naoPerguntar ? 'nao' : 'sim'); } catch (e) { /* indisponível */ } } };
+      const tel = A.telefoneWhats(inst.telefone);
+      UI.modal({
+        titulo: o.titulo || 'Avisar o cliente pelo WhatsApp',
+        corpo: h('div.aviso-whats',
+          h('p.ajuda-sec', tel ? 'Para: ' + (inst.clienteNome || 'cliente') + ' — ' + inst.telefone : '⚠️ Telefone do cliente não informado (seção Obra): o WhatsApp vai pedir para escolher o contato.'),
+          UI.campo({ k: 'texto', label: 'Mensagem (pode editar antes de enviar)', type: 'textarea', rows: 10 }, est),
+          o.dicaLink && !linkPagina() ? h('p.nota', 'Dica: crie o link de acompanhamento na seção Avisos ao cliente; ele passa a ir junto nas mensagens.') : null,
+          o.etapa ? UI.campo({ k: 'naoPerguntar', label: 'Não perguntar ao concluir as próximas etapas (o botão 📲 de cada etapa continua disponível)', type: 'checkbox' }, est) : null),
+        acoes: [
+          { label: 'Agora não', onClick: guardar },
+          { label: '📲 Abrir o WhatsApp', primario: true, onClick: function () { guardar(); window.open(A.linkWhats(inst.telefone, est.texto), '_blank'); if (aoEnviar) aoEnviar(); } }
+        ]
+      });
+    }
+
+    function avisarEtapa(e) {
+      const n = inst.etapas.indexOf(e) + 1;
+      avisarCliente(A.mensagemEtapa(inst, ctx, e, linkPagina()), function () {
+        e.avisadoEm = new Date().toISOString();
+        I.registrar(inst, '📲 Cliente avisado pelo WhatsApp: etapa ' + n + ' — ' + e.titulo + ' concluída.', 'nota');
+        mudou(); desenhar('etapas'); desenhar('historico');
+        if (inst.id) salvar(false);
+      }, { etapa: true, dicaLink: true, titulo: 'Avisar o cliente: etapa ' + n + ' concluída' });
+    }
+
+    function enviarLink() {
+      avisarCliente(A.mensagemLink(inst, ctx, linkPagina()), function () {
+        I.registrar(inst, '📲 Link de acompanhamento enviado ao cliente pelo WhatsApp.', 'nota');
+        mudou(); desenhar('historico');
+        if (inst.id) salvar(false);
+      }, { titulo: 'Enviar o link de acompanhamento' });
+    }
+
+    secao('avisos', 'Avisos ao cliente', function (c) {
+      c.appendChild(h('p.ajuda-sec', 'Ao concluir cada etapa, o app abre o WhatsApp com a mensagem pronta para o cliente — é só apertar enviar (sem custo, pelo seu próprio WhatsApp). ',
+        'O texto é editável em Configurações › Textos padrão; cada aviso fica no histórico e a etapa mostra "📲 Avisado ✓".'));
+      if (!A.telefoneWhats(inst.telefone)) c.appendChild(h('p.nota.aviso', 'Informe o telefone / WhatsApp do cliente na seção Obra para a mensagem já abrir na conversa dele.'));
+      c.appendChild(h('h3.sub-avisos', '🔗 Página "Acompanhe sua obra"'));
+      const a = inst.acompanhamento;
+      const N = App.Nuvem;
+      if (!a || !a.ativo) {
+        c.appendChild(h('p.ajuda-sec', 'Um link só desta obra para o cliente ver as etapas, o progresso e a previsão de conclusão — e, se você quiser, as fotos dos equipamentos. ',
+          'Sem valores, endereço ou telefone. A página se atualiza a cada gravação da instalação.'));
+        c.appendChild(h('div.barra-itens', h('button.btn.primario', {
+          type: 'button', onclick: function () {
+            if (!inst.id && !salvar(false)) return;
+            inst.acompanhamento = { token: A.novoToken(), ativo: true, fotos: false, criadoEm: new Date().toISOString() };
+            I.registrar(inst, 'Link de acompanhamento criado para o cliente.', 'sistema');
+            mudou(); salvar(false); desenhar('avisos'); desenhar('historico');
+            enviarLink();
+          }
+        }, '🔗 Criar link de acompanhamento')));
+        if (!N || !N.usuario) c.appendChild(h('p.nota.aviso', 'A página usa a sincronização (nuvem): entre com a sua conta Google em ', h('a', { href: '#/nuvem' }, 'Configurações › Sincronização (nuvem)'), ' neste aparelho.'));
+        return;
+      }
+      const link = linkPagina();
+      const campoLink = h('input.link-acompanhamento', { type: 'text', readonly: true, value: link, 'aria-label': 'Link de acompanhamento', onfocus: function () { campoLink.select(); } });
+      c.appendChild(h('div.linha-campo', h('div.cresce', campoLink),
+        h('button.btn', {
+          type: 'button', onclick: async function () {
+            try { await navigator.clipboard.writeText(link); UI.toast('Link copiado.', 'ok'); } catch (e) { campoLink.select(); UI.toast('Selecione o link e copie (Ctrl+C).'); }
+          }
+        }, '📋 Copiar'),
+        h('a.btn', { href: link, target: '_blank', rel: 'noopener' }, '↗ Abrir')));
+      c.appendChild(h('div.barra-itens', h('button.btn.primario', { type: 'button', onclick: enviarLink }, '📲 Enviar o link pelo WhatsApp')));
+      c.appendChild(UI.campo({ k: 'fotos', label: 'Mostrar as fotos dos equipamentos (com as legendas) na página do cliente', type: 'checkbox' }, a, function () { mudou(); if (inst.id) salvar(false); }));
+      situacaoEl = h('p.situacao-publicacao');
+      c.appendChild(situacaoEl);
+      pintarSituacao();
+      c.appendChild(h('div.barra-itens',
+        h('button.btn.pequeno', { type: 'button', onclick: function () { if (inst.id) salvar(false); publicarPagina(); } }, '↻ Atualizar a página agora'),
+        h('button.btn.pequeno.perigo', {
+          type: 'button', onclick: async function () {
+            if (!(await UI.confirmar('Desativar o link? O cliente deixa de ver a página; um link novo pode ser criado depois.', 'Desativar', true))) return;
+            A.despublicar(a.token);
+            inst.acompanhamento = { ativo: false };
+            I.registrar(inst, 'Link de acompanhamento desativado.', 'sistema');
+            mudou(); if (inst.id) salvar(false); desenhar('avisos'); desenhar('historico');
+          }
+        }, 'Desativar o link')));
     });
 
     /* ---------- equipamentos instalados (do cadastro ou digitados, nº de série e fotos das etiquetas) */
@@ -662,6 +772,7 @@
       S.save('instalacoes', inst);
       sujo = false;
       if (novo) { id = inst.id; UI.substituirHash('#/instalacao/' + inst.id); desenhar('ordens'); }
+      publicarPagina();
       atualizarTopo();
       desenharResumo();
       if (avisar) UI.toast('Instalação salva.', 'ok');

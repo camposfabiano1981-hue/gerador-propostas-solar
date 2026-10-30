@@ -2,10 +2,11 @@
  * Service worker do aplicativo instalado (PWA): abre sem internet e mantém os arquivos atualizados.
  * - Página (index.html): primeiro a rede (versão publicada mais recente); sem internet, a cópia guardada.
  * - Arquivos do app (js/css/ícones, com ?v= da versão) e bibliotecas dos CDNs (versões fixas): cópia guardada, senão a rede.
- * - Firebase (login e banco), API do Claude e demais endereços passam direto, sem cache.
+ * - Firebase (login e banco), API do Claude e demais endereços passam direto, sem cache; a página pública do cliente
+ *   (acompanhe.html) também, sem virar a cópia do app.
  * A versão abaixo acompanha a do app (index.html e js/app.js): ao publicar, o navegador instala este arquivo novo e limpa o cache antigo.
  */
-const VERSAO = '2026.10.30.4';
+const VERSAO = '2026.10.30.5';
 const CACHE = 'propostas-solar-' + VERSAO;
 const CDNS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -38,11 +39,14 @@ self.addEventListener('fetch', function (ev) {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   const local = url.origin === self.location.origin;
+  // página pública de acompanhamento do cliente: sempre da rede, fora do cache do app
+  if (local && /\/acompanhe\.html$/.test(url.pathname)) return;
   if (req.mode === 'navigate' && local) {
+    const ehApp = /\/(index\.html)?$/.test(url.pathname);
     ev.respondWith((async function () {
       try {
         const resp = await fetch(req);
-        if (resp.ok) { const c = await caches.open(CACHE); c.put('./index.html', resp.clone()); }
+        if (resp.ok && ehApp) { const c = await caches.open(CACHE); c.put('./index.html', resp.clone()); }
         return resp;
       } catch (e) {
         return (await caches.match('./index.html')) || (await caches.match('./')) || Response.error();

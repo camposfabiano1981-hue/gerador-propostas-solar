@@ -6,6 +6,7 @@
  * Dados: usuarios/{uid}/{coleção}/{id} = {json, partes, atualizadoEm, excluido}; configuração em usuarios/{uid}/config/geral.
  * Registros grandes (fotos) são divididos em usuarios/{uid}/partes/{coleção}__{id}__{n} (limite de 1 MiB por documento).
  * Fotos das instalações (App.Fotos): usuarios/{uid}/fotos/{id}, gravadas ao tirar e lidas sob demanda (fora das coleções acompanhadas).
+ * Página pública do cliente (App.Acompanhamento): acompanhamento/{código} = {json, atualizadoEm}, lida sem login pela acompanhe.html.
  * Conflitos: vale a versão com a data de alteração (atualizadoEm) mais recente; exclusões ficam marcadas (excluido: true).
  */
 window.App = window.App || {};
@@ -61,14 +62,22 @@ window.App = window.App || {};
     } catch (e) { throw new Error('Não foi possível salvar a configuração neste navegador.'); }
   };
 
-  /** Regras de segurança do Firestore: só a conta Google informada lê e grava os próprios dados. */
+  /**
+   * Regras de segurança do Firestore: só a conta Google informada lê e grava os próprios dados. A página "Acompanhe sua obra"
+   * (acompanhamento/{código}) pode ser lida por quem tem o link — só pelo código, sem listar as obras — e só essa conta grava.
+   */
   N.regras = function (email) {
+    const conta = String(email || 'SEU-EMAIL@gmail.com').trim().toLowerCase();
     return "rules_version = '2';\n" +
       'service cloud.firestore {\n' +
       '  match /databases/{database}/documents {\n' +
       '    match /usuarios/{uid}/{documento=**} {\n' +
       '      allow read, write: if request.auth != null && request.auth.uid == uid\n' +
-      '        && request.auth.token.email == "' + String(email || 'SEU-EMAIL@gmail.com').trim().toLowerCase() + '";\n' +
+      '        && request.auth.token.email == "' + conta + '";\n' +
+      '    }\n' +
+      '    match /acompanhamento/{codigo} {\n' +
+      '      allow get: if true;\n' +
+      '      allow create, update, delete: if request.auth != null && request.auth.token.email == "' + conta + '";\n' +
       '    }\n' +
       '  }\n' +
       '}\n';
@@ -224,6 +233,23 @@ window.App = window.App || {};
     if (conhecidos[col]) delete conhecidos[col][id];
     acompanhar(fb.m.fs.setDoc(refDoc(col, id), { excluido: true, partes: 0, atualizadoEm: ts || new Date().toISOString() }));
   }
+
+  /* ------------------------------------------------------------ página pública "Acompanhe sua obra" */
+
+  /** Grava a página do cliente em acompanhamento/{código} (lida sem login, só por quem tem o link). */
+  N.publicarAcompanhamento = function (codigo, dados) {
+    if (!N.usuario || !fb) return Promise.reject(new Error('Sincronização desligada.'));
+    const p = fb.m.fs.setDoc(fb.m.fs.doc(fb.db, 'acompanhamento', codigo), { json: JSON.stringify(dados), atualizadoEm: dados.atualizadoEm || new Date().toISOString() });
+    acompanhar(p);
+    return p;
+  };
+
+  N.removerAcompanhamento = function (codigo) {
+    if (!N.usuario || !fb) return Promise.reject(new Error('Sincronização desligada.'));
+    const p = fb.m.fs.deleteDoc(fb.m.fs.doc(fb.db, 'acompanhamento', codigo));
+    acompanhar(p);
+    return p;
+  };
 
   /* ------------------------------------------------------------ fotos (lidas sob demanda) */
 

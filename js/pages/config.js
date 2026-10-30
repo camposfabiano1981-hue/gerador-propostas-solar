@@ -258,6 +258,15 @@
         { k: 'termoInstalacao', label: 'Relatório de instalação (termo de entrega)', type: 'textarea', rows: 3, cls: 'span2' }
       ], tx, marcar)));
 
+    cont.appendChild(h('div.card', h('h3', 'Avisos ao cliente pelo WhatsApp (instalações)'),
+      h('p.ajuda-sec', 'Mensagens prontas que abrem no WhatsApp ao concluir uma etapa da instalação e ao enviar o link de acompanhamento. Marcadores: ',
+        '{cliente} (primeiro nome), {etapa}, {numeroEtapa}, {totalEtapas}, {proxima} (próxima etapa e data, ou "todas concluídas"), {progresso}, {link} (página de acompanhamento) e {empresa}. ',
+        'Uma linha cujos marcadores ficarem vazios (ex.: {link} sem página de acompanhamento) sai da mensagem. Use *texto* para negrito no WhatsApp.'),
+      UI.grade([
+        { k: 'avisoEtapa', label: 'Etapa concluída', type: 'textarea', rows: 7, cls: 'span2' },
+        { k: 'avisoLink', label: 'Envio do link de acompanhamento', type: 'textarea', rows: 5, cls: 'span2' }
+      ], tx, marcar)));
+
     cont.appendChild(h('div.card', h('h3', 'Propostas avulsas (serviços complementares)'), UI.grade([
       { k: 'avulsaApresentacao', label: 'Apresentação', type: 'textarea', rows: 3, cls: 'span2' },
       { k: 'avulsaGarantia', label: 'Garantia padrão dos serviços', type: 'textarea', rows: 2, cls: 'span2' },
@@ -445,6 +454,12 @@
       }
     }, 'Copiar regras');
     const passo = function (n, titulo) { return h('li', h('strong', titulo), Array.prototype.slice.call(arguments, 2)); };
+    // regras atualizadas para a página pública de acompanhamento das obras (quem já tinha publicado as antigas precisa publicar de novo)
+    if (cfgAtual) {
+      cont.appendChild(h('div.card.dica',
+        h('p', h('strong', 'Página "Acompanhe sua obra" (Instalações › Avisos ao cliente): '), 'para o cliente abrir o link, as regras do Firestore precisam do trecho ',
+          h('code', 'match /acompanhamento/{codigo}'), '. Se você publicou as regras antes desta versão, abra o passo a passo abaixo, copie as regras do passo 5 e publique de novo na aba Regras do Firestore.')));
+    }
     // já configurado: o passo a passo fica recolhido (consulta)
     cont.appendChild(h('details.card.passos-card', { open: !cfgAtual },
       h('summary', h('h3', 'Passo a passo para ligar (uma vez só, de graça)')),

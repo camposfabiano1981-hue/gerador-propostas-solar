@@ -3,7 +3,7 @@
   'use strict';
 
   /** Versão publicada — a mesma usada em ?v= no index.html (evita o navegador usar arquivos antigos em cache). */
-  App.VERSAO_APP = '2026.10.30.4';
+  App.VERSAO_APP = '2026.10.30.5';
 
   App.atualizarMarca = function () {
     const emp = App.Store.config().empresa;
