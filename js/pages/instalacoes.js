@@ -62,7 +62,6 @@
       aoPublicar: function (ld) { inst.linkDoc = ld; guardar(); },
       aoEnviar: function (como) {
         if (inst.conclusao) inst.conclusao.avisadoEm = new Date().toISOString();
-        else inst.conclusao = { data: data, em: '', antes: null, avisadoEm: new Date().toISOString() };
         I.registrar(inst, '📲 Cliente avisado ' + (como === 'compartilhar' ? 'pelo compartilhamento do PDF' : 'pelo WhatsApp') + ': instalação concluída (relatório de instalação).', 'nota');
         guardar();
       }
@@ -102,7 +101,7 @@
   async function desfazerConclusao(inst, guardar, depois) {
     const comBotao = inst.conclusao && Array.isArray(inst.conclusao.antes);
     const ok = await UI.confirmar(comBotao ? 'Desfazer a conclusão? As etapas voltam como estavam antes de "Concluir instalação".'
-      : 'Desfazer a conclusão? A última etapa concluída volta para "em andamento".', 'Desfazer conclusão');
+      : 'Desfazer a conclusão? A obra volta para "em andamento" com as etapas concluídas; conclua de novo pelo botão quando quiser.', 'Desfazer conclusão');
     if (!ok) return;
     I.desfazerConclusao(inst);
     guardar();
@@ -123,8 +122,8 @@
       tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button')) UI.ir('#/instalacao/' + inst.id); } },
         h('td', h('strong', inst.titulo || inst.clienteNome || 'Instalação'), h('div.mini', inst.propostaNumero ? 'Proposta ' + inst.propostaNumero : 'Sem proposta de origem')),
         h('td', inst.clienteNome || '—', h('div.mini', [inst.cidade, inst.uf].filter(Boolean).join('/'))),
-        h('td', st === 'concluida' ? '✅ Todas concluídas' : (atual ? n + '. ' + atual.titulo : '—'),
-          atual && atual.status === 'andamento' ? h('div.mini', 'em andamento') : null),
+        h('td', st === 'concluida' ? '✅ Todas concluídas' : I.prontaParaConcluir(inst) ? '✅ Todas as etapas' : (atual ? n + '. ' + atual.titulo : '—'),
+          I.prontaParaConcluir(inst) ? h('div', UI.badge('falta concluir', 'ambar')) : (atual && atual.status === 'andamento' ? h('div.mini', 'em andamento') : null)),
         h('td', barra(inst)),
         h('td', U.dataBR(I.previsaoConclusao(inst)) || '—', atraso.length && st !== 'pausada' ? h('div', UI.badge(atraso.length === 1 ? '1 etapa atrasada' : atraso.length + ' etapas atrasadas', 'erro')) : null),
         h('td', statusBadge(inst)),
@@ -409,15 +408,21 @@
       inst.etapas.forEach(function (e, i) {
         const atrasada = e.status !== 'concluida' && e.previsto && e.previsto < hoje && inst.situacao !== 'cancelada';
         const card = h('div.etapa.' + e.status + (atrasada ? '.atrasada' : ''));
+        const projeto = I.ehEtapaProjeto(inst, e);
         const acao = function (novo, rotulo, cls) {
           return h('button.btn.pequeno' + (cls ? '.' + cls : ''), {
-            type: 'button', onclick: function () {
+            type: 'button', onclick: async function () {
+              if (novo === 'concluida' && projeto && !String(inst.projetoId || '').trim() &&
+                !(await UI.confirmar('Concluir a etapa sem o ID do projeto elétrico na ' + (I.concessionariaDe(inst, ctx) || 'concessionária') + '? O cliente recebe o aviso sem o número.', 'Concluir sem o ID'))) return;
               I.mudarEtapa(inst, e, novo, U.todayISO());
               mudou();
               desenhar('etapas'); desenhar('historico');
               if (inst.id) salvar(false);
               UI.toast(rotulo === '✓ Concluir' ? 'Etapa concluída' + (inst.id ? ' e salva.' : '.') : (novo === 'andamento' ? 'Etapa em andamento.' : 'Etapa reaberta.'), 'ok');
-              if (novo === 'concluida' && perguntarAviso()) avisarEtapa(e);
+              if (novo !== 'concluida') return;
+              // última etapa: a obra só é concluída pelo botão "Concluir instalação"
+              if (I.prontaParaConcluir(inst)) abrirConcluir(inst, function () { mudou(); return salvar(false); }, function () { desenhar('etapas'); desenhar('historico'); desenharResumo(); });
+              else if (perguntarAviso()) avisarEtapa(e);
             }
           }, rotulo);
         };
@@ -451,6 +456,14 @@
           mudou();
           if (k === 'prazo' || k === 'concluidoEm') desenhar('etapas');
         }, 4)));
+        // etapa de projeto elétrico + ART: o ID do projeto na concessionária vai para o cliente no aviso da etapa
+        if (projeto) {
+          const conc = I.concessionariaDe(inst, ctx);
+          card.appendChild(h('div.etapa-projeto', UI.grade([
+            { k: 'projetoId', label: '🔢 ID do projeto elétrico na ' + (conc || 'concessionária (Energisa)'), placeholder: 'Nº / protocolo do projeto', help: 'Vai para o cliente no aviso desta etapa.' },
+            { k: 'art', label: '📝 Nº da ART' }
+          ], inst, function () { mudou(); if (secoes.dados) desenhar('dados'); }, 2)));
+        }
         // checklist da etapa
         const ck = h('div.checklist');
         e.checklist.forEach(function (item, j) {
@@ -702,36 +715,29 @@
 
     /* ---------- checklist da instalação (três grupos) */
     secao('checklist', 'Checklist da instalação', function (c) {
-      c.appendChild(h('p.ajuda-sec', 'Itens padrão em Configurações › Textos padrão › Checklist da instalação. Use a observação para anotar medições (ex.: Voc da string 1 = 412 V).'));
-      inst.checklistInstalacao.forEach(function (g) {
-        const feitos = g.itens.filter(function (x) { return x.ok; }).length;
-        const completo = g.itens.length && feitos === g.itens.length;
-        const card = h('div.checklist-grupo' + (g.naoSeAplica ? '.na' : (completo ? '.completo' : '')));
-        card.appendChild(h('div.checklist-grupo-topo', h('h3', g.titulo),
-          g.naoSeAplica ? UI.badge('Não se aplica', 'cinza') : UI.badge(feitos + '/' + g.itens.length, completo ? 'ok' : 'cinza'),
-          UI.campo({ k: 'naoSeAplica', label: 'Não se aplica nesta obra', type: 'checkbox' }, g, function () { mudou(); desenhar('checklist'); })));
-        if (!g.naoSeAplica) {
-          g.itens.forEach(function (it, j) {
-            const cb = h('input', { type: 'checkbox', onchange: function () { I.marcarItem(inst, g, it, cb.checked); mudou(); desenhar('checklist'); desenhar('historico'); } });
-            cb.checked = !!it.ok;
-            card.appendChild(h('div.check-linha' + (it.ok ? '.ok' : ''),
-              h('label', cb, h('span', it.texto)),
-              h('input.check-obs', { type: 'text', value: it.obs || '', placeholder: 'medição / observação', 'aria-label': 'Observação do item', oninput: function (ev) { it.obs = ev.target.value; mudou(); } }),
-              h('button.btn-icone.perigo', { type: 'button', title: 'Remover item', 'aria-label': 'Remover item', onclick: function () { g.itens.splice(j, 1); mudou(); desenhar('checklist'); } }, '×')));
-          });
-          const novo = h('input', { type: 'text', placeholder: 'Novo item de ' + g.titulo.toLowerCase(), onkeydown: function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); add(); } } });
-          const add = function () { const tx = novo.value.trim(); if (!tx) return; g.itens.push({ texto: tx, ok: false, obs: '' }); mudou(); desenhar('checklist'); };
-          card.appendChild(h('div.checklist-novo', novo, h('button.btn.pequeno', { type: 'button', onclick: add }, '+ Item')));
+      c.appendChild(h('p.ajuda-sec', 'Marque cada item, anote medições na observação (ex.: Voc da string 1 = 412 V) e edite, inclua ou remova itens e grupos. ',
+        'Os itens iniciais e os recomendados (comissionamento pela ABNT NBR 16274 / IEC 62446-1, aterramento e segurança NR-10 / NR-35) ficam em Configurações › Textos padrão.'));
+      const bRec = h('button.btn', {
+        type: 'button', onclick: function () {
+          const r = I.incluirRecomendados(inst, ctx.textos);
+          mudou(); desenhar('checklist');
+          UI.toast(r.itens ? r.itens + ' item(ns) recomendado(s) incluído(s)' + (r.grupos ? ' em ' + r.grupos + ' grupo(s) novo(s)' : '') + '.' : 'Os itens recomendados já estão no checklist.', r.itens ? 'ok' : 'info');
         }
-        c.appendChild(card);
-      });
+      }, '📋 Incluir itens recomendados (NBR 16274)');
+      c.appendChild(App.Checklist.editor(inst.checklistInstalacao, {
+        aoMudar: mudou, redesenhar: function () { desenhar('checklist'); desenhar('historico'); },
+        aoMarcar: function (g, it, okk) { I.marcarItem(inst, g, it, okk); },
+        acoes: [bRec]
+      }));
     });
 
     /* ---------- dados da obra */
     secao('dados', 'Dados da obra', function (c) {
       c.appendChild(UI.grade([
         { secao: 'Concessionária e documentos' },
+        { k: 'concessionaria', label: 'Concessionária', placeholder: I.concessionariaDe(Object.assign({}, inst, { concessionaria: '' }), ctx) || 'Ex.: Energisa MS' },
         { k: 'uc', label: 'Unidade consumidora (UC)' },
+        { k: 'projetoId', label: 'ID do projeto elétrico na concessionária' },
         { k: 'art', label: 'Nº da ART' },
         { k: 'protocolo', label: 'Nº do protocolo de homologação' },
         { k: 'medidor', label: 'Nº do medidor bidirecional' },
@@ -744,7 +750,7 @@
         { k: 'valor', label: 'Valor da obra', type: 'money' },
         { k: 'equipamentos.armazenamento', label: 'Baterias / BESS', cls: 'span2' },
         { k: 'equipamentos.estrutura', label: 'Estrutura / telhado', cls: 'span2' }
-      ], inst, mudou, 2));
+      ], inst, function (k) { mudou(); if (['projetoId', 'art', 'concessionaria'].indexOf(k) >= 0) desenhar('etapas'); }, 2));
     });
 
     /* ---------- termo de entrega e assinaturas */
@@ -806,7 +812,7 @@
       resumo.appendChild(h('div.progresso-resumo', h('div.progresso.grande', h('span', { style: { width: Math.round(pr.pct * 100) + '%' } })),
         h('strong', Math.round(pr.pct * 100) + '%'), h('small', pr.feitas + ' de ' + pr.total + ' etapas concluídas')));
       resumo.appendChild(h('div.kpis',
-        kpi('Etapa atual', st === 'concluida' ? 'Todas concluídas' : (atual ? (inst.etapas.indexOf(atual) + 1) + '. ' + atual.titulo : '—')),
+        kpi('Etapa atual', st === 'concluida' ? 'Todas concluídas' : I.prontaParaConcluir(inst) ? 'Todas concluídas — falta concluir a instalação' : (atual ? (inst.etapas.indexOf(atual) + 1) + '. ' + atual.titulo : '—')),
         kpi(st === 'concluida' ? 'Concluída em' : 'Previsão de conclusão', U.dataBR(I.previsaoConclusao(inst)) || '—'),
         kpi('Sistema', [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh' : ''].filter(Boolean).join(' + ') || '—'),
         App.Acesso.veValores() ? kpi('Valor', inst.valor ? U.brl(inst.valor) : '—') : null,
@@ -841,12 +847,14 @@
               c.avisadoEm ? '📲 Enviar de novo pelo WhatsApp' : '📲 Enviar ao cliente (WhatsApp)'),
             h('button.btn', { type: 'button', onclick: function () { desfazerConclusao(inst, guardarFicha, aposConcluir); } }, '↺ Desfazer conclusão'))));
       } else if (st !== 'cancelada') {
-        resumo.appendChild(h('div.conclusao-box',
+        const pronta = I.prontaParaConcluir(inst);
+        resumo.appendChild(h('div.conclusao-box' + (pronta ? '.pronta' : ''),
+          pronta ? h('div.conclusao-titulo.pronta', '🏁 Todas as etapas concluídas: conclua a instalação') : null,
           h('button.btn.btn-concluir', { type: 'button', onclick: function () {
             if (!inst.id && !String(inst.titulo || inst.clienteNome || '').trim()) { UI.toast('Informe o nome da obra ou o cliente antes de concluir.', 'erro'); return; }
             abrirConcluir(inst, guardarFicha, aposConcluir);
           } }, '✅ Concluir instalação'),
-          h('small', pr.total - pr.feitas > 0 ? (pr.total - pr.feitas) + (pr.total - pr.feitas === 1 ? ' etapa em aberto será concluída.' : ' etapas em aberto serão concluídas.') : '')));
+          h('small', pr.total - pr.feitas > 0 ? (pr.total - pr.feitas) + (pr.total - pr.feitas === 1 ? ' etapa em aberto será concluída.' : ' etapas em aberto serão concluídas.') : 'A obra só fica concluída por este botão.')));
       }
       const links = [];
       if (inst.propostaId && S.get('propostas', inst.propostaId) && App.Acesso.podeLer('propostas')) {

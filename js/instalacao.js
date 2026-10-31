@@ -161,7 +161,7 @@ window.App = window.App || {};
       tipoSistema: 'ongrid', kwp: 0, kwh: 0, valor: 0, equipamentos: { modulos: '', inversor: '', armazenamento: '', estrutura: '' },
       geracaoMes: 0, economiaMes: 0, reducaoPct: 0, segmento: 'residencial',
       situacao: 'ativa', responsavel: emp.responsavel || '', equipe: '', inicioPrevisto: U.todayISO(),
-      uc: '', art: '', protocolo: '', medidor: '', ligacao: '', fotosLink: '', observacoes: '',
+      uc: '', art: '', protocolo: '', medidor: '', ligacao: '', fotosLink: '', observacoes: '', projetoId: '', concessionaria: '',
       placas: placasVazias(), checklistInstalacao: checklistPadrao(ctx.textos, false), materiais: [], comprasLancadas: [],
       assinaturas: { cliente: { fotoId: '', nome: '', em: '' }, tecnico: { fotoId: '', nome: '', em: '' } },
       etapas: etapasPadrao(ctx.textos, varsTexto(ctx, '', '')), historico: []
@@ -183,7 +183,7 @@ window.App = window.App || {};
     const kwh = r && r.armazenamentoAtivo && r.hibrido ? U.numOr(r.hibrido.capInstalada, 0) : U.numOr(rs.kwh, 0);
     const tipo = p.tipoSistema === 'hibrido' ? 'Híbrido' : (p.tipoSistema === 'bess' ? 'BESS' : 'On-Grid');
     Object.assign(inst, {
-      propostaId: p.id || '', propostaNumero: p.numero || '', clienteId: p.clienteId || '', clienteNome: nomeCli, telefone: (cli && cli.telefone) || '',
+      propostaId: p.id || '', propostaNumero: p.numero || '', clienteId: p.clienteId || '', clienteNome: nomeCli, telefone: (cli && cli.telefone) || '', concessionaria: conc,
       endereco: p.enderecoInstalacao || (cli ? [cli.endereco, cli.numero, cli.bairro].filter(Boolean).join(', ') : ''),
       cidade: (r && r.cidade) || rs.cidade || (cli && cli.cidade) || '', uf: (r && r.uf) || (cli && cli.uf) || inst.uf,
       tipoSistema: p.tipoSistema || 'ongrid', kwp: kwp, kwh: kwh, valor: r ? r.total : U.numOr(rs.total, 0),
@@ -252,13 +252,34 @@ window.App = window.App || {};
     return et.find(function (e) { return e.status === 'andamento'; }) || et.find(function (e) { return e.status !== 'concluida'; }) || null;
   }
 
+  /** Situação da obra: concluída só pelo botão "Concluir instalação" (com todas as etapas feitas, fica pronta para concluir). */
   function status(inst) {
     if (inst.situacao === 'cancelada') return 'cancelada';
     if (inst.situacao === 'pausada') return 'pausada';
+    if (inst.conclusao && inst.conclusao.data) return 'concluida';
     const pr = progresso(inst);
-    if (pr.total && pr.feitas === pr.total) return 'concluida';
     if (pr.feitas || (inst.etapas || []).some(function (e) { return e.status === 'andamento'; })) return 'andamento';
     return 'iniciar';
+  }
+
+  /** Todas as etapas concluídas e a obra ainda não concluída pelo botão. */
+  function prontaParaConcluir(inst) {
+    const pr = progresso(inst);
+    return status(inst) === 'andamento' && pr.total > 0 && pr.feitas === pr.total;
+  }
+
+  /** Etapa de projeto elétrico (+ ART): a primeira com "projeto" no título. */
+  function ehEtapaProjeto(inst, e) {
+    const p = (inst.etapas || []).find(function (x) { return /projeto/i.test(x.titulo || ''); });
+    return !!e && p === e;
+  }
+
+  /** Concessionária da obra: a gravada na instalação ou a da proposta de origem. */
+  function concessionariaDe(inst, ctx) {
+    if (inst.concessionaria) return inst.concessionaria;
+    const p = inst.propostaId && App.Store ? App.Store.get('propostas', inst.propostaId) : null;
+    const c = p && ((ctx && ctx.concessionarias) || (App.Store ? App.Store.list('concessionarias') : [])).find(function (x) { return x.id === p.concessionariaId; });
+    return c ? c.nome : '';
   }
 
   /**
@@ -286,35 +307,38 @@ window.App = window.App || {};
   }
 
   /**
-   * Desfaz a conclusão: as etapas voltam como estavam antes do "Concluir instalação" (as criadas depois ficam como estão); se a
-   * obra foi concluída etapa por etapa, reabre a última. Devolve o que foi feito ('restaurada' | 'reaberta' | '').
+   * Desfaz a conclusão: as etapas voltam como estavam antes do "Concluir instalação" (as criadas depois ficam como estão); sem
+   * esse registro (obras concluídas antes desta versão), só tira a conclusão — as etapas continuam concluídas e a obra fica
+   * pronta para concluir de novo. Devolve o que foi feito ('restaurada' | 'removida' | '').
    */
   function desfazerConclusao(inst) {
     const c = inst.conclusao;
-    let feito = '';
-    if (c && Array.isArray(c.antes)) {
+    if (!c) return '';
+    let feito = 'removida';
+    if (Array.isArray(c.antes)) {
       c.antes.forEach(function (a) {
         const e = (inst.etapas || []).find(function (x) { return x.id === a.id; });
         if (e) { e.status = a.status; e.iniciadoEm = a.iniciadoEm; e.concluidoEm = a.concluidoEm; }
       });
       if (c.situacaoAntes) inst.situacao = c.situacaoAntes;
       feito = 'restaurada';
-    } else {
-      const ult = (inst.etapas || []).slice().reverse().find(function (e) { return e.status === 'concluida'; });
-      if (ult) { ult.status = 'andamento'; ult.concluidoEm = ''; feito = 'reaberta'; }
     }
     inst.conclusao = null;
-    if (feito) {
-      registrar(inst, '↺ Conclusão da instalação desfeita' + (feito === 'restaurada' ? ': as etapas voltaram como estavam.' : ': a última etapa foi reaberta.'), 'sistema');
-      preverDatas(inst);
-    }
+    registrar(inst, '↺ Conclusão da instalação desfeita' + (feito === 'restaurada' ? ': as etapas voltaram como estavam.' : ': a obra voltou para em andamento.'), 'sistema');
+    preverDatas(inst);
     return feito;
   }
 
-  /** Data de conclusão da obra (a do "Concluir instalação" ou a da última etapa concluída), só quando concluída. */
+  /** Data de conclusão da obra (a do "Concluir instalação"), só quando concluída. */
   function dataConclusao(inst) {
-    if (status(inst) !== 'concluida') return '';
-    return (inst.conclusao && inst.conclusao.data) || previsaoConclusao(inst);
+    return status(inst) === 'concluida' ? inst.conclusao.data : '';
+  }
+
+  /** Inclui no checklist da instalação os itens recomendados (Textos padrão); devolve {grupos, itens} incluídos. */
+  function incluirRecomendados(inst, textos) {
+    if (!Array.isArray(inst.checklistInstalacao)) inst.checklistInstalacao = [];
+    const modelo = App.Checklist.doModelo((textos && textos.checklistComissionamento) || App.DEFAULTS.textos.checklistComissionamento, 'Comissionamento');
+    return App.Checklist.mesclar(inst.checklistInstalacao, modelo);
   }
 
   /** Etapas não concluídas com a data prevista já vencida. */
@@ -359,6 +383,7 @@ window.App = window.App || {};
     prazoDias: prazoDias, somarDias: somarDias, preverDatas: preverDatas, novaEtapa: novaEtapa, etapasPadrao: etapasPadrao,
     nova: nova, deProposta: deProposta, registrar: registrar, mudarEtapa: mudarEtapa,
     progresso: progresso, etapaAtual: etapaAtual, status: status, atrasadas: atrasadas, previsaoConclusao: previsaoConclusao, paraProjeto: paraProjeto,
-    concluir: concluir, desfazerConclusao: desfazerConclusao, dataConclusao: dataConclusao
+    concluir: concluir, desfazerConclusao: desfazerConclusao, dataConclusao: dataConclusao, prontaParaConcluir: prontaParaConcluir,
+    ehEtapaProjeto: ehEtapaProjeto, concessionariaDe: concessionariaDe, incluirRecomendados: incluirRecomendados
   };
 })(window.App);

@@ -7,7 +7,7 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 13;
+  const VERSAO = 14;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens', 'compras', 'lancamentos', 'contasFin', 'categoriasFin'];
@@ -132,6 +132,22 @@ window.App = window.App || {};
       const cats = ler('col.categoriasFin', null);
       const nova = D.categoriasFin.find(function (c) { return c.id === 'cat-cus-adicionais'; });
       if (Array.isArray(cats) && !cats.some(function (c) { return c.id === nova.id; })) { cats.push(U.clone(nova)); gravar('col.categoriasFin', cats); }
+    }
+    // instalação concluída só pelo botão: as que já tinham todas as etapas concluídas continuam concluídas (data da última etapa)
+    if (v < 14) {
+      const insts = ler('col.instalacoes', null);
+      if (Array.isArray(insts)) {
+        let mudou = false;
+        insts.forEach(function (i) {
+          const et = Array.isArray(i.etapas) ? i.etapas : [];
+          if ((i.conclusao && i.conclusao.data) || !et.length || !et.every(function (e) { return e.status === 'concluida'; })) return;
+          const data = et.map(function (e) { return e.concluidoEm || ''; }).sort().pop() || String(i.atualizadoEm || '').slice(0, 10) || U.todayISO();
+          i.conclusao = { data: data, em: '', por: '', antes: null, situacaoAntes: i.situacao || 'ativa', etapas: 0, avisadoEm: '', legado: true };
+          i.atualizadoEm = new Date().toISOString();
+          mudou = true;
+        });
+        if (mudou) gravar('col.instalacoes', insts);
+      }
     }
     gravar('v', VERSAO);
   };

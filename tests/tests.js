@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '13');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '14');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,8 +641,8 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8 → v13: versão da base (atual), instalações, ordens de serviço, pedidos de compra e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) &&
-        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '13 ok');
+      igual('migração v8 → v14: versão da base (atual), instalações, ordens de serviço, pedidos de compra e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) &&
+        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '14 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -1285,7 +1285,8 @@
     ok('instalações: reabrir etapa limpa a conclusão e registra', inst.etapas[0].concluidoEm === '' && /reaberta/.test(inst.historico[0].texto));
     ok('instalações: etapa vencida aparece como atrasada', I.atrasadas(inst, '2099-01-01').length === inst.etapas.length && I.atrasadas(inst, '2000-01-01').length === 0);
     inst.etapas.forEach(function (e) { I.mudarEtapa(inst, e, 'concluida', '2026-12-10'); });
-    ok('instalações: todas concluídas = obra concluída, sem atrasos', I.status(inst) === 'concluida' && I.atrasadas(inst, '2099-01-01').length === 0 && I.previsaoConclusao(inst) === '2026-12-10');
+    ok('instalações: todas as etapas concluídas = pronta para concluir (só o botão conclui), sem atrasos', I.status(inst) === 'andamento' && I.prontaParaConcluir(inst) &&
+      I.atrasadas(inst, '2099-01-01').length === 0 && I.previsaoConclusao(inst) === '2026-12-10' && I.dataConclusao(inst) === '');
     inst.situacao = 'pausada'; const stP = I.status(inst); inst.situacao = 'cancelada'; const stC = I.status(inst); inst.situacao = 'ativa';
     igual('instalações: obra pausada e cancelada', stP + ',' + stC, 'pausada,cancelada');
     const proj = I.paraProjeto(inst);
@@ -1342,7 +1343,7 @@
     ok('OS: concluir marca a data e deixa de estar em aberto', os.concluidaEm === '2026-11-12' && !Ord.aberta(os) && !Ord.atrasada(os, '2027-01-01'));
     Ord.mudarStatus(os, 'aberta');
     ok('OS: reabrir limpa a conclusão', os.concluidaEm === '' && Ord.aberta(os));
-    igual('OS: tipos de serviço', Ord.TIPOS.map(function (t) { return t.id; }).join(','), 'preventiva,corretiva,limpeza,visita,garantia,vistoria,ampliacao,pendencia,outro');
+    igual('OS: tipos de serviço', Ord.TIPOS.map(function (t) { return t.id; }).join(','), 'preventiva,corretiva,preditiva,limpeza,visita,garantia,vistoria,ampliacao,pendencia,outro');
     // assinaturas e PDFs da execução
     ok('assinatura: OS e instalação nascem com cliente e técnico em branco', ['cliente', 'tecnico'].every(function (k) { return os.assinaturas[k] && os.assinaturas[k].fotoId === '' && inst2.assinaturas[k] && inst2.assinaturas[k].fotoId === ''; }));
     ok('assinatura: termos de aceite padrão', /executados pela \{empresaCurta\}/.test(D.textos.termoOS) && /instalado e em funcionamento/.test(D.textos.termoInstalacao));
@@ -1905,12 +1906,92 @@
     const m = nova();
     m.situacao = 'ativa';
     m.etapas.forEach(function (e) { I.mudarEtapa(m, e, 'concluida', '2026-10-20'); });
-    ok('concluída etapa por etapa: data da última e desfazer reabre a última', I.dataConclusao(m) === '2026-10-20' && I.desfazerConclusao(m) === 'reaberta' &&
-      m.etapas[3].status === 'andamento' && m.etapas[3].concluidoEm === '' && m.etapas[2].status === 'concluida');
+    ok('todas as etapas concluídas não concluem a obra: fica pronta para concluir pelo botão', I.status(m) === 'andamento' && I.prontaParaConcluir(m) && I.dataConclusao(m) === '' && I.desfazerConclusao(m) === '');
+    I.concluir(m, '2026-10-21');
+    ok('pronta para concluir → botão: concluída sem etapas pendentes', I.status(m) === 'concluida' && m.conclusao.etapas === 0 && I.dataConclusao(m) === '2026-10-21' && !I.prontaParaConcluir(m));
+    const legado = { etapas: m.etapas, historico: [], conclusao: { data: '2026-10-20', antes: null, legado: true } };
+    ok('obra antiga (migrada) desfeita: volta para em andamento com as etapas concluídas', I.desfazerConclusao(legado) === 'removida' && I.status(legado) === 'andamento' && I.prontaParaConcluir(legado));
     const vazia = { etapas: [], historico: [] };
     ok('concluir obra sem etapas cria uma etapa concluída', I.concluir(vazia, '2026-10-30') === 1 && I.status(vazia) === 'concluida' && vazia.etapas.length === 1);
     const txt = App.Envio.mensagem({ empresa: { nomeCurto: 'Gênesis' }, textos: {} }, 'avisoConclusao', { cliente: 'Maria Teste', sistema: ' de 5,6 kWp', data: '30/10/2026', link: '', acompanhamento: '' });
     ok('mensagem de conclusão: sem link, as linhas do relatório e da página saem', /^Olá, Maria! 🎉/.test(txt) && /sistema de energia solar de 5,6 kWp foi concluída em 30\/10\/2026/.test(txt) && !/\{|Relatório de instalação|Acompanhe a sua obra/.test(txt) && /Gênesis$/.test(txt), txt);
+  })();
+
+  // ---------------------------------------------------------------- etapa de projeto (ID na concessionária), checklists editáveis
+  (function () {
+    const I = App.Instalacao, A = App.Acompanhamento, K = App.Checklist, O = App.Ordem, S = App.Store;
+    // modelo em linhas → grupos
+    const mod = K.doModelo('Item solto\n# Segurança\n- EPI conferido\n• Bloqueio\n\n# Ensaios\nIsolamento', 'Geral');
+    igual('checklist: modelo em linhas vira grupos (itens antes do título no grupo padrão, marcadores tirados)', JSON.stringify(mod),
+      JSON.stringify([{ titulo: 'Geral', itens: ['Item solto'] }, { titulo: 'Segurança', itens: ['EPI conferido', 'Bloqueio'] }, { titulo: 'Ensaios', itens: ['Isolamento'] }]));
+    const gs = [K.grupo('SEGURANÇA', ['epi conferido'])];
+    gs[0].itens[0].ok = true; gs[0].itens[0].obs = 'ok às 8h';
+    const r1 = K.mesclar(gs, mod);
+    ok('checklist: incluir o modelo acrescenta só o que falta (sem acento/maiúscula), sem desmarcar', r1.grupos === 2 && r1.itens === 3 && gs.length === 3 && gs[0].itens.length === 2 &&
+      gs[0].itens[0].ok && gs[0].itens[0].obs === 'ok às 8h' && gs[0].titulo === 'SEGURANÇA', r1);
+    const r2 = K.mesclar(gs, mod);
+    ok('checklist: incluir de novo não duplica', r2.grupos === 0 && r2.itens === 0 && gs.length === 3);
+    gs[2].naoSeAplica = true;
+    igual('checklist: progresso ignora grupo "não se aplica"', JSON.stringify(K.progresso(gs)), JSON.stringify({ feitos: 1, total: 3 }));
+    // OS: checklist de manutenção pelo botão
+    ['preventiva', 'corretiva', 'preditiva'].forEach(function (t) {
+      const os = { tipo: t };
+      const r = O.incluirChecklist(os, t, {});
+      const p = K.progresso(os.checklist);
+      ok('OS: checklist de manutenção ' + t + ' incluído pelo botão', r.grupos >= 3 && r.itens >= 10 && p.total === r.itens && p.feitos === 0 && O.CHECKLISTS.some(function (m) { return m.tipo === t; }), r);
+    });
+    const osP = { checklist: [] };
+    O.incluirChecklist(osP, 'preditiva', {});
+    ok('OS: preditiva com termografia (IEC 62446-3) e curva I-V', osP.checklist.some(function (g) { return /Termografia/.test(g.titulo); }) && osP.checklist.some(function (g) { return /Curva I-V/.test(g.titulo); }));
+    const osE = { checklist: [] };
+    O.incluirChecklist(osE, 'corretiva', { checklistCorretiva: ['# Meu grupo', 'Trocar fusível'] });
+    igual('OS: modelo editado em Textos padrão', JSON.stringify(osE.checklist.map(function (g) { return [g.titulo, g.itens.map(function (x) { return x.texto; })]; })), JSON.stringify([['Meu grupo', ['Trocar fusível']]]));
+    ok('OS: nova ordem já tem o checklist vazio', Array.isArray(O.nova(ctxReferencia()).checklist));
+    // instalação: itens recomendados (NBR 16274)
+    const inst = I.nova(ctxReferencia());
+    const antes = K.progresso(inst.checklistInstalacao).total;
+    const rr = I.incluirRecomendados(inst, {});
+    ok('instalação: itens recomendados de comissionamento (NBR 16274) incluídos sem duplicar', rr.itens > 10 && K.progresso(inst.checklistInstalacao).total === antes + rr.itens &&
+      inst.checklistInstalacao.some(function (g) { return /NBR 16274/.test(g.titulo); }) && I.incluirRecomendados(inst, {}).itens === 0, rr);
+    // etapa de projeto: ID do projeto na concessionária na mensagem
+    const ctxA = ctxReferencia();
+    ctxA.empresa = Object.assign({}, ctxA.empresa, { nomeCurto: 'Gênesis' });
+    const ob = Object.assign(I.nova(ctxA), { clienteNome: 'Maria', concessionaria: 'Energisa MS', projetoId: ' 2026-123456 ', art: 'MS20260001' });
+    const ep = ob.etapas.find(function (e) { return /projeto/i.test(e.titulo); });
+    ok('etapa de projeto: a primeira com "projeto" no título', !!ep && I.ehEtapaProjeto(ob, ep) && !I.ehEtapaProjeto(ob, ob.etapas.find(function (e) { return e !== ep; })));
+    igual('etapa de projeto: concessionária da obra', I.concessionariaDe(ob, ctxA), 'Energisa MS');
+    I.mudarEtapa(ob, ep, 'concluida', '2026-10-30');
+    const m1 = A.mensagemEtapa(ob, ctxA, ep, '');
+    ok('aviso da etapa de projeto: ID do projeto na concessionária e ART logo depois da etapa', /\*.*Projeto.*\*\.\n🔢 ID do projeto elétrico na Energisa MS: \*2026-123456\*\n📝 ART nº MS20260001/.test(m1), m1);
+    const outra = ob.etapas.find(function (e) { return e !== ep; });
+    ok('aviso de outra etapa: sem o ID do projeto', A.mensagemEtapa(ob, ctxA, outra, '').indexOf('ID do projeto') < 0);
+    ob.projetoId = '';
+    ok('aviso da etapa de projeto sem ID: nenhuma linha vazia ou marcador', !/\{detalhe\}|ID do projeto|\n\n\n/.test(A.mensagemEtapa(ob, ctxA, ep, '')));
+    ob.projetoId = '99'; ob.art = ''; ob.concessionaria = '';
+    const ctxM = Object.assign({}, ctxA, { textos: Object.assign({}, ctxA.textos, { avisoEtapa: 'Oi {cliente}, etapa *{etapa}* ok.\nFim' }) });
+    igual('modelo antigo sem {detalhe}: o ID entra depois da linha da etapa', A.mensagemEtapa(ob, ctxM, ep, ''), 'Oi Maria, etapa *' + ep.titulo + '* ok.\n🔢 ID do projeto elétrico na concessionária: *99*\nFim');
+    // migração v14: obras com todas as etapas concluídas continuam concluídas
+    const chaves = ['col.instalacoes', 'v'];
+    const guardado = {};
+    chaves.forEach(function (k) { guardado[k] = localStorage.getItem('gsp.' + k); });
+    try {
+      const e1 = [I.novaEtapa('A', 1), I.novaEtapa('B', 1)];
+      e1[0].status = 'concluida'; e1[0].concluidoEm = '2026-09-01'; e1[1].status = 'concluida'; e1[1].concluidoEm = '2026-09-15';
+      const e2 = [I.novaEtapa('A', 1), I.novaEtapa('B', 1)];
+      e2[0].status = 'concluida'; e2[0].concluidoEm = '2026-09-01';
+      localStorage.setItem('gsp.col.instalacoes', JSON.stringify([
+        { id: 'mi1', etapas: e1, historico: [], situacao: 'ativa', atualizadoEm: '2026-09-16T10:00:00Z' },
+        { id: 'mi2', etapas: e2, historico: [], situacao: 'ativa' },
+        { id: 'mi3', etapas: U.clone(e1), historico: [], situacao: 'ativa', conclusao: { data: '2026-10-01', antes: [] } }
+      ]));
+      S.migrar(13);
+      const g1 = S.get('instalacoes', 'mi1'), g2 = S.get('instalacoes', 'mi2'), g3 = S.get('instalacoes', 'mi3');
+      ok('migração v14: obra antiga com todas as etapas concluídas continua concluída (data da última etapa)', I.status(g1) === 'concluida' && g1.conclusao.data === '2026-09-15' && g1.conclusao.legado && I.dataConclusao(g1) === '2026-09-15', g1.conclusao);
+      ok('migração v14: obra em andamento e conclusão pelo botão ficam como estavam', !g2.conclusao && I.status(g2) === 'andamento' && g3.conclusao.data === '2026-10-01' && !g3.conclusao.legado);
+      igual('migração v14: versão da base', localStorage.getItem('gsp.v'), '14');
+    } finally {
+      chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
+    }
   })();
 
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };

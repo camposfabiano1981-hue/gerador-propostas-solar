@@ -124,7 +124,7 @@ window.App = window.App || {};
       andamento: insts.filter(function (x) { return I.status(x) === 'andamento'; }),
       iniciar: insts.filter(function (x) { return I.status(x) === 'iniciar'; }).length,
       atrasadas: insts.filter(function (x) { return I.status(x) === 'andamento' && I.atrasadas(x, dia).length; }).length,
-      concluidas: insts.filter(function (x) { return I.status(x) === 'concluida' && dentro(I.previsaoConclusao(x), iv.ini, iv.fim); }).length
+      concluidas: insts.filter(function (x) { return I.status(x) === 'concluida' && dentro(I.dataConclusao(x), iv.ini, iv.fim); }).length
     } : null;
     const em7 = iso(new Date(h.getFullYear(), h.getMonth(), h.getDate() + 7, 12));
     const os = O ? {

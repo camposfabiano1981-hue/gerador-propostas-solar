@@ -73,6 +73,26 @@ window.App = window.App || {};
     return TBL(cols.map(function (c) { return c.w; }), rows);
   }
 
+  /** Checklist (grupos com os itens marcados ✓ ou ○ e a observação/medição de cada um): instalação e OS. */
+  function tabelaChecklist(grupos) {
+    const linhas = [];
+    grupos.forEach(function (g) {
+      const feitos = (g.itens || []).filter(function (x) { return x.ok; }).length;
+      linhas.push(TR([TC(P([R(g.titulo, { b: true, color: BRANCO, sz: 18 }), R(g.naoSeAplica ? '   não se aplica' : '   ' + feitos + ' de ' + (g.itens || []).length, { color: 'DBEAFE', sz: 16 })]),
+        { w: 9360, span: 3, fill: AZUL, borda: { sz: 4, cor: AZUL }, mar: { t: 70, b: 70, l: 140, r: 120 } })], false, { naoQuebrar: true, comProxima: !g.naoSeAplica && (g.itens || []).length > 0 }));
+      if (g.naoSeAplica) return;
+      (g.itens || []).forEach(function (it, i) {
+        const fundo = i % 2 ? 'F8FAFC' : BRANCO;
+        linhas.push(TR([
+          TC(T(it.ok ? '✓' : '○', { jc: 'center' }, { b: true, color: it.ok ? '15803D' : '94A3B8', sz: 20 }), { w: 600, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' } }),
+          TC(T(it.texto || '', null, { sz: 17, color: GRAFITE }), { w: 5760, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 50, b: 50, l: 120, r: 120 } }),
+          TC(T(it.obs || '', null, { sz: 16, color: '475569', i: true }), { w: 3000, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 50, b: 50, l: 120, r: 120 } })
+        ], false, { naoQuebrar: true }));
+      });
+    });
+    return TBL([600, 5760, 3000], linhas);
+  }
+
   /**
    * Bloco de aceite (não se divide entre páginas): título, termo e as assinaturas lado a lado — a imagem colhida na tela
    * (ou espaço em branco para assinar à mão) sobre a linha, com nome, papel e data alinhados.
@@ -191,6 +211,11 @@ window.App = window.App || {};
       b.push(tabela([{ t: '#', w: 700, jc: 'center' }, { t: 'Material', w: 6860 }, { t: 'Qtd.', w: 1800, jc: 'center' }],
         mats.map(function (m, i) { return [String(i + 1), m.descricao || '', m.qtd || '']; })));
     }
+    if ((os.checklist || []).length) {
+      const pc = App.Checklist.progresso(os.checklist);
+      b.push(secao('Checklist da manutenção' + (pc.total ? ' — ' + pc.feitos + ' de ' + pc.total + ' itens' : '')));
+      b.push(tabelaChecklist(os.checklist));
+    }
     const termo = N.substituir(ctx.textos.termoOS || '', vars(ctx, os.clienteNome));
     b.push(P([], { after: 160 }));
     b.push(blocoAceite('Aceite e assinaturas', termo, assinantes(os.assinaturas, rec, os.clienteNome, os.responsavel, 'Técnico responsável — ' + (emp.nomeCurto || emp.razao), os.assinaturaDigital), rec.imagens));
@@ -227,7 +252,7 @@ window.App = window.App || {};
       ['Cliente', inst.clienteNome], ['Telefone / WhatsApp', inst.telefone],
       ['Endereço da instalação', inst.endereco], ['Cidade / UF', [inst.cidade, inst.uf].filter(Boolean).join(' / ')],
       ['Proposta', inst.propostaNumero], ['Responsável técnico', inst.responsavel],
-      ['Equipe', inst.equipe], ['Conclusão', U.dataBR(I.previsaoConclusao(inst)) + (st.id === 'concluida' ? '' : ' (prevista)')]
+      ['Equipe', inst.equipe], ['Conclusão', st.id === 'concluida' ? U.dataBR(I.dataConclusao(inst)) : U.dataBR(I.previsaoConclusao(inst)) + ' (prevista)']
     ]));
     // sistema instalado
     const pl = inst.placas || {};
@@ -279,25 +304,12 @@ window.App = window.App || {};
     const grupos = inst.checklistInstalacao || [];
     if (grupos.length) {
       b.push(secao('Checklist da instalação'));
-      const linhas = [];
-      grupos.forEach(function (g) {
-        const feitos = (g.itens || []).filter(function (x) { return x.ok; }).length;
-        linhas.push(TR([TC(P([R(g.titulo, { b: true, color: BRANCO, sz: 18 }), R(g.naoSeAplica ? '   não se aplica' : '   ' + feitos + ' de ' + (g.itens || []).length, { color: 'DBEAFE', sz: 16 })]),
-          { w: 9360, span: 3, fill: AZUL, borda: { sz: 4, cor: AZUL }, mar: { t: 70, b: 70, l: 140, r: 120 } })], false, { naoQuebrar: true }));
-        if (g.naoSeAplica) return;
-        (g.itens || []).forEach(function (it, i) {
-          const fundo = i % 2 ? 'F8FAFC' : BRANCO;
-          linhas.push(TR([
-            TC(T(it.ok ? '✓' : '○', { jc: 'center' }, { b: true, color: it.ok ? '15803D' : '94A3B8', sz: 20 }), { w: 600, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' } }),
-            TC(T(it.texto || '', null, { sz: 17, color: GRAFITE }), { w: 5760, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 50, b: 50, l: 120, r: 120 } }),
-            TC(T(it.obs || '', null, { sz: 16, color: '475569', i: true }), { w: 3000, fill: fundo, borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 50, b: 50, l: 120, r: 120 } })
-          ], false, { naoQuebrar: true }));
-        });
-      });
-      b.push(TBL([600, 5760, 3000], linhas));
+      b.push(tabelaChecklist(grupos));
     }
     // dados da obra
-    const dados = [['Unidade consumidora (UC)', inst.uc], ['Nº da ART', inst.art], ['Protocolo de homologação', inst.protocolo], ['Medidor bidirecional', inst.medidor], ['Ligação (início da geração)', U.dataBR(inst.ligacao)]];
+    const conc = I.concessionariaDe(inst, ctx);
+    const dados = [['Unidade consumidora (UC)', inst.uc], ['ID do projeto elétrico' + (conc ? ' (' + conc + ')' : ''), inst.projetoId], ['Nº da ART', inst.art], ['Protocolo de homologação', inst.protocolo],
+      ['Medidor bidirecional', inst.medidor], ['Ligação (início da geração)', U.dataBR(inst.ligacao)]];
     if (dados.some(function (x) { return x[1]; })) { b.push(secao('Documentos e concessionária')); b.push(pares(dados)); }
     // ordens de serviço da obra
     const O = App.Ordem;

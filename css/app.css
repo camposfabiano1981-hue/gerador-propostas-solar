@@ -393,7 +393,7 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 .checklist-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .checklist-item label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .checklist-novo { display: flex; gap: 8px; margin-bottom: 8px; }
-.checklist-novo input { flex: 1; min-height: 34px; border: 1px solid var(--borda-forte); border-radius: 8px; padding: 4px 10px; }
+.checklist-novo input { flex: 1; min-width: 0; min-height: 34px; border: 1px solid var(--borda-forte); border-radius: 8px; padding: 4px 10px; }
 .historico { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .historico li { display: grid; grid-template-columns: 120px 1fr; gap: 10px; font-size: 13px; padding-bottom: 8px; border-bottom: 1px dashed var(--borda); }
 .historico time { color: var(--muted); white-space: nowrap; }
@@ -420,12 +420,8 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 .checklist-grupo-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .checklist-grupo-topo h3 { margin: 0; font-size: 15px; color: var(--azul); }
 .checklist-grupo-topo .campo { margin: 0 0 0 auto; }
-.check-linha { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 32%) auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--borda); }
-.check-linha label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 14px; }
-.check-linha label input { margin-top: 3px; }
-.check-linha.ok label span { color: #15803D; }
+.check-linha { padding: 4px 0; border-bottom: 1px dashed var(--borda); }
 .check-obs { min-height: 32px; border: 1px solid var(--borda); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
-@media (max-width: 700px) { .check-linha { grid-template-columns: minmax(0, 1fr) auto; } .check-obs { grid-column: 1 / 2; } }
 
 /* ---------- assinatura na tela */
 .assinaturas-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -713,3 +709,23 @@ td.num.saida { color: var(--vermelho); }
 .btn-concluir:hover { background: #166534; }
 .btn-formato.concluir { font-size: 12px; padding: 2px 6px; border-color: #86EFAC; }
 .lista-etapas-concluir { margin: 4px 0 10px; padding-left: 20px; color: var(--texto-2); }
+
+/* ---------- checklists editáveis e etapa de projeto */
+.checklist-titulo { flex: 1 1 200px; font-weight: 700; font-size: 15px; color: var(--azul); border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; }
+.checklist-titulo:hover, .checklist-titulo:focus { border-color: var(--borda-forte); background: #fff; }
+.check-linha { display: flex; align-items: flex-start; gap: 8px; }
+.check-linha > input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 7px; }
+.check-linha > .btn-icone { margin-top: 2px; }
+.check-texto { flex: 2 1 220px; border: 1px solid transparent; background: transparent; padding: 5px 6px; border-radius: 6px; font: inherit; font-size: 14px; line-height: 1.35; color: var(--texto);
+  resize: none; overflow: hidden; min-height: 30px; height: 30px; }
+.check-texto:hover, .check-texto:focus { border-color: var(--borda-forte); background: #fff; }
+.check-linha.ok .check-texto { color: var(--verde); }
+.check-linha .check-obs { flex: 1 1 160px; }
+@media (max-width: 700px) { .check-linha { flex-wrap: wrap; } .check-texto { flex-basis: calc(100% - 60px); } .check-linha .check-obs { flex-basis: 100%; } }
+.checklist-rodape { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; margin-top: 10px; }
+.checklist-rodape .checklist-novo { flex: 1 1 280px; min-width: 0; max-width: 100%; }
+.checklist-incluir { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
+.checklist-incluir .campo { flex: 0 1 280px; margin: 0; }
+.etapa-projeto { background: var(--azul-claro); border: 1px solid var(--azul-borda); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+.conclusao-box.pronta { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 10px 12px; }
+.conclusao-titulo.pronta { color: var(--ambar); }

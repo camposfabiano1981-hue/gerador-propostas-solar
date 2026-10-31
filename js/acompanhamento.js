@@ -71,8 +71,13 @@ window.App = window.App || {};
     let proxima = '';
     if (pr.total && pr.feitas === pr.total) proxima = 'Todas as etapas foram concluídas: seu sistema está pronto! 🎉';
     else if (prox) proxima = 'Próxima etapa: ' + prox.titulo + (prox.previsto ? ', prevista para ' + U.dataBR(prox.previsto) : '') + '.';
+    let detalhe = '';
+    if (etapa && I.ehEtapaProjeto(inst, etapa) && String(inst.projetoId || '').trim()) {
+      const conc = I.concessionariaDe(inst, ctx);
+      detalhe = '🔢 ID do projeto elétrico na ' + (conc || 'concessionária') + ': *' + String(inst.projetoId).trim() + '*' + (String(inst.art || '').trim() ? '\n📝 ART nº ' + String(inst.art).trim() : '');
+    }
     return {
-      cliente: primeiroNome(inst.clienteNome) || 'cliente', etapa: etapa ? etapa.titulo || '' : '', numeroEtapa: n || '', totalEtapas: et.length,
+      cliente: primeiroNome(inst.clienteNome) || 'cliente', etapa: etapa ? etapa.titulo || '' : '', numeroEtapa: n || '', totalEtapas: et.length, detalhe: detalhe,
       proxima: proxima, progresso: pr.total ? Math.round(pr.pct * 100) + '% concluído (' + pr.feitas + ' de ' + pr.total + ' etapas)' : '',
       link: link || '', empresa: emp.nomeCurto || emp.razao || ''
     };
@@ -80,7 +85,10 @@ window.App = window.App || {};
 
   /** Mensagem do WhatsApp para a etapa concluída (modelo em Configurações › Textos padrão). */
   function mensagemEtapa(inst, ctx, etapa, link) {
-    return preencher((ctx.textos && ctx.textos.avisoEtapa) || App.DEFAULTS.textos.avisoEtapa, variaveis(inst, ctx, etapa, link));
+    let modelo = (ctx.textos && ctx.textos.avisoEtapa) || App.DEFAULTS.textos.avisoEtapa;
+    // modelo editado antes do {detalhe}: o ID do projeto entra logo depois da linha da etapa
+    if (modelo.indexOf('{detalhe}') < 0) modelo = modelo.split('\n').map(function (l) { return l.indexOf('{etapa}') >= 0 ? l + '\n{detalhe}' : l; }).join('\n');
+    return preencher(modelo, variaveis(inst, ctx, etapa, link));
   }
 
   /** Mensagem com o link da página de acompanhamento. */

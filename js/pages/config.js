@@ -259,7 +259,18 @@
       UI.grade([
         { k: 'checklistEstrutura', label: '🏗️ Estrutura de fixação e módulos', type: 'linhas', rows: 9, cls: 'span2' },
         { k: 'checklistStringBox', label: '🔒 String box', type: 'linhas', rows: 7 },
-        { k: 'checklistInversor', label: '🔌 Inversor', type: 'linhas', rows: 7 }
+        { k: 'checklistInversor', label: '🔌 Inversor', type: 'linhas', rows: 7 },
+        { k: 'checklistComissionamento', label: '📋 Itens recomendados — comissionamento (NBR 16274 / IEC 62446-1, NR-10 / NR-35)', type: 'linhas', rows: 14, cls: 'span2',
+          help: 'Incluídos pelo botão "📋 Incluir itens recomendados" no checklist de cada obra. "# Título" abre um grupo; as linhas abaixo são os itens.' }
+      ], tx, marcar)));
+
+    cont.appendChild(h('div.card', h('h3', 'Checklists das ordens de serviço de manutenção'),
+      h('p.ajuda-sec', 'Incluídos pelo botão "📋 Incluir checklist" na OS (preventiva, corretiva ou preditiva) — só quando você pedir. "# Título" abre um grupo; ',
+        'as linhas abaixo são os itens. Referências: IEC 62446-2 (manutenção de sistemas fotovoltaicos), IEC 62446-3 (termografia) e ABNT NBR 16274.'),
+      UI.grade([
+        { k: 'checklistPreventiva', label: '🛠 Manutenção preventiva', type: 'linhas', rows: 12, cls: 'span2' },
+        { k: 'checklistCorretiva', label: '🔧 Manutenção corretiva', type: 'linhas', rows: 10, cls: 'span2' },
+        { k: 'checklistPreditiva', label: '📈 Manutenção preditiva', type: 'linhas', rows: 10, cls: 'span2' }
       ], tx, marcar)));
 
     cont.appendChild(h('div.card', h('h3', 'Termos de aceite (assinados pelo cliente)'),
@@ -271,7 +282,7 @@
 
     cont.appendChild(h('div.card', h('h3', 'Avisos ao cliente pelo WhatsApp (instalações)'),
       h('p.ajuda-sec', 'Mensagens prontas que abrem no WhatsApp ao concluir uma etapa da instalação e ao enviar o link de acompanhamento. Marcadores: ',
-        '{cliente} (primeiro nome), {etapa}, {numeroEtapa}, {totalEtapas}, {proxima} (próxima etapa e data, ou "todas concluídas"), {progresso}, {link} (página de acompanhamento) e {empresa}. ',
+        '{cliente} (primeiro nome), {etapa}, {numeroEtapa}, {totalEtapas}, {detalhe} (na etapa de projeto: ID do projeto na concessionária e nº da ART), {proxima} (próxima etapa e data, ou "todas concluídas"), {progresso}, {link} (página de acompanhamento) e {empresa}. ',
         'Uma linha cujos marcadores ficarem vazios (ex.: {link} sem página de acompanhamento) sai da mensagem. Use *texto* para negrito no WhatsApp.'),
       UI.grade([
         { k: 'avisoEtapa', label: 'Etapa concluída', type: 'textarea', rows: 7, cls: 'span2' },

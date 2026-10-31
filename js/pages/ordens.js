@@ -126,6 +126,7 @@
       if (!Array.isArray(os.materiais)) os.materiais = [];
       const va = App.Assinatura.vazia;
       os.assinaturas = Object.assign({ cliente: va(), tecnico: va() }, os.assinaturas || {});
+      if (!Array.isArray(os.checklist)) os.checklist = [];
     } else {
       const inst = qs && qs.get('instalacao') ? S.get('instalacoes', qs.get('instalacao')) : null;
       os = O.nova(ctx, inst);
@@ -176,6 +177,7 @@
         if (k === 'status') O.mudarStatus(os, os.status, U.todayISO());
         if (k === 'agendadaPara' && os.agendadaPara && os.status === 'aberta') os.status = 'agendada';
         if (['data', 'status', 'agendadaPara'].indexOf(k) >= 0) desenhar('os');
+        if (k === 'tipo' && secoes.checklist) desenhar('checklist');
         titulo.textContent = (os.id ? 'Ordem de serviço ' : 'Nova ordem de serviço ') + (os.numero || '');
         mudou();
       }, 2));
@@ -218,6 +220,33 @@
         { k: 'descricao', label: 'Material' },
         { k: 'qtd', label: 'Qtd.', w: '18%' }
       ], mudou, '+ Adicionar material', function () { return { descricao: '', qtd: '' }; }));
+    });
+
+    secao('checklist', 'Checklist da manutenção', function (c) {
+      if (!Array.isArray(os.checklist)) os.checklist = [];
+      const sugerido = O.CHECKLISTS.find(function (x) { return x.tipo === os.tipo; });
+      const est = { modelo: sugerido ? sugerido.tipo : 'preventiva' };
+      c.appendChild(h('p.ajuda-sec', 'O checklist entra só quando você pedir: escolha o modelo (manutenção preventiva, corretiva ou preditiva — editáveis em Configurações › Textos padrão) e clique em incluir. ',
+        'Depois dá para marcar, anotar medições e editar, incluir ou remover itens e grupos. O checklist sai no PDF da OS.'));
+      c.appendChild(h('div.checklist-incluir',
+        UI.campo({ k: 'modelo', label: 'Modelo do checklist', type: 'select', options: O.CHECKLISTS.map(function (x) { return { v: x.tipo, t: x.label }; }) }, est),
+        h('button.btn.primario', {
+          type: 'button', onclick: function () {
+            const m = O.CHECKLISTS.find(function (x) { return x.tipo === est.modelo; });
+            const r = O.incluirChecklist(os, est.modelo, ctx.textos);
+            mudou(); desenhar('checklist');
+            UI.toast(r.itens ? 'Checklist de ' + m.label.toLowerCase() + ' incluído (' + r.itens + ' itens).' : 'Os itens deste modelo já estão no checklist.', r.itens ? 'ok' : 'info');
+          }
+        }, '📋 Incluir checklist')));
+      if (os.checklist.length) {
+        c.appendChild(App.Checklist.editor(os.checklist, { aoMudar: mudou, redesenhar: function () { desenhar('checklist'); } }));
+        c.appendChild(h('div.barra-itens', h('button.btn.pequeno.perigo', {
+          type: 'button', onclick: async function () {
+            if (!(await UI.confirmar('Tirar o checklist desta OS?', 'Tirar', true))) return;
+            os.checklist = []; mudou(); desenhar('checklist');
+          }
+        }, 'Tirar o checklist')));
+      } else if (sugerido) c.appendChild(h('p.nota', 'Esta OS é de ' + sugerido.label.toLowerCase() + ': clique em "📋 Incluir checklist" para trazer os itens.'));
     });
 
     secao('assinaturas', 'Assinaturas', function (c) {

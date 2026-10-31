@@ -10,7 +10,7 @@ window.App = window.App || {};
   const U = App.U;
 
   const TIPOS = [
-    { id: 'preventiva', label: 'Manutenção preventiva' }, { id: 'corretiva', label: 'Manutenção corretiva' },
+    { id: 'preventiva', label: 'Manutenção preventiva' }, { id: 'corretiva', label: 'Manutenção corretiva' }, { id: 'preditiva', label: 'Manutenção preditiva' },
     { id: 'limpeza', label: 'Limpeza dos módulos' }, { id: 'visita', label: 'Visita técnica' },
     { id: 'garantia', label: 'Garantia / troca de equipamento' }, { id: 'vistoria', label: 'Vistoria da concessionária' },
     { id: 'ampliacao', label: 'Ampliação do sistema' }, { id: 'pendencia', label: 'Pendência da instalação' }, { id: 'outro', label: 'Outro' }
@@ -33,7 +33,7 @@ window.App = window.App || {};
     const os = {
       numero: '', data: U.todayISO(), instalacaoId: '', instalacaoTitulo: '', clienteId: '', clienteNome: '', telefone: '', endereco: '', cidade: '', uf: emp.uf || '',
       tipo: 'visita', prioridade: 'normal', status: 'aberta', agendadaPara: '', concluidaEm: '', responsavel: emp.responsavel || '',
-      descricao: '', servico: '', materiais: [], garantia: false, valor: '',
+      descricao: '', servico: '', materiais: [], garantia: false, valor: '', checklist: [],
       assinaturas: { cliente: { fotoId: '', nome: '', em: '' }, tecnico: { fotoId: '', nome: '', em: '' } }
     };
     if (inst) {
@@ -59,8 +59,23 @@ window.App = window.App || {};
 
   function resumo(os) { return os.numero + ' — ' + rotulo(TIPOS, os.tipo); }
 
+  // modelos de checklist das manutenções (Configurações › Textos padrão)
+  const CHECKLISTS = [
+    { tipo: 'preventiva', chave: 'checklistPreventiva', label: 'Manutenção preventiva' },
+    { tipo: 'corretiva', chave: 'checklistCorretiva', label: 'Manutenção corretiva' },
+    { tipo: 'preditiva', chave: 'checklistPreditiva', label: 'Manutenção preditiva' }
+  ];
+
+  /** Inclui na OS o checklist do modelo (preventiva, corretiva ou preditiva); devolve {grupos, itens} incluídos. */
+  function incluirChecklist(os, tipo, textos) {
+    const m = CHECKLISTS.find(function (x) { return x.tipo === tipo; }) || CHECKLISTS[0];
+    if (!Array.isArray(os.checklist)) os.checklist = [];
+    const modelo = App.Checklist.doModelo((textos && textos[m.chave]) || App.DEFAULTS.textos[m.chave], m.label);
+    return App.Checklist.mesclar(os.checklist, modelo);
+  }
+
   App.Ordem = {
     TIPOS: TIPOS, PRIORIDADES: PRIORIDADES, STATUS: STATUS, ABERTAS: ABERTAS, rotulo: rotulo,
-    nova: nova, mudarStatus: mudarStatus, aberta: aberta, atrasada: atrasada, resumo: resumo
+    nova: nova, mudarStatus: mudarStatus, aberta: aberta, atrasada: atrasada, resumo: resumo, CHECKLISTS: CHECKLISTS, incluirChecklist: incluirChecklist
   };
 })(window.App);
