@@ -37,6 +37,79 @@
   }
   App.aprovadasSemInstalacao = aprovadasSemInstalacao;
 
+  /* ------------------------------------------------------------ conclusão da obra e envio ao cliente */
+
+  /** Link da página "Acompanhe sua obra", se estiver ativa. */
+  function linkAcompanhamentoDe(inst) {
+    const a = inst.acompanhamento;
+    return a && a.ativo && a.token ? App.Acompanhamento.linkAcompanhamento(a.token) : '';
+  }
+
+  /**
+   * Envio ao cliente pelo WhatsApp depois de concluir: mensagem de conclusão com o link do relatório de instalação (termo de
+   * entrega) em PDF e o da página da obra. guardar(): grava o registro.
+   */
+  function enviarConclusao(inst, guardar) {
+    const ctx = C.contexto();
+    const data = I.dataConclusao(inst) || U.todayISO();
+    const sistema = [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh de armazenamento' : ''].filter(Boolean).join(' + ');
+    App.Envio.abrir({
+      titulo: 'Enviar ao cliente: instalação concluída', tipoDoc: 'Relatório de instalação', numero: inst.propostaNumero || '', clienteNome: inst.clienteNome, telefone: inst.telefone, registro: inst,
+      gerar: function () { return App.Relatorios.pdfInstalacao(inst, ctx); },
+      mensagem: function (link) {
+        return App.Envio.mensagem(ctx, 'avisoConclusao', { cliente: inst.clienteNome, sistema: sistema ? ' de ' + sistema : '', data: U.dataBR(data), link: link, acompanhamento: linkAcompanhamentoDe(inst) });
+      },
+      aoPublicar: function (ld) { inst.linkDoc = ld; guardar(); },
+      aoEnviar: function (como) {
+        if (inst.conclusao) inst.conclusao.avisadoEm = new Date().toISOString();
+        else inst.conclusao = { data: data, em: '', antes: null, avisadoEm: new Date().toISOString() };
+        I.registrar(inst, '📲 Cliente avisado ' + (como === 'compartilhar' ? 'pelo compartilhamento do PDF' : 'pelo WhatsApp') + ': instalação concluída (relatório de instalação).', 'nota');
+        guardar();
+      }
+    }, ctx);
+  }
+
+  /** Janela "Concluir instalação": data de conclusão e, em seguida, o envio ao cliente. guardar() grava; depois() redesenha. */
+  function abrirConcluir(inst, guardar, depois) {
+    const faltam = (inst.etapas || []).filter(function (e) { return e.status !== 'concluida'; });
+    const est = { data: U.todayISO(), enviar: true };
+    UI.modal({
+      titulo: 'Concluir a instalação',
+      corpo: h('div',
+        h('p', faltam.length ? 'As etapas que faltam serão marcadas como concluídas na data abaixo:' : 'Todas as etapas já estão concluídas.'),
+        faltam.length ? h('ul.lista-etapas-concluir', faltam.map(function (e) { return h('li', (inst.etapas.indexOf(e) + 1) + '. ' + (e.titulo || 'Etapa')); })) : null,
+        UI.grade([
+          { k: 'data', label: 'Data de conclusão', type: 'date' },
+          { k: 'enviar', label: 'Abrir em seguida o envio ao cliente pelo WhatsApp (mensagem de conclusão + relatório de instalação)', type: 'checkbox', cls: 'span2' }
+        ], est, null, 2),
+        h('p.ajuda-sec', 'Se precisar, "↺ Desfazer conclusão" devolve as etapas como estavam.')),
+      acoes: [
+        { label: 'Cancelar' },
+        {
+          label: '✅ Concluir instalação', primario: true, onClick: function () {
+            if (!est.data) { UI.toast('Informe a data de conclusão.', 'erro'); return false; }
+            I.concluir(inst, est.data, (App.Acesso.sessao() || {}).email || '');
+            if (guardar() === false) return;
+            if (depois) depois();
+            UI.toast('Instalação concluída em ' + U.dataBR(est.data) + '.', 'ok');
+            if (est.enviar) enviarConclusao(inst, guardar);
+          }
+        }
+      ]
+    });
+  }
+
+  async function desfazerConclusao(inst, guardar, depois) {
+    const comBotao = inst.conclusao && Array.isArray(inst.conclusao.antes);
+    const ok = await UI.confirmar(comBotao ? 'Desfazer a conclusão? As etapas voltam como estavam antes de "Concluir instalação".'
+      : 'Desfazer a conclusão? A última etapa concluída volta para "em andamento".', 'Desfazer conclusão');
+    if (!ok) return;
+    I.desfazerConclusao(inst);
+    guardar();
+    if (depois) depois();
+    UI.toast('Conclusão desfeita.', 'ok');
+  }
+
   /* ------------------------------------------------------------ lista */
 
   function tabela(lista, recarregar) {
@@ -55,7 +128,12 @@
         h('td', barra(inst)),
         h('td', U.dataBR(I.previsaoConclusao(inst)) || '—', atraso.length && st !== 'pausada' ? h('div', UI.badge(atraso.length === 1 ? '1 etapa atrasada' : atraso.length + ' etapas atrasadas', 'erro')) : null),
         h('td', statusBadge(inst)),
-        h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfInstalacao(inst, C.contexto()); }, 'Relatório de instalação — ' + (inst.titulo || inst.clienteNome || '')), h('button.btn-icone.perigo', {
+        h('td.acoes-col',
+          st === 'concluida' ? App.Envio.botao(function () { enviarConclusao(inst, function () { S.save('instalacoes', inst); }); }, 'aviso de conclusão')
+            : (st !== 'cancelada' ? h('button.btn-formato.concluir', { type: 'button', title: 'Concluir a instalação', 'aria-label': 'Concluir a instalação', onclick: function () {
+              abrirConcluir(inst, function () { S.save('instalacoes', inst); if (inst.acompanhamento && inst.acompanhamento.ativo) App.Acompanhamento.publicar(inst, C.contexto()); }, recarregar);
+            } }, '✅') : null),
+          App.Visualizar.botao(function () { return App.Relatorios.pdfInstalacao(inst, C.contexto()); }, 'Relatório de instalação — ' + (inst.titulo || inst.clienteNome || '')), h('button.btn-icone.perigo', {
           type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
             if (await UI.confirmar('Excluir a instalação "' + (inst.titulo || inst.clienteNome) + '"? O histórico da obra será perdido.', 'Excluir', true)) {
               if (inst.acompanhamento && inst.acompanhamento.token) App.Acompanhamento.despublicar(inst.acompanhamento.token);
@@ -749,6 +827,26 @@
         resumo.appendChild(h('ul.alertas', atraso.map(function (e) {
           return h('li.erro', 'Atrasada: ' + (inst.etapas.indexOf(e) + 1) + '. ' + e.titulo + ' (previsto para ' + U.dataBR(e.previsto) + ')');
         })));
+      }
+      // concluir / desfazer / enviar ao cliente
+      const guardarFicha = function () { mudou(); return salvar(false); };
+      const aposConcluir = function () { desenhar('etapas'); desenhar('historico'); desenharResumo(); };
+      if (st === 'concluida') {
+        const c = inst.conclusao || {};
+        resumo.appendChild(h('div.conclusao-box.concluida',
+          h('div.conclusao-titulo', '✅ Instalação concluída em ' + (U.dataBR(I.dataConclusao(inst)) || '—')),
+          c.avisadoEm ? h('small', '📲 Cliente avisado em ' + App.Assinatura.dataHora(c.avisadoEm)) : h('small', 'Envie ao cliente a mensagem de conclusão com o relatório de instalação.'),
+          h('div.conclusao-botoes',
+            h('button.btn.primario.btn-enviar-conclusao', { type: 'button', onclick: function () { if (!inst.id && !salvar(false)) return; enviarConclusao(inst, guardarFicha); } },
+              c.avisadoEm ? '📲 Enviar de novo pelo WhatsApp' : '📲 Enviar ao cliente (WhatsApp)'),
+            h('button.btn', { type: 'button', onclick: function () { desfazerConclusao(inst, guardarFicha, aposConcluir); } }, '↺ Desfazer conclusão'))));
+      } else if (st !== 'cancelada') {
+        resumo.appendChild(h('div.conclusao-box',
+          h('button.btn.btn-concluir', { type: 'button', onclick: function () {
+            if (!inst.id && !String(inst.titulo || inst.clienteNome || '').trim()) { UI.toast('Informe o nome da obra ou o cliente antes de concluir.', 'erro'); return; }
+            abrirConcluir(inst, guardarFicha, aposConcluir);
+          } }, '✅ Concluir instalação'),
+          h('small', pr.total - pr.feitas > 0 ? (pr.total - pr.feitas) + (pr.total - pr.feitas === 1 ? ' etapa em aberto será concluída.' : ' etapas em aberto serão concluídas.') : '')));
       }
       const links = [];
       if (inst.propostaId && S.get('propostas', inst.propostaId) && App.Acesso.podeLer('propostas')) {

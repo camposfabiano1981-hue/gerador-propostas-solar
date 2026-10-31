@@ -242,6 +242,8 @@ window.App = window.App || {};
     // avisos ao cliente pelo WhatsApp (Instalações): {cliente} {etapa} {numeroEtapa} {totalEtapas} {proxima} {progresso} {link} {empresa}
     avisoEtapa: 'Olá, {cliente}! 👋\n\nConcluímos a etapa {numeroEtapa} de {totalEtapas} da instalação do seu sistema solar: *{etapa}*.\n\n{proxima}\n\nAcompanhe cada etapa por aqui: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',
     avisoLink: 'Olá, {cliente}! 👋\n\nA partir de agora você acompanha cada etapa da instalação do seu sistema solar por este link:\n{link}\n\nA cada etapa concluída, avisamos por aqui.\n{empresa}',
+    // instalação concluída (botão 📲 após concluir): {cliente} {sistema} {data} {link} (relatório em PDF) {acompanhamento} {empresa}
+    avisoConclusao: 'Olá, {cliente}! 🎉\n\nA instalação do seu sistema de energia solar{sistema} foi concluída em {data}. Obrigado pela confiança!\n\n📄 Relatório de instalação e termo de entrega: {link}\n\n🔗 Acompanhe a sua obra: {acompanhamento}\n\nAcompanhe a geração pelo aplicativo do inversor e conte com a gente para a manutenção. Qualquer dúvida, é só responder esta mensagem.\n{empresa}',
     // envio dos documentos pelo WhatsApp: {cliente} {numero} {validade} {link} {empresa} (OS: também {tipo} e {situacao})
     envioProposta: 'Olá, {cliente}! 👋\n\nSegue a sua proposta de energia solar nº {numero}, válida até {validade}.\n\n📄 Abra pelo link: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',
     envioAvulsa: 'Olá, {cliente}! 👋\n\nSegue a proposta de serviços nº {numero}, válida até {validade}.\n\n📄 Abra pelo link: {link}\n\nQualquer dúvida, é só responder esta mensagem.\n{empresa}',

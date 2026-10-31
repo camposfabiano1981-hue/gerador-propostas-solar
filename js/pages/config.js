@@ -275,7 +275,9 @@
         'Uma linha cujos marcadores ficarem vazios (ex.: {link} sem página de acompanhamento) sai da mensagem. Use *texto* para negrito no WhatsApp.'),
       UI.grade([
         { k: 'avisoEtapa', label: 'Etapa concluída', type: 'textarea', rows: 7, cls: 'span2' },
-        { k: 'avisoLink', label: 'Envio do link de acompanhamento', type: 'textarea', rows: 5, cls: 'span2' }
+        { k: 'avisoLink', label: 'Envio do link de acompanhamento', type: 'textarea', rows: 5, cls: 'span2' },
+        { k: 'avisoConclusao', label: 'Instalação concluída (com o relatório)', type: 'textarea', rows: 8, cls: 'span2',
+          help: 'Botão 📲 depois de concluir a instalação. Marcadores: {cliente}, {sistema} (ex.: " de 5,6 kWp"), {data} (conclusão), {link} (relatório de instalação em PDF), {acompanhamento} (página da obra) e {empresa}.' }
       ], tx, marcar)));
 
     cont.appendChild(h('div.card', h('h3', 'Envio dos documentos pelo WhatsApp'),

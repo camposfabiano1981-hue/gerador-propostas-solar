@@ -1880,5 +1880,38 @@
       /^Assinado na tela em/.test(A.descricao({ fotoId: 'a', em: '2026-10-31T09:05:00' })) && A.descricao(A.vazia()) === '' && A.vazia().tipo === '');
   })();
 
+  // ---------------------------------------------------------------- conclusão da instalação
+  (function () {
+    const I = App.Instalacao;
+    const nova = function () {
+      const i = { etapas: [I.novaEtapa('Projeto', 5), I.novaEtapa('Kit', 10), I.novaEtapa('Instalação', 3), I.novaEtapa('Vistoria', 7)], historico: [], situacao: 'pausada' };
+      I.mudarEtapa(i, i.etapas[0], 'concluida', '2026-10-01');
+      I.mudarEtapa(i, i.etapas[1], 'andamento', '2026-10-05');
+      return i;
+    };
+    const i = nova();
+    const n = I.concluir(i, '2026-10-30', 'dono@x.com');
+    ok('concluir: etapas que faltam concluídas na data, obra pausada volta a ativa', n === 3 && I.status(i) === 'concluida' && i.etapas[0].concluidoEm === '2026-10-01' &&
+      i.etapas.slice(1).every(function (e) { return e.concluidoEm === '2026-10-30'; }) && i.etapas[1].iniciadoEm === '2026-10-05' && i.etapas[2].iniciadoEm === '2026-10-30' && i.situacao === 'ativa');
+    ok('concluir: guarda como estavam as etapas e registra no histórico', i.conclusao.data === '2026-10-30' && i.conclusao.por === 'dono@x.com' && i.conclusao.antes.length === 4 &&
+      i.conclusao.situacaoAntes === 'pausada' && /✅ Instalação concluída em 30\/10\/2026 \(3 etapas concluídas de uma vez\)/.test(JSON.stringify(i.historico)));
+    igual('data de conclusão (a do botão)', I.dataConclusao(i), '2026-10-30');
+    i.etapas.push(I.novaEtapa('Etapa criada depois', 1));
+    i.etapas[4].status = 'concluida';
+    igual('desfazer: restaura as etapas', I.desfazerConclusao(i), 'restaurada');
+    ok('desfazer: etapas como estavam, situação anterior e a criada depois intacta', i.etapas[0].status === 'concluida' && i.etapas[1].status === 'andamento' && i.etapas[1].concluidoEm === '' &&
+      i.etapas[2].status === 'pendente' && i.etapas[2].iniciadoEm === '' && i.etapas[4].status === 'concluida' && i.situacao === 'pausada' && i.conclusao === null && I.dataConclusao(i) === '' &&
+      /Conclusão da instalação desfeita: as etapas voltaram como estavam/.test(JSON.stringify(i.historico)));
+    const m = nova();
+    m.situacao = 'ativa';
+    m.etapas.forEach(function (e) { I.mudarEtapa(m, e, 'concluida', '2026-10-20'); });
+    ok('concluída etapa por etapa: data da última e desfazer reabre a última', I.dataConclusao(m) === '2026-10-20' && I.desfazerConclusao(m) === 'reaberta' &&
+      m.etapas[3].status === 'andamento' && m.etapas[3].concluidoEm === '' && m.etapas[2].status === 'concluida');
+    const vazia = { etapas: [], historico: [] };
+    ok('concluir obra sem etapas cria uma etapa concluída', I.concluir(vazia, '2026-10-30') === 1 && I.status(vazia) === 'concluida' && vazia.etapas.length === 1);
+    const txt = App.Envio.mensagem({ empresa: { nomeCurto: 'Gênesis' }, textos: {} }, 'avisoConclusao', { cliente: 'Maria Teste', sistema: ' de 5,6 kWp', data: '30/10/2026', link: '', acompanhamento: '' });
+    ok('mensagem de conclusão: sem link, as linhas do relatório e da página saem', /^Olá, Maria! 🎉/.test(txt) && /sistema de energia solar de 5,6 kWp foi concluída em 30\/10\/2026/.test(txt) && !/\{|Relatório de instalação|Acompanhe a sua obra/.test(txt) && /Gênesis$/.test(txt), txt);
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

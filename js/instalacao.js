@@ -261,6 +261,62 @@ window.App = window.App || {};
     return 'iniciar';
   }
 
+  /**
+   * Conclui a obra de uma vez: as etapas que faltam ficam concluídas na data informada (obra pausada volta a ativa). Guarda como
+   * estavam as etapas, para desfazer. Devolve quantas etapas foram concluídas agora.
+   */
+  function concluir(inst, data, por) {
+    const dia = data || U.todayISO();
+    if (!Array.isArray(inst.etapas)) inst.etapas = [];
+    if (!inst.etapas.length) inst.etapas.push(novaEtapa('Instalação', ''));
+    const antes = inst.etapas.map(function (e) { return { id: e.id, status: e.status, iniciadoEm: e.iniciadoEm || '', concluidoEm: e.concluidoEm || '' }; });
+    let n = 0;
+    inst.etapas.forEach(function (e) {
+      if (e.status === 'concluida') return;
+      e.status = 'concluida';
+      if (!e.iniciadoEm) e.iniciadoEm = dia;
+      e.concluidoEm = dia;
+      n++;
+    });
+    const situacaoAntes = inst.situacao || 'ativa';
+    if (inst.situacao === 'pausada') inst.situacao = 'ativa';
+    inst.conclusao = { data: dia, em: agora(), por: por || '', antes: antes, situacaoAntes: situacaoAntes, etapas: n, avisadoEm: '' };
+    registrar(inst, '✅ Instalação concluída em ' + U.dataBR(dia) + (n ? ' (' + n + (n === 1 ? ' etapa concluída' : ' etapas concluídas') + ' de uma vez).' : '.'), 'sistema');
+    return n;
+  }
+
+  /**
+   * Desfaz a conclusão: as etapas voltam como estavam antes do "Concluir instalação" (as criadas depois ficam como estão); se a
+   * obra foi concluída etapa por etapa, reabre a última. Devolve o que foi feito ('restaurada' | 'reaberta' | '').
+   */
+  function desfazerConclusao(inst) {
+    const c = inst.conclusao;
+    let feito = '';
+    if (c && Array.isArray(c.antes)) {
+      c.antes.forEach(function (a) {
+        const e = (inst.etapas || []).find(function (x) { return x.id === a.id; });
+        if (e) { e.status = a.status; e.iniciadoEm = a.iniciadoEm; e.concluidoEm = a.concluidoEm; }
+      });
+      if (c.situacaoAntes) inst.situacao = c.situacaoAntes;
+      feito = 'restaurada';
+    } else {
+      const ult = (inst.etapas || []).slice().reverse().find(function (e) { return e.status === 'concluida'; });
+      if (ult) { ult.status = 'andamento'; ult.concluidoEm = ''; feito = 'reaberta'; }
+    }
+    inst.conclusao = null;
+    if (feito) {
+      registrar(inst, '↺ Conclusão da instalação desfeita' + (feito === 'restaurada' ? ': as etapas voltaram como estavam.' : ': a última etapa foi reaberta.'), 'sistema');
+      preverDatas(inst);
+    }
+    return feito;
+  }
+
+  /** Data de conclusão da obra (a do "Concluir instalação" ou a da última etapa concluída), só quando concluída. */
+  function dataConclusao(inst) {
+    if (status(inst) !== 'concluida') return '';
+    return (inst.conclusao && inst.conclusao.data) || previsaoConclusao(inst);
+  }
+
   /** Etapas não concluídas com a data prevista já vencida. */
   function atrasadas(inst, hoje) {
     const dia = hoje || U.todayISO();
@@ -302,6 +358,7 @@ window.App = window.App || {};
     opcoesCadastro: opcoesCadastro, placaDoCadastro: placaDoCadastro, vincularCadastro: vincularCadastro, placasDaProposta: placasDaProposta,
     prazoDias: prazoDias, somarDias: somarDias, preverDatas: preverDatas, novaEtapa: novaEtapa, etapasPadrao: etapasPadrao,
     nova: nova, deProposta: deProposta, registrar: registrar, mudarEtapa: mudarEtapa,
-    progresso: progresso, etapaAtual: etapaAtual, status: status, atrasadas: atrasadas, previsaoConclusao: previsaoConclusao, paraProjeto: paraProjeto
+    progresso: progresso, etapaAtual: etapaAtual, status: status, atrasadas: atrasadas, previsaoConclusao: previsaoConclusao, paraProjeto: paraProjeto,
+    concluir: concluir, desfazerConclusao: desfazerConclusao, dataConclusao: dataConclusao
   };
 })(window.App);
