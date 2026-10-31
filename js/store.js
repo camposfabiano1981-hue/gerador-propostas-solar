@@ -7,7 +7,7 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 12;
+  const VERSAO = 13;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
   const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens', 'compras', 'lancamentos', 'contasFin', 'categoriasFin'];
@@ -126,6 +126,12 @@ window.App = window.App || {};
       if (ler('col.lancamentos', null) == null) gravar('col.lancamentos', []);
       if (ler('col.contasFin', null) == null) gravar('col.contasFin', U.clone(D.contasFin));
       if (ler('col.categoriasFin', null) == null) gravar('col.categoriasFin', U.clone(D.categoriasFin));
+    }
+    // resultado por obra: categoria dos custos adicionais lançados na obra (fora da composição da proposta)
+    if (v < 13) {
+      const cats = ler('col.categoriasFin', null);
+      const nova = D.categoriasFin.find(function (c) { return c.id === 'cat-cus-adicionais'; });
+      if (Array.isArray(cats) && !cats.some(function (c) { return c.id === nova.id; })) { cats.push(U.clone(nova)); gravar('col.categoriasFin', cats); }
     }
     gravar('v', VERSAO);
   };

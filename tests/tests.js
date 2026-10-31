@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '12');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '13');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,8 +641,8 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8 → v12: versão da base (atual), instalações, ordens de serviço, pedidos de compra e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) &&
-        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '12 ok');
+      igual('migração v8 → v13: versão da base (atual), instalações, ordens de serviço, pedidos de compra e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) &&
+        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '13 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -1679,9 +1679,39 @@
     const res = F.resultadoObras([obra, Object.assign(U.clone(p), { id: 'outra', status: 'enviada' })], ol, cats, ctx);
     const o1 = res[0];
     ok('obras: só as aprovadas; vendido, recebido e a receber', res.length === 1 && Math.abs(o1.vendido - ro.total) < 0.01 && Math.abs(o1.recebido + o1.aReceber - ro.total) < 0.02, JSON.stringify(res.map(function (x) { return x.p.id; })));
-    ok('obras: custos diretos, comissão, impostos e resultado', o1.custo === 8897.08 && o1.custoPago === 720 && o1.comissao === 100 && o1.deducao === 400 &&
-      Math.abs(o1.resultado - (ro.total - 8897.08 - 500)) < 0.01 && Math.abs(o1.margem - o1.resultado / o1.vendido) < 1e-9 && !o1.semCustos, JSON.stringify({ custo: o1.custo, resultado: o1.resultado }));
-    ok('obras: margem prevista = lucro da composição ÷ valor de venda', Math.abs(o1.margemPrevista - 0.15) < 1e-6, o1.margemPrevista);
+    const T = U.round(ro.total, 2), lanc = U.round(ro.total / 2, 2) * 2;
+    const linA = function (a, id) { return a.linhas.find(function (x) { return x.id === id; }); };
+    ok('apuração: previsto da proposta — kit, mão de obra (9 × R$ 80), material CA, comissão 5% e lucro previsto 15%', linA(o1, 'kit').previsto === 8177.08 && linA(o1, 'maoobra').previsto === 720 &&
+      linA(o1, 'materialCA').previsto === 0 && linA(o1, 'comissao').previsto === U.round(T * 0.05, 2) && linA(o1, 'impostos').previsto === 0 && Math.abs(o1.resultadoPrevisto - T * 0.15) < 0.02,
+      JSON.stringify(o1.linhas.map(function (x) { return [x.id, x.previsto]; })));
+    ok('apuração: realizado pelas categorias dos lançamentos da obra', linA(o1, 'kit').realizado === 8177.08 && linA(o1, 'maoobra').realizado === 720 && linA(o1, 'comissao').realizado === 100 &&
+      linA(o1, 'impostos').realizado === 400 && linA(o1, 'adicionais').realizado === 0 && o1.custoRealizado === 9397.08 && o1.pago === 720 && o1.aPagar === 8677.08);
+    ok('apuração aberta: maior entre previsto e realizado (comissão pelo previsto, impostos pelo realizado)', linA(o1, 'comissao').apurado === U.round(T * 0.05, 2) && linA(o1, 'comissao').pelo === 'previsto' &&
+      linA(o1, 'impostos').apurado === 400 && linA(o1, 'impostos').pelo === 'realizado' && !o1.fechada);
+    perto('apuração aberta: resultado = venda − kit − mão de obra − material CA − comissão − impostos', o1.resultado, U.round(lanc - 8177.08 - 720 - U.round(T * 0.05, 2) - 400, 2), 0.011);
+    ok('apuração: margem apurada e efeito no resultado', Math.abs(o1.margem - o1.resultado / o1.receita) < 1e-9 && Math.abs(o1.variacao - (o1.resultado - o1.resultadoPrevisto)) < 0.011 && !o1.semLancamentos);
+    ok('obras: margem prevista = lucro da composição ÷ valor de venda', Math.abs(o1.margemPrevista - 0.15) < 1e-4, o1.margemPrevista);
+    const fechada = F.apuracaoObra(Object.assign(U.clone(obra), { apuracao: { fechada: true, em: '2026-04-30' } }), ol, cats, ctx);
+    ok('apuração fechada: vale o realizado (receita lançada e custos lançados)', fechada.fechada && fechada.fechadaEm === '2026-04-30' && fechada.receita === U.round(lanc, 2) &&
+      fechada.custoApurado === 9397.08 && Math.abs(fechada.resultado - (lanc - 9397.08)) < 0.011 && linA(fechada, 'comissao').apurado === 100, JSON.stringify({ r: fechada.resultado }));
+    const comImp = F.apuracaoObra(obra, ol, cats, ctx, { aliquota: 0.06 });
+    ok('apuração: impostos previstos pela alíquota (6% da venda) e apurados pelo maior', linA(comImp, 'impostos').previsto === U.round(T * 0.06, 2) && linA(comImp, 'impostos').apurado === U.round(T * 0.06, 2) &&
+      /6% no previsto/.test(linA(comImp, 'impostos').label));
+    const ol2 = ol.concat([L('pagar', { valor: 180, obraId: 'obra1', categoriaId: 'cat-cus-adicionais' }), L('pagar', { valor: 90, obraId: 'obra1', categoriaId: 'cat-adm-veiculos' }),
+      L('pagar', { valor: 5000, obraId: 'obra1', categoriaId: 'cat-fora-investimentos' }), L('pagar', { valor: 33, obraId: 'obra1', categoriaId: 'cat-cus-frete' })]);
+    const ad = F.apuracaoObra(obra, ol2, cats, ctx, { instalacoes: [{ id: 'i1', propostaId: 'obra1', materiais: [{ descricao: 'Cabo 6 mm', qtdPrevista: 12, qtd: 10, custo: 5 }] }] });
+    ok('apuração: custos adicionais (categoria própria e fora da proposta), frete em "outros" e investimento fora', linA(ad, 'adicionais').realizado === 270 && linA(ad, 'outros').realizado === 33 &&
+      ad.custoRealizado === 9397.08 + 270 + 33 + 50, JSON.stringify(ad.linhas.map(function (x) { return [x.id, x.realizado]; })));
+    ok('apuração: material CA sem lançamento usa o consumo registrado na instalação', linA(ad, 'materialCA').realizado === 50 && /instalação/.test(linA(ad, 'materialCA').nota) && ad.instalacao && ad.instalacao.id === 'i1');
+    ok('apuração: linha de cada categoria', F.linhaObra({ categoriaId: 'cat-cus-kit' }, cats) === 'kit' && F.linhaObra({ categoriaId: 'cat-ded-impostos' }, cats) === 'impostos' &&
+      F.linhaObra({ categoriaId: 'cat-com-comissoes' }, cats) === 'comissao' && F.linhaObra({ categoriaId: 'cat-cus-projeto' }, cats) === 'outros' && F.linhaObra({ categoriaId: 'cat-fora-retiradas' }, cats) === null &&
+      F.linhaObra({ categoriaId: 'cat-adm-aluguel' }, cats) === 'adicionais' && F.linhaObra({ categoriaId: 'nao-existe' }, cats) === 'adicionais');
+    const antiga = F.apuracaoObra(Object.assign(U.clone(p), { id: 'antiga', status: 'aprovada' }), [], cats, ctx);
+    ok('apuração de proposta sem preço pela margem: mão de obra estimada pelas premissas e sem lançamentos', linA(antiga, 'maoobra').previsto === 720 && /estimado/.test(linA(antiga, 'maoobra').nota) &&
+      linA(antiga, 'materialCA').previsto === 1500 && antiga.vendido === 12700 && Math.abs(antiga.resultadoPrevisto - (12700 - 8177.08 - 720 - 1500)) < 0.01 && antiga.semLancamentos && antiga.resultado === antiga.resultadoPrevisto,
+      JSON.stringify(antiga.linhas.map(function (x) { return [x.id, x.previsto]; })));
+    const to = F.totaisObras([o1, fechada]);
+    ok('obras: totais (venda, custos, resultados, margens, fechadas)', to.n === 2 && to.fechadas === 1 && Math.abs(to.resultado - (o1.resultado + fechada.resultado)) < 0.011 && Math.abs(to.margem - to.resultado / to.receita) < 1e-9);
     const cm = F.comissoes([obra], ol, ctx);
     const v1 = cm.vendedores[0];
     ok('comissões: 5% da venda, liberada na proporção do recebido (50%), menos o já lançado', cm.vendas.length === 1 && v1.email === 'vend@empresa.com' && v1.nome === 'Vendedora' &&
@@ -1738,6 +1768,91 @@
     ok('documentos: tipo desconhecido recusado', /sem lançamento/.test(erroDoc));
     const ld = [L('receber', { origem: { tipo: 'proposta', id: 'obra1' } }), L('receber', { origem: { tipo: 'proposta', id: 'obra1' }, situacao: 'cancelado' }), L('receber', { origem: { tipo: 'os', id: 'obra1' } })];
     igual('documentos: lançamentos já feitos do documento (sem os cancelados)', F.lancadosDe(ld, 'proposta', 'obra1').length, 1);
+  })();
+
+  // ---------------------------------------------------------------- relatórios do financeiro
+  (function () {
+    const F = App.Fin;
+    const cats = U.clone(D.categoriasFin);
+    let seq = 0;
+    const L = function (tipo, x) { return F.novoLancamento(tipo, Object.assign({ id: 'r' + (++seq) }, x)); };
+    const hojeT = '2026-03-31';
+    const ab = [
+      L('receber', { valor: 100, vencimento: '2026-04-10', pessoa: { nome: 'Ana' } }),
+      L('receber', { valor: 200, vencimento: '2026-03-20', pessoa: { nome: 'Ana' } }),
+      L('receber', { valor: 300, vencimento: '2026-02-15', pessoa: { nome: 'Bruno' } }),
+      L('receber', { valor: 400, vencimento: '2026-01-15', pessoa: { nome: 'Bruno' } }),
+      L('receber', { valor: 500, vencimento: '2025-12-01', pessoa: { nome: 'Carla' } }),
+      L('receber', { valor: 999, vencimento: '2025-12-01', situacao: 'pago', pagoEm: '2026-01-02', valorPago: 999, pessoa: { nome: 'Carla' } }),
+      L('pagar', { valor: 70, vencimento: '2026-03-01', pessoa: { nome: 'Fornecedor' } })
+    ];
+    const at = F.atrasos(ab, 'receber', hojeT);
+    const pes = function (n) { return at.lista.find(function (x) { return x.pessoa === n; }); };
+    ok('inadimplência: faixas de atraso por cliente (a vencer, 1–30, 31–60, 61–90, > 90)', pes('Ana').aVencer === 100 && pes('Ana').d30 === 200 && pes('Bruno').d60 === 300 && pes('Bruno').d90 === 400 &&
+      pes('Carla').d90mais === 500 && pes('Carla').total === 500, JSON.stringify(at.lista));
+    ok('inadimplência: totais, mais antigo e ordem pelo maior vencido', at.total.vencido === 1400 && at.total.aVencer === 100 && at.total.total === 1500 && at.lista[0].pessoa === 'Bruno' && pes('Carla').maisAntigo === '2025-12-01');
+    igual('atrasos a pagar', F.atrasos(ab, 'pagar', hojeT).total.d30, 70);
+
+    const cl = [
+      L('receber', { valor: 1000, categoriaId: 'cat-rec-sistemas', competencia: '2026-03-05', situacao: 'pago', pagoEm: '2026-04-02', valorPago: 1000 }),
+      L('receber', { valor: 300, categoriaId: 'cat-rec-servicos', competencia: '2026-03-10' }),
+      L('pagar', { valor: 600, categoriaId: 'cat-cus-kit', competencia: '2026-03-06', situacao: 'pago', pagoEm: '2026-03-06', valorPago: 610, juros: 10 }),
+      L('pagar', { valor: 200, categoriaId: 'cat-adm-aluguel', competencia: '2026-03-01' }),
+      L('pagar', { valor: 5000, categoriaId: 'cat-fora-investimentos', competencia: '2026-03-15' }),
+      L('pagar', { valor: 50, categoriaId: 'cat-adm-outras', competencia: '2026-03-15', situacao: 'cancelado' }),
+      F.transferencia('cA', 'cB', 300, '2026-03-20')
+    ];
+    const pc = F.porCategoria(cl, cats, '2026-03-01', '2026-03-31', 'competencia');
+    ok('por categoria (competência): receitas, despesas, % e fora do resultado separado', pc.receitas.total === 1300 && pc.despesas.total === 800 && pc.resultado === 500 &&
+      pc.despesas.lista[0].categoriaId === 'cat-cus-kit' && Math.abs(pc.despesas.lista[0].pct - 0.75) < 1e-9 && pc.foraSaidas.total === 5000, JSON.stringify(pc.despesas.lista));
+    const pcx = F.porCategoria(cl, cats, '2026-03-01', '2026-03-31', 'caixa');
+    ok('por categoria (caixa): só os pagos no período, pelo valor pago', pcx.receitas.total === 0 && pcx.despesas.total === 610 && pcx.regime === 'caixa');
+
+    const cA = { id: 'cA', nome: 'Banco', saldoInicial: 1000, ativo: true }, cB = { id: 'cB', nome: 'Caixa', saldoInicial: 0, ativo: true };
+    cl.forEach(function (l) { if (l.situacao === 'pago' && l.tipo !== 'transferencia') l.contaId = 'cA'; });
+    const mv = F.movimento(cl, [cA, cB], cats, '2026-03-01', '2026-03-31');
+    ok('movimento de caixa: realizado no período, transferências à parte e saldos por conta', mv.linhas.length === 1 && mv.saidas === 610 && mv.entradas === 0 && mv.transferencias === 1 &&
+      mv.saldos[0].anterior === 1000 && mv.saldos[0].final === 1000 - 610 - 300 && mv.saldos[1].final === 300 && mv.linhas[0].categoria === 'Kit fotovoltaico (módulos, inversor, estrutura)', JSON.stringify(mv.saldos.map(function (x) { return [x.anterior, x.final]; })));
+
+    const fl = F.filtrar(ab, 'receber', { filtro: 'periodo', de: '2026-01-01', ate: '2026-03-31', hoje: hojeT });
+    ok('filtro por período de vencimento (e os outros filtros)', fl.length === 3 && fl[0].vencimento === '2026-01-15' && F.filtrar(ab, 'receber', { filtro: 'vencidos', hoje: hojeT }).length === 4 &&
+      F.filtrar(ab, 'receber', { filtro: 'todos', q: 'carla' }).length === 2 && F.filtrar(ab, 'receber', { filtro: 'todos', hoje: hojeT }).length === 6 && F.FILTROS.some(function (x) { return x.id === 'periodo'; }));
+
+    // estruturas, planilha e PDF dos relatórios (com uma base de teste no armazenamento)
+    const RF = App.RelFin, S = App.Store;
+    const chaves = ['col.lancamentos', 'col.contasFin', 'col.categoriasFin', 'col.propostas', 'config'];
+    const guardado = {};
+    chaves.forEach(function (k) { guardado[k] = localStorage.getItem('gsp.' + k); });
+    try {
+      const hj = U.todayISO();
+      localStorage.setItem('gsp.col.contasFin', JSON.stringify([{ id: 'conta-caixa', nome: 'Caixa da empresa', tipo: 'caixa', saldoInicial: 500, ativo: true }]));
+      localStorage.setItem('gsp.col.categoriasFin', JSON.stringify(cats));
+      localStorage.setItem('gsp.col.propostas', JSON.stringify([]));
+      localStorage.setItem('gsp.col.lancamentos', JSON.stringify([
+        L('receber', { descricao: 'Venda Maria', valor: 1000, categoriaId: 'cat-rec-sistemas', contaId: 'conta-caixa', vencimento: F.somarDias(hj, -40), competencia: hj, pessoa: { nome: 'Maria' } }),
+        L('receber', { descricao: 'Venda João', valor: 2000, categoriaId: 'cat-rec-sistemas', contaId: 'conta-caixa', vencimento: hj, competencia: hj, situacao: 'pago', pagoEm: hj, valorPago: 2000, pessoa: { nome: 'João' } }),
+        L('pagar', { descricao: 'Aluguel', valor: 700, categoriaId: 'cat-adm-aluguel', contaId: 'conta-caixa', vencimento: hj, competencia: hj, situacao: 'pago', pagoEm: hj, valorPago: 700 })
+      ]));
+      const e1 = RF.estrutura('lancamentos', { tipo: 'receber', filtro: 'todos', agrupar: 'situacao' });
+      const tab = e1.blocos.filter(Boolean).find(function (b) { return b.cols; });
+      ok('relatório de contas a receber: grupos, subtotais e total', /CONTAS A RECEBER/.test(e1.titulo) && e1.deitado && tab.linhas.filter(function (l) { return l.grupo; }).length === 2 &&
+        tab.linhas[tab.linhas.length - 1].total && tab.linhas[tab.linhas.length - 1].celulas[6].v === 3000, JSON.stringify(tab.linhas.map(function (l) { return l.grupo || (l.total ? 'T' : l.subtotal ? 'S' : 'L'); })));
+      ok('relatório de inadimplência', RF.estrutura('atrasos', { tipo: 'receber' }).indicadores[0][1] === U.brl(1000));
+      const tipos = ['resumo', 'fluxo', 'movimento', 'extrato', 'categorias', 'dre', 'obras', 'comissoes'];
+      const falhas = tipos.filter(function (t) { try { const e = RF.estrutura(t, {}); return !(e.titulo && e.arquivo && Array.isArray(e.blocos)); } catch (x) { return t + ': ' + x.message; } });
+      ok('relatórios: todos montam (resumo, fluxo, movimento, extrato, categorias, DRE, obras, comissões)', falhas.length === 0, JSON.stringify(falhas));
+      const ex = RF.estrutura('extrato', { contaId: 'conta-caixa', de: F.somarDias(hj, -1) });
+      ok('extrato: saldo anterior, entradas, saídas e saldo final', ex.indicadores[0][1] === U.brl(500) && ex.indicadores[1][1] === U.brl(2000) && ex.indicadores[2][1] === U.brl(700) && ex.indicadores[3][1] === U.brl(1800));
+      const csv = RF.csv('lancamentos', { tipo: 'receber', filtro: 'todos', agrupar: '' });
+      ok('planilha do relatório: ; e vírgula decimal, valores como número', /^﻿CONTAS A RECEBER/.test(csv.texto) && /;1000\r\n|;1000$/m.test(csv.texto) && /Vencimento;Descrição;Cliente;Categoria;Conta;Situação;Valor/.test(csv.texto) && /\.csv$/.test(csv.nome), csv.texto.slice(0, 300));
+      let erroObra = '';
+      try { RF.estrutura('obra', { id: 'nada' }); } catch (x) { erroObra = x.message; }
+      ok('apuração de obra inexistente é recusada', /não encontrada/.test(erroObra));
+      const m = RF.montar(RF.estrutura('dre', {}), { empresa: U.clone(D.empresa) }, { logo: { w: 100, h: 50, dataURL: 'data:image/png;base64,iVBORw0KGgo=', ext: 'png' }, imagens: {} });
+      ok('DRE em página deitada (A4/carta na horizontal) com gráfico', m.papel.w > m.papel.h && m.k > 1.3 && Object.keys(m.imagens).length === 1 && /^data:image\/png/.test(m.imagens.graf1));
+    } finally {
+      chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
+    }
   })();
 
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };

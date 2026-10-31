@@ -487,9 +487,11 @@ window.App = window.App || {};
     const cab = [];
     for (const tr of no.linhas) { if (tr.cabecalho) cab.push(tr); else break; }
     const self = this;
-    no.linhas.forEach(function (tr) {
+    no.linhas.forEach(function (tr, i) {
       const med = self.medirLinha(tr, cols);
-      if (fluxo && y + med.h > self.limite() && y > self.topoConteudo() + 1) {
+      // título de grupo: vai junto com a primeira linha do grupo
+      const prox = tr.comProxima && no.linhas[i + 1] ? self.medirLinha(no.linhas[i + 1], cols).h : 0;
+      if (fluxo && y + med.h + prox > self.limite() && y > self.topoConteudo() + 1) {
         self.novaPagina();
         y = self.y;
         if (!tr.cabecalho) {
@@ -538,7 +540,7 @@ window.App = window.App || {};
   };
 
   Render.prototype.novaPagina = function () {
-    this.doc.addPage([this.pw, this.ph], 'p');
+    this.doc.addPage([this.pw, this.ph], this.pw > this.ph ? 'l' : 'p');
     if (!this.capa) this.desenharCabecalhoRodape();
     this.y = this.topoConteudo();
   };
@@ -619,7 +621,7 @@ window.App = window.App || {};
     const res = await Promise.all([carregarJsPDF(), carregarFontes()]);
     const JsPDF = res[0], fontes = res[1];
     const pw = modelo.papel.w / 20, ph = modelo.papel.h / 20;
-    const doc = new JsPDF({ unit: 'pt', format: [pw, ph], orientation: 'p', compress: opcoes.compress !== false });
+    const doc = new JsPDF({ unit: 'pt', format: [pw, ph], orientation: pw > ph ? 'l' : 'p', compress: opcoes.compress !== false });
     let fonteOk = false;
     if (fontes) {
       try {

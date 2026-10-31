@@ -468,6 +468,7 @@ window.App = window.App || {};
     cat('cat-cus-maoobra', 'Mão de obra de instalação (terceiros)', 'custo', 'pagar'),
     cat('cat-cus-frete', 'Frete e logística das obras', 'custo', 'pagar'),
     cat('cat-cus-projeto', 'Projeto, ART e homologação', 'custo', 'pagar'),
+    cat('cat-cus-adicionais', 'Custos adicionais da obra (imprevistos, deslocamento, locação)', 'custo', 'pagar'),
     cat('cat-com-comissoes', 'Comissões de vendas', 'despesa_comercial', 'pagar'),
     cat('cat-com-marketing', 'Marketing e publicidade', 'despesa_comercial', 'pagar'),
     cat('cat-adm-pessoal', 'Salários e encargos', 'despesa_admin', 'pagar'),

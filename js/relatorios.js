@@ -457,5 +457,7 @@ window.App = window.App || {};
   }
 
   App.Relatorios = { montarOS: montarOS, pdfOS: pdfOS, montarInstalacao: montarInstalacao, pdfInstalacao: pdfInstalacao, montarCompra: montarCompra, pdfCompra: pdfCompra,
-    montarRecibo: montarRecibo, pdfRecibo: pdfRecibo };
+    montarRecibo: montarRecibo, pdfRecibo: pdfRecibo,
+    // peças comuns, usadas também pelos relatórios do financeiro (js/relatorios-fin.js)
+    base: { papelDe: papelDe, secao: secao, faixa: faixa, pares: pares, quadro: quadro, tabela: tabela, cabecalhoRodape: cabecalhoRodape, carregar: carregar } };
 })(window.App);

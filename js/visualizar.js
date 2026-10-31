@@ -1,7 +1,7 @@
 /*
  * Visualização dos documentos no próprio app (propostas, propostas avulsas, ordens de serviço, pedidos de compra e relatório
  * de instalação): as páginas do PDF desenhadas com o PDF.js — funciona também no celular, onde o navegador não mostra PDF
- * dentro da página —, com os botões para baixar e para abrir em nova aba (imprimir).
+ * dentro da página —, com os botões para imprimir, baixar e abrir em nova aba.
  */
 window.App = window.App || {};
 
@@ -26,6 +26,13 @@ window.App = window.App || {};
     const fechar = UI.modal({
       titulo: o.titulo || 'Visualizar documento', largo: true, corpo: corpo,
       acoes: [
+        {
+          label: '🖨 Imprimir', manterAberto: true, onClick: function () {
+            if (!gerado) return semDocumento();
+            imprimirBlob(gerado.blob, gerado.nome);
+            return false;
+          }
+        },
         {
           label: 'Abrir em nova aba', manterAberto: true, onClick: function () {
             if (!gerado) return semDocumento();
@@ -83,10 +90,42 @@ window.App = window.App || {};
     return fechar;
   }
 
+  /**
+   * Imprime o PDF: carrega numa moldura invisível e abre a janela de impressão do navegador. Onde a página não consegue
+   * imprimir o PDF (celular, Safari), abre o PDF em nova aba (ou baixa), para imprimir de lá.
+   */
+  function imprimirBlob(blob, nome) {
+    const url = URL.createObjectURL(blob);
+    const alternativa = function () {
+      if (!window.open(url, '_blank')) U.download(blob, nome);
+      App.UI.toast('Use a opção Imprimir do PDF aberto.', 'info');
+    };
+    const movel = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (/Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg/.test(navigator.userAgent));
+    if (movel) { alternativa(); return; }
+    const anterior = document.getElementById('moldura-impressao');
+    if (anterior) anterior.remove();
+    const fr = h('iframe#moldura-impressao', { title: 'Impressão', 'aria-hidden': 'true', style: { position: 'fixed', right: '0', bottom: '0', width: '1px', height: '1px', border: '0', opacity: '0' } });
+    fr.onload = function () {
+      setTimeout(function () {
+        try { fr.contentWindow.focus(); fr.contentWindow.print(); window.__impressoes = (window.__impressoes || 0) + 1; } catch (e) { alternativa(); }
+      }, 150);
+    };
+    fr.src = url;
+    document.body.appendChild(fr);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+  }
+
+  /** Gera o documento e imprime (botões 🖨 das telas). gerar(): promessa de {blob, nome}. */
+  async function imprimir(gerar) {
+    App.UI.toast('Preparando a impressão…');
+    const g = await gerar();
+    imprimirBlob(g.blob, g.nome);
+  }
+
   /** Botão 👁 das listas (ao lado de PDF/DOCX). */
   function botao(gerar, titulo) {
     return h('button.btn-formato.ver', { type: 'button', title: 'Visualizar', 'aria-label': 'Visualizar ' + (titulo || 'documento'), onclick: function () { abrir(gerar, { titulo: titulo }); } }, '👁');
   }
 
-  App.Visualizar = { abrir: abrir, botao: botao };
+  App.Visualizar = { abrir: abrir, botao: botao, imprimir: imprimir, imprimirBlob: imprimirBlob };
 })(window.App);

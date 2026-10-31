@@ -37,7 +37,9 @@
 
   /* ------------------------------------------------------------ lançamento (novo ou edição) */
 
-  function abrirLancamento(orig, tipo, depois, preset) {
+  /** o: {titulo, ajuda} — título da janela e orientação no topo do formulário (ex.: custo adicional da obra). */
+  function abrirLancamento(orig, tipo, depois, preset, o) {
+    o = o || {};
     const d = dados();
     const novo = !orig;
     const l = novo ? F.novoLancamento(tipo, Object.assign({ contaId: (d.contas.find(function (c) { return c.ativo !== false; }) || {}).id || '' }, preset || {})) : U.clone(orig);
@@ -58,7 +60,8 @@
     };
     const desenhar = function () {
       corpo.innerHTML = '';
-      if (novo) {
+      if (o.ajuda) corpo.appendChild(h('p.nota', o.ajuda));
+      if (novo && !o.semTipo) {
         corpo.appendChild(h('div.opcoes-cartao.compacto', [['receber', 'A receber', 'Venda, serviço, outras receitas'], ['pagar', 'A pagar', 'Compra, despesa, imposto, comissão']].map(function (o) {
           return h('button.opcao' + (l.tipo === o[0] ? '.ativa' : ''), { type: 'button', onclick: function () { if (l.tipo !== o[0]) { l.tipo = o[0]; l.categoriaId = ''; desenhar(); } } }, h('strong', o[1]), h('small', o[2]));
         })));
@@ -98,7 +101,7 @@
     };
     desenhar();
     UI.modal({
-      titulo: novo ? 'Novo lançamento' : 'Lançamento', largo: true, corpo: corpo, acoes: [
+      titulo: o.titulo || (novo ? 'Novo lançamento' : 'Lançamento'), largo: true, corpo: corpo, acoes: [
         { label: 'Cancelar' },
         {
           label: 'Salvar', primario: true, onClick: function () {
@@ -168,30 +171,6 @@
 
   /* ------------------------------------------------------------ listas a receber / a pagar */
 
-  const FILTROS = [
-    { id: 'aberto', label: 'Em aberto (inclui vencidos)' }, { id: 'vencidos', label: 'Vencidos' }, { id: '30', label: 'Vencem nos próximos 30 dias' },
-    { id: 'mes', label: 'Vencimento neste mês' }, { id: 'pagosMes', label: 'Baixados neste mês' }, { id: 'todos', label: 'Todos' }
-  ];
-
-  function filtrar(lancs, tipo, f, q) {
-    const dia = hoje(), ate = F.somarDias(dia, 30), mes = dia.slice(0, 7);
-    const busca = String(q || '').trim().toLowerCase();
-    return lancs.filter(function (l) {
-      if (l.tipo !== tipo) return false;
-      const s = F.situacao(l, dia);
-      if (f === 'aberto' && !(s === 'aberto' || s === 'vencido')) return false;
-      if (f === 'vencidos' && s !== 'vencido') return false;
-      if (f === '30' && !(s === 'aberto' && l.vencimento <= ate)) return false;
-      if (f === 'mes' && String(l.vencimento).slice(0, 7) !== mes) return false;
-      if (f === 'pagosMes' && !(s === 'pago' && String(l.pagoEm).slice(0, 7) === mes)) return false;
-      if (busca && [l.descricao, l.pessoa && l.pessoa.nome, l.documento, l.origem && l.origem.numero].join(' ').toLowerCase().indexOf(busca) < 0) return false;
-      return true;
-    }).sort(function (a, b) {
-      if (f === 'pagosMes') return String(b.pagoEm).localeCompare(String(a.pagoEm));
-      return String(a.vencimento).localeCompare(String(b.vencimento));
-    });
-  }
-
   /** Tabela de lançamentos com as ações (baixar, recibo, editar, excluir). */
   function tabelaLancamentos(lista, d, recarregar, semTipo) {
     const tb = h('tbody');
@@ -228,12 +207,15 @@
     const chave = 'crm.fin.filtro.' + tipo;
     let f = 'aberto';
     try { f = localStorage.getItem(chave) || 'aberto'; } catch (e) { /* padrão */ }
-    const est = { q: '' };
+    const dia0 = hoje();
+    const est = { q: '', de: dia0.slice(0, 8) + '01', ate: F.somarDias(F.somarMeses(dia0.slice(0, 8) + '01', 1), -1), agrupar: 'mes' };
     const caixa = h('div.card.sem-pad');
     const totais = h('div.fin-totais');
+    const periodo = h('div.fin-periodo', UI.grade([{ k: 'de', label: 'Vencimento de', type: 'date' }, { k: 'ate', label: 'até', type: 'date' }], est, function () { desenhar(); }, 2));
     function desenhar() {
+      periodo.hidden = f !== 'periodo';
       const d = dados();
-      const lista = filtrar(d.lancs, tipo, f, est.q);
+      const lista = F.filtrar(d.lancs, tipo, { filtro: f, q: est.q, de: est.de, ate: est.ate });
       caixa.innerHTML = '';
       if (!lista.length) caixa.appendChild(h('div.vazio', h('p', 'Nenhum lançamento com esses filtros.')));
       else caixa.appendChild(tabelaLancamentos(lista, d, desenhar));
@@ -248,10 +230,16 @@
     }
     const busca = h('input.busca', { type: 'search', placeholder: 'Descrição, pessoa, documento…', oninput: function () { est.q = busca.value; desenhar(); } });
     const sel = h('select', { 'aria-label': 'Filtro', onchange: function () { f = sel.value; try { localStorage.setItem(chave, f); } catch (e) { /* só nesta visita */ } desenhar(); } },
-      FILTROS.map(function (x) { const o = h('option', { value: x.id }, x.label); if (x.id === f) o.selected = true; return o; }));
+      F.FILTROS.map(function (x) { const o = h('option', { value: x.id }, x.label); if (x.id === f) o.selected = true; return o; }));
+    const agrupar = h('select', { 'aria-label': 'Agrupar o relatório por', onchange: function () { est.agrupar = agrupar.value; } },
+      App.RelFin.AGRUPAR.map(function (x) { const o = h('option', { value: x.id }, 'Agrupar por: ' + x.label.toLowerCase()); if (x.id === est.agrupar) o.selected = true; return o; }));
+    agrupar.options[agrupar.options.length - 1].textContent = 'Sem agrupar';
     cont.appendChild(UI.cabecalho(tipo === 'receber' ? 'Contas a receber' : 'Contas a pagar',
       tipo === 'receber' ? 'Parcelas das vendas, serviços e outras receitas: registre o recebimento (💲), emita o recibo (🧾) e acompanhe os vencidos.' : 'Compras, despesas, impostos e comissões: registre o pagamento (💲) e acompanhe os vencidos.',
       [busca, sel, h('button.btn.primario', { type: 'button', onclick: function () { abrirLancamento(null, tipo, desenhar); } }, '+ Novo lançamento')]));
+    cont.appendChild(periodo);
+    cont.appendChild(h('div.barra-relatorio', h('span.barra-relatorio-rot', 'Relatório desta lista:'), agrupar,
+      App.RelFin.botoes('lancamentos', function () { return { tipo: tipo, filtro: f, q: est.q, de: est.de, ate: est.ate, agrupar: est.agrupar }; })));
     cont.appendChild(totais);
     cont.appendChild(caixa);
     desenhar();
@@ -270,6 +258,8 @@
       h('button.btn', { type: 'button', onclick: function () { abrirLancamento(null, 'pagar', function () { UI.despachar(true); }); } }, '+ Conta a pagar'),
       h('button.btn.primario', { type: 'button', onclick: function () { abrirLancamento(null, 'receber', function () { UI.despachar(true); }); } }, '+ Conta a receber')
     ]));
+    cont.appendChild(h('div.barra-relatorio', h('span.barra-relatorio-rot', 'Resumo financeiro:'), App.RelFin.botoes('resumo', {}, { semPlanilha: true }),
+      h('a.btn', { href: '#/financeiro/relatorios' }, '📑 Todos os relatórios')));
     const anoAtual = hoje().slice(0, 4), mesAtual = parseInt(hoje().slice(5, 7), 10) - 1;
     const dr = F.dre(d.lancs, d.cats, anoAtual, 'competencia');
     const resMes = dr.linhas[dr.linhas.length - 1].valores[mesAtual];
@@ -428,6 +418,8 @@
       h('button.btn', { type: 'button', onclick: function () { abrirTransferencia(conta.id, desenhar); } }, '⇄ Transferir'),
       h('a.btn', { href: '#/financeiro/contas' }, '← Contas')
     ]));
+    cont.appendChild(h('div.barra-relatorio', h('span.barra-relatorio-rot', 'Extrato do período:'),
+      App.RelFin.botoes('extrato', function () { const pr = periodo(); return { contaId: conta.id, de: pr[0], ate: pr[1] }; })));
     cont.appendChild(topo);
     cont.appendChild(box);
     desenhar();
@@ -542,13 +534,11 @@
       return b;
     }));
     cont.appendChild(UI.cabecalho('DRE gerencial', 'Demonstração do resultado mês a mês (em R$). Competência: pela data da venda/compra; Caixa: pelos recebimentos e pagamentos.', [
-      selAno, regimes,
-      h('button.btn', { type: 'button', onclick: function () {
-        const d = dados();
-        const r = F.dre(d.lancs, d.cats, est.ano, est.regime);
-        U.download(new Blob(['﻿' + F.dreCsv(r)], { type: 'text/csv;charset=utf-8' }), 'DRE_' + est.ano + '_' + est.regime + '.csv');
-      } }, '⬇ Planilha (CSV)')
+      selAno, regimes
     ]));
+    cont.appendChild(h('div.barra-relatorio', h('span.barra-relatorio-rot', 'DRE do ano:'), App.RelFin.botoes('dre', function () { return { ano: est.ano, regime: est.regime }; }, {
+      planilha: function () { const d = dados(); return { texto: '\ufeff' + F.dreCsv(F.dre(d.lancs, d.cats, est.ano, est.regime)), nome: 'DRE_' + est.ano + '_' + est.regime + '.csv' }; }
+    })));
     cont.appendChild(aviso);
     cont.appendChild(box);
     desenhar();
@@ -556,52 +546,147 @@
 
   /* ------------------------------------------------------------ resultado por obra */
 
+  function categoriaAdicional() {
+    const cats = S.list('categoriasFin');
+    return cats.some(function (c) { return c.id === 'cat-cus-adicionais'; }) ? 'cat-cus-adicionais' : 'cat-cus-materiais';
+  }
+
+  /** "+ Custo" da obra: lançamento a pagar já ligado à obra (custo adicional; kit, mão de obra etc. substituem o previsto). */
+  function maisCusto(prop, depois) {
+    abrirLancamento(null, 'pagar', depois, { obraId: prop.id, categoriaId: categoriaAdicional(), descricao: 'Custo adicional — obra ' + prop.numero, competencia: hoje() }, {
+      titulo: '+ Custo da obra ' + prop.numero, semTipo: true,
+      ajuda: 'Custo lançado em Contas a pagar, ligado a esta obra. Em "Custos adicionais da obra" (ou outra categoria fora da proposta) ele soma ao resultado como custo adicional; ' +
+        'nas categorias Kit, Mão de obra, Materiais elétricos (CA), Frete/Projeto e Comissões ele é o custo real da linha correspondente da proposta.'
+    });
+  }
+
+  function fecharApuracao(a, fechar, depois) {
+    const p = S.get('propostas', a.p.id);
+    if (!p) return;
+    p.apuracao = fechar ? { fechada: true, em: hoje(), por: (App.Acesso.sessao() || {}).email || '' } : { fechada: false, reabertaEm: hoje() };
+    S.save('propostas', p);
+    UI.toast(fechar ? 'Apuração da obra ' + p.numero + ' fechada: vale o realizado.' : 'Apuração reaberta: custos não lançados voltam a entrar pelo previsto.', 'ok');
+    if (depois) depois();
+  }
+
+  /** Tabela da apuração (previsto × realizado × apurado) de uma obra. */
+  function tabelaApuracao(a) {
+    const tb = h('tbody');
+    const linha = function (cls, rot, prev, real, apur, varia, nota) {
+      tb.appendChild(h('tr' + cls, h('td', rot, nota ? h('div.mini', nota) : null), h('td.num', prev), h('td.num', real), h('td.num', h('strong', apur)), h('td.num' + (varia < -0.004 ? '.negativo' : ''), varia == null ? '' : U.brl(varia))));
+    };
+    linha('.apur-receita', '(+) Preço de venda / receita', U.brl(a.vendido), U.brl(a.lancadoReceber), U.brl(a.receita), a.receita - a.vendido, a.lancadoReceber ? 'realizado = lançado a receber' : 'sem lançamento a receber: vale o preço da proposta');
+    a.linhas.forEach(function (l) {
+      linha('.apur-custo', '(−) ' + l.label, U.brl(l.previsto), l.realizado ? U.brl(l.realizado) : '—', U.brl(l.apurado), l.variacao,
+        [l.nota, l.lancamentos ? l.lancamentos + ' lançamento(s)' : '', l.apurado ? 'apurado pelo ' + l.pelo : ''].filter(Boolean).join(' · '));
+    });
+    linha('.apur-sub', '= Custos e despesas da obra', U.brl(a.custoPrevisto), U.brl(a.custoRealizado), U.brl(a.custoApurado), a.custoPrevisto - a.custoApurado);
+    linha('.apur-total', '= Resultado da obra', U.brl(a.resultadoPrevisto), '', U.brl(a.resultado), a.variacao);
+    tb.appendChild(h('tr.apur-sub', h('td', 'Margem sobre a venda'), h('td.num', a.margemPrevista != null ? U.fmt(a.margemPrevista * 100, 1) + '%' : '—'), h('td'),
+      h('td.num', h('strong' + (a.margem < 0 ? '.negativo' : ''), U.fmt(a.margem * 100, 1) + '%')), h('td.num', a.margemPrevista != null ? U.fmt((a.margem - a.margemPrevista) * 100, 1) + ' p.p.' : '')));
+    return h('div.tabela-rolagem', h('table.tabela.tabela-apuracao', h('thead', h('tr', h('th', 'Linha'), h('th.num', 'Previsto (proposta)'), h('th.num', 'Realizado (lançado)'), h('th.num', 'Apurado'), h('th.num', 'Efeito no resultado'))), tb));
+  }
+
+  function detalheObra(a, depois) {
+    const d = dados();
+    let fechar = null;
+    const recarregar = function () { if (fechar) fechar(); if (depois) depois(); };
+    const prop = a.p;
+    const inst = a.instalacao;
+    const corpo = h('div.detalhe-obra',
+      h('div.kpis.obra-kpis',
+        h('div.kpi', h('span', 'Preço de venda'), h('strong', U.brl(a.vendido))),
+        h('div.kpi', h('span', 'Custos apurados'), h('strong', U.brl(a.custoApurado))),
+        h('div.kpi', h('span', 'Resultado apurado'), h('strong' + (a.resultado < 0 ? '.negativo' : ''), U.brl(a.resultado) + ' (' + U.fmt(a.margem * 100, 1) + '%)')),
+        h('div.kpi', h('span', 'Resultado previsto'), h('strong', U.brl(a.resultadoPrevisto) + (a.margemPrevista != null ? ' (' + U.fmt(a.margemPrevista * 100, 1) + '%)' : '')))),
+      h('p.ajuda-sec', a.fechada ? '🔒 Apuração fechada em ' + U.dataBR(a.fechadaEm) + ': vale o realizado (o que foi lançado no financeiro).'
+        : 'Apuração em andamento: cada custo entra pelo maior entre o previsto na proposta e o realizado; os ainda não lançados ficam pelo previsto. Feche a apuração quando todos os custos estiverem lançados.',
+        inst ? ' Instalação: ' + ((App.Instalacao.STATUS.find(function (x) { return x.id === a.statusInstalacao; }) || {}).label || '') + '.' : ''),
+      a.semCalculo ? h('p.nota.aviso', 'Não foi possível recalcular a proposta: o previsto usa só o valor total gravado.') : null,
+      tabelaApuracao(a),
+      h('div.barra-itens',
+        h('button.btn', { type: 'button', onclick: function () { maisCusto(prop, recarregar); } }, '+ Custo'),
+        a.fechada ? h('button.btn', { type: 'button', onclick: function () { fecharApuracao(a, false, recarregar); } }, '🔓 Reabrir apuração')
+          : h('button.btn', { type: 'button', onclick: async function () {
+            if (!(await UI.confirmar('Fechar a apuração da obra ' + prop.numero + '? A partir daí o resultado usa só os custos lançados (realizado), sem o previsto da proposta.', 'Fechar apuração'))) return;
+            fecharApuracao(a, true, recarregar);
+          } }, '🔒 Fechar apuração'),
+        App.RelFin.botoes('obra', { id: prop.id }, { rotulo: '👁 Relatório da obra', semPlanilha: false })),
+      h('div.obra-caixa', h('strong', 'Caixa da obra: '), 'recebido ' + U.brl(a.recebido) + ' · a receber ' + U.brl(a.aReceber) + ' · pago ' + U.brl(a.pago) + ' · a pagar ' + U.brl(a.aPagar) + ' · saldo ' + U.brl(a.saldoCaixa)),
+      h('h4.secao-form', 'Lançamentos da obra'),
+      a.lancamentos.length ? tabelaLancamentos(a.lancamentos.slice().sort(function (x, y) { return String(x.vencimento).localeCompare(String(y.vencimento)); }), d, recarregar, true)
+        : h('p.ajuda-sec', 'Nenhum lançamento com esta obra ainda: lance as parcelas pelo 💰 da proposta e os custos pelo "+ Custo" ou pelos pedidos de compra.'));
+    fechar = UI.modal({ titulo: 'Apuração da obra ' + prop.numero + ' — ' + (prop.clienteNome || ''), largo: true, corpo: corpo, acoes: [{ label: 'Fechar' }] });
+  }
+
   UI.rota('/financeiro/obras', function (cont) {
+    let filtro = { situacao: 'todas', periodo: 'tudo', detalhar: false };
+    try { filtro = Object.assign(filtro, JSON.parse(localStorage.getItem('crm.fin.obras') || '{}')); } catch (e) { /* padrão */ }
+    const guardar = function () { try { localStorage.setItem('crm.fin.obras', JSON.stringify(filtro)); } catch (e) { /* só nesta visita */ } };
+    const cfgFin = { aliquota: F.parametrosObras().aliquota };
+    const tiles = h('div.dash-tiles.fin-tiles');
     const box = h('div.card.sem-pad');
+    const opcoesRel = function () {
+      const dia = hoje();
+      const de = filtro.periodo === 'ano' ? dia.slice(0, 4) + '-01-01' : filtro.periodo === '12m' ? F.somarMeses(dia, -12) : '';
+      return { situacao: filtro.situacao, de: de, ate: '', detalhar: !!filtro.detalhar };
+    };
     function desenhar() {
       const d = dados();
-      const ctx = App.Calc.contexto();
-      const lista = F.resultadoObras(S.list('propostas'), d.lancs, d.cats, ctx);
+      const o = opcoesRel();
+      let lista = F.resultadoObras(S.list('propostas'), d.lancs, d.cats, App.Calc.contexto(), F.parametrosObras());
+      if (o.de) lista = lista.filter(function (a) { return String(a.p.aprovadaEm || a.p.data || '') >= o.de; });
+      if (o.situacao === 'abertas') lista = lista.filter(function (a) { return !a.fechada; });
+      if (o.situacao === 'fechadas') lista = lista.filter(function (a) { return a.fechada; });
+      const t = F.totaisObras(lista);
+      const G = App.Graficos;
+      tiles.replaceChildren(
+        G.tile('Vendido', U.brl(t.vendido), t.n + (t.n === 1 ? ' obra' : ' obras') + (t.fechadas ? ' · ' + t.fechadas + ' fechada(s)' : '')),
+        G.tile('Custos apurados', U.brl(t.custoApurado), 'previstos: ' + U.brl(t.custoPrevisto)),
+        G.tile('Resultado apurado', U.brl(t.resultado), 'margem ' + U.fmt(t.margem * 100, 1) + '% · previsto ' + U.brl(t.resultadoPrevisto)));
       box.innerHTML = '';
-      if (!lista.length) { box.appendChild(h('div.vazio', h('p', 'Nenhuma proposta aprovada ainda. As obras aparecem aqui quando a proposta é marcada como Aprovada.'))); return; }
+      if (!lista.length) { box.appendChild(h('div.vazio', h('p', 'Nenhuma obra com esses filtros. As obras aparecem aqui quando a proposta é marcada como Aprovada.'))); return; }
       const tb = h('tbody');
-      const tot = { vendido: 0, recebido: 0, custos: 0, resultado: 0 };
-      lista.forEach(function (o) {
-        tot.vendido += o.vendido; tot.recebido += o.recebido; tot.custos += o.custos; tot.resultado += o.resultado;
-        tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button,a')) detalheObra(o, desenhar); } },
-          h('td', h('strong', o.p.numero), h('div.mini', o.p.clienteNome || '')),
-          h('td.num', U.brl(o.vendido)),
-          h('td.num', U.brl(o.recebido), o.aReceber ? h('div.mini', 'a receber ' + U.brl(o.aReceber)) : null),
-          h('td.num', U.brl(o.custo), o.semCustos ? h('div', UI.badge('sem custos lançados', 'ambar')) : null),
-          h('td.num', U.brl(o.comissao)),
-          h('td.num', U.brl(o.deducao + o.outras)),
-          h('td.num', h('strong' + (o.resultado < 0 ? '.negativo' : ''), U.brl(o.resultado))),
-          h('td.num', h('strong' + (o.margem < 0 ? '.negativo' : ''), U.fmt(o.margem * 100, 1) + '%'),
-            h('div.mini', 'prevista ' + (o.margemPrevista != null ? U.fmt(o.margemPrevista * 100, 1) + '%' : '—'))),
-          h('td.acoes-col', h('button.btn.pequeno', { type: 'button', onclick: function () { abrirLancamento(null, 'pagar', desenhar, { obraId: o.p.id, categoriaId: 'cat-cus-materiais', descricao: 'Custo da obra ' + o.p.numero }); } }, '+ Custo'))));
+      lista.forEach(function (a) {
+        tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button,a')) detalheObra(a, desenhar); } },
+          h('td', h('strong', a.p.numero), a.fechada ? ' 🔒' : '', h('div.mini', a.p.clienteNome || ''), a.semLancamentos ? h('div', UI.badge('custos pelo previsto', 'ambar')) : null),
+          h('td.num', U.brl(a.vendido), h('div.mini', 'recebido ' + U.fmt(a.vendido ? a.recebido / a.vendido * 100 : 0, 0) + '%')),
+          h('td.num', U.brl(a.custoPrevisto)),
+          h('td.num', U.brl(a.custoApurado), a.custoRealizado ? h('div.mini', 'lançado ' + U.brl(a.custoRealizado)) : null),
+          h('td.num', U.brl(a.resultadoPrevisto)),
+          h('td.num', h('strong' + (a.resultado < 0 ? '.negativo' : ''), U.brl(a.resultado))),
+          h('td.num', h('strong' + (a.margem < 0 ? '.negativo' : ''), U.fmt(a.margem * 100, 1) + '%'), h('div.mini', 'prevista ' + (a.margemPrevista != null ? U.fmt(a.margemPrevista * 100, 1) + '%' : '—'))),
+          h('td.acoes-col',
+            h('button.btn.pequeno', { type: 'button', title: 'Apuração detalhada', onclick: function () { detalheObra(a, desenhar); } }, '🔍 Apuração'),
+            h('button.btn.pequeno', { type: 'button', onclick: function () { maisCusto(a.p, desenhar); } }, '+ Custo'))));
       });
-      box.appendChild(h('div.tabela-rolagem', h('table.tabela.tabela-fin.tabela-obras', h('thead', h('tr', ['Obra', 'Vendido', 'Recebido', 'Custos diretos', 'Comissão', 'Impostos e outras', 'Resultado', 'Margem real', ''].map(function (t, i) {
-        return h('th' + (i && i < 8 ? '.num' : ''), t);
-      }))), tb, h('tfoot', h('tr', h('td', h('strong', 'Total')), h('td.num', h('strong', U.brl(tot.vendido))), h('td.num', h('strong', U.brl(tot.recebido))),
-        h('td.num', { colSpan: 3 }, h('strong', U.brl(tot.custos)), h('div.mini', 'custos, comissões e impostos')), h('td.num', h('strong', U.brl(tot.resultado))),
-        h('td.num', h('strong', tot.vendido ? U.fmt(tot.resultado / tot.vendido * 100, 1) + '%' : '—')), h('td'))))));
+      box.appendChild(h('div.tabela-rolagem', h('table.tabela.tabela-fin.tabela-obras', h('thead', h('tr', ['Obra', 'Venda', 'Custo previsto', 'Custo apurado', 'Resultado previsto', 'Resultado apurado', 'Margem', ''].map(function (x, i) {
+        return h('th' + (i && i < 7 ? '.num' : ''), x);
+      }))), tb, h('tfoot', h('tr', h('td', h('strong', 'Total')), h('td.num', h('strong', U.brl(t.vendido))), h('td.num', h('strong', U.brl(t.custoPrevisto))), h('td.num', h('strong', U.brl(t.custoApurado))),
+        h('td.num', h('strong', U.brl(t.resultadoPrevisto))), h('td.num', h('strong', U.brl(t.resultado))), h('td.num', h('strong', U.fmt(t.margem * 100, 1) + '%')), h('td'))))));
     }
-    cont.appendChild(UI.cabecalho('Resultado por obra', 'Vendido × custos lançados com a obra (kit, materiais, mão de obra, frete, projeto), comissão e impostos: a margem real de cada venda.'));
-    cont.appendChild(h('div.card.dica', h('p', 'Para a margem ficar certa, informe a obra nos lançamentos a pagar (compras, mão de obra, comissão, impostos). Os pedidos de compra vinculados a uma instalação já entram na obra ao serem lançados no financeiro. ',
-      'A margem prevista é o lucro da composição de preço da proposta.')));
+    const sel = function (k, opcoes, rotulo) {
+      const s = h('select', { 'aria-label': rotulo, onchange: function () { filtro[k] = s.value; guardar(); desenhar(); } }, opcoes.map(function (x) { const op = h('option', { value: x[0] }, x[1]); if (x[0] === filtro[k]) op.selected = true; return op; }));
+      return s;
+    };
+    const aliq = UI.campo({ k: 'aliquota', label: 'Impostos sobre a venda (previsto)', type: 'pct', help: 'Alíquota efetiva (ex.: Simples Nacional). Os impostos realizados vêm dos lançamentos de deduções da obra.' }, cfgFin, function () {
+      const c = S.config().financeiro || {};
+      S.salvarConfig('financeiro', Object.assign({}, c, { aliquotaImpostos: Math.max(0, U.numOr(cfgFin.aliquota, 0)) }));
+      desenhar();
+    });
+    const detalhar = UI.campo({ k: 'detalhar', label: 'No relatório, incluir a apuração de cada obra', type: 'checkbox' }, filtro, function () { guardar(); });
+    cont.appendChild(UI.cabecalho('Resultado por obra', 'Apuração de cada venda a partir da proposta: preço de venda − kit − mão de obra − material CA − outros − comissão − impostos − custos adicionais.', [
+      sel('situacao', [['todas', 'Todas as obras'], ['abertas', 'Apuração em andamento'], ['fechadas', 'Apuração fechada']], 'Situação da apuração'),
+      sel('periodo', [['tudo', 'Aprovadas: todas'], ['ano', 'Aprovadas neste ano'], ['12m', 'Aprovadas nos últimos 12 meses']], 'Período de aprovação')
+    ]));
+    cont.appendChild(h('div.barra-relatorio', h('span.barra-relatorio-rot', 'Relatório das obras:'), App.RelFin.botoes('obras', opcoesRel)));
+    cont.appendChild(tiles);
+    cont.appendChild(h('div.card.obras-config', h('div.obras-config-campos', aliq, detalhar),
+      h('p.ajuda-sec', h('strong', 'Como é apurado: '), 'previsto = composição de preço da proposta; realizado = lançamentos a pagar com a obra (pedidos de compra, "+ Custo", comissão lançada…); ',
+        'com a apuração em andamento, cada custo entra pelo maior entre previsto e realizado; depois de fechada, pelo realizado. Clique na obra para ver a apuração linha a linha.')));
     cont.appendChild(box);
     desenhar();
   });
-
-  function detalheObra(o, depois) {
-    const d = dados();
-    const corpo = h('div',
-      h('div.kpis', h('div.kpi', h('span', 'Vendido'), h('strong', U.brl(o.vendido))), h('div.kpi', h('span', 'Custos e despesas'), h('strong', U.brl(o.custos))),
-        h('div.kpi', h('span', 'Resultado'), h('strong', U.brl(o.resultado))), h('div.kpi', h('span', 'Margem real / prevista'), h('strong', U.fmt(o.margem * 100, 1) + '% / ' + (o.margemPrevista != null ? U.fmt(o.margemPrevista * 100, 1) + '%' : '—')))),
-      o.lancamentos.length ? tabelaLancamentos(o.lancamentos.slice().sort(function (a, b) { return String(a.vencimento).localeCompare(String(b.vencimento)); }), d, depois, true)
-        : h('p.ajuda-sec', 'Nenhum lançamento com esta obra ainda.'));
-    UI.modal({ titulo: 'Obra ' + o.p.numero + ' — ' + (o.p.clienteNome || ''), largo: true, corpo: corpo, acoes: [{ label: 'Fechar' }] });
-  }
 
   /* ------------------------------------------------------------ comissões */
 
@@ -640,9 +725,57 @@
           h('div.tabela-rolagem', h('table.tabela.compacta', h('thead', h('tr', ['Venda', 'Valor', 'Comissão', 'Recebido', 'Liberada', 'Lançada', 'Paga', 'A lançar'].map(function (t, i) { return h('th' + (i ? '.num' : ''), t); }))), tb))));
       });
     }
-    cont.appendChild(UI.cabecalho('Comissões', 'A comissão de cada venda é liberada na proporção do que o cliente já pagou; lance a pagar o que foi liberado.'));
+    cont.appendChild(UI.cabecalho('Comissões', 'A comissão de cada venda é liberada na proporção do que o cliente já pagou; lance a pagar o que foi liberado.', [App.RelFin.botoes('comissoes', {})]));
     cont.appendChild(box);
     desenhar();
+  });
+
+  /* ------------------------------------------------------------ relatórios */
+
+  UI.rota('/financeiro/relatorios', function (cont) {
+    const d = dados();
+    const dia = hoje(), iniMes = dia.slice(0, 8) + '01', fimMes = F.somarDias(F.somarMeses(dia.slice(0, 8) + '01', 1), -1), iniAno = dia.slice(0, 4) + '-01-01';
+    const anos = {};
+    anos[dia.slice(0, 4)] = true;
+    d.lancs.forEach(function (l) { [l.competencia, l.pagoEm, l.vencimento].forEach(function (x) { if (x) anos[String(x).slice(0, 4)] = true; }); });
+    const filtros = F.FILTROS.map(function (x) { return { v: x.id, t: x.label }; });
+    const agrupar = App.RelFin.AGRUPAR.map(function (x) { return { v: x.id, t: x.label }; });
+    const regimes = [{ v: 'competencia', t: 'Competência (data da venda/compra)' }, { v: 'caixa', t: 'Caixa (recebimentos e pagamentos)' }];
+    const cartao = function (icone, titulo, desc, tipo, campos, estado, fixo, o) {
+      const est = estado || {};
+      const grade = campos ? UI.grade(campos, est, null, 2) : null;
+      return h('section.card.rel-card', { 'data-relatorio': tipo + (fixo && fixo.tipo ? '-' + fixo.tipo : '') },
+        h('h3', icone + ' ' + titulo), h('p.ajuda-sec', desc), grade,
+        App.RelFin.botoes(tipo, function () { return Object.assign({}, est, fixo || {}); }, Object.assign({ rotulo: '👁 Visualizar' }, o || {})));
+    };
+    const lancCampos = [
+      { k: 'filtro', label: 'Quais', type: 'select', options: filtros, cls: 'span2' },
+      { k: 'de', label: 'Vencimento de (no período)', type: 'date' }, { k: 'ate', label: 'até', type: 'date' },
+      { k: 'agrupar', label: 'Agrupar por', type: 'select', options: agrupar, cls: 'span2' }
+    ];
+    cont.appendChild(UI.cabecalho('Relatórios do financeiro', 'Escolha o relatório e os parâmetros: 👁 visualizar, 🖨 imprimir, ⬇ PDF ou ⬇ planilha (CSV, abre no Excel).'));
+    cont.appendChild(h('div.rel-grid',
+      cartao('📊', 'Resumo financeiro', 'Painel em PDF: saldos, a receber e a pagar, vencidos, fluxo de caixa, DRE do mês e do ano e o resultado das obras.', 'resumo', null, null, null, { semPlanilha: true }),
+      cartao('📥', 'Contas a receber', 'Parcelas das vendas e serviços com situação, totais por grupo e gráfico por mês de vencimento.', 'lancamentos', lancCampos, { filtro: 'aberto', de: iniMes, ate: fimMes, agrupar: 'mes' }, { tipo: 'receber' }),
+      cartao('📤', 'Contas a pagar', 'Compras, despesas, impostos e comissões com situação, totais por grupo e gráfico por mês de vencimento.', 'lancamentos', lancCampos, { filtro: 'aberto', de: iniMes, ate: fimMes, agrupar: 'mes' }, { tipo: 'pagar' }),
+      cartao('⚠️', 'Inadimplência e atrasos', 'Vencidos por cliente (ou fornecedor) nas faixas de 1–30, 31–60, 61–90 e mais de 90 dias, com a lista dos vencidos.', 'atrasos',
+        [{ k: 'tipo', label: 'De', type: 'select', options: [{ v: 'receber', t: 'Contas a receber (inadimplência)' }, { v: 'pagar', t: 'Contas a pagar (atrasos)' }], cls: 'span2' }], { tipo: 'receber' }),
+      cartao('💹', 'Fluxo de caixa', 'Mês a mês: entradas e saídas realizadas e previstas, resultado e saldo projetado, com gráfico.', 'fluxo',
+        [{ k: 'antes', label: 'Meses anteriores', type: 'int' }, { k: 'depois', label: 'Meses seguintes', type: 'int' }], { antes: 3, depois: 6 }),
+      cartao('🔄', 'Movimento de caixa', 'Recebimentos e pagamentos realizados no período, com os saldos de cada conta.', 'movimento',
+        [{ k: 'de', label: 'De', type: 'date' }, { k: 'ate', label: 'Até', type: 'date' }], { de: iniMes, ate: dia }),
+      cartao('🏦', 'Extrato de conta', 'Saldo anterior, movimentos com saldo dia a dia e o que foi conciliado com o banco.', 'extrato',
+        [{ k: 'contaId', label: 'Conta', type: 'select', options: opcoesContas(d.contas), cls: 'span2' }, { k: 'de', label: 'De', type: 'date' }, { k: 'ate', label: 'Até', type: 'date' }],
+        { contaId: (d.contas[0] || {}).id || '', de: iniMes, ate: dia }),
+      cartao('🗂', 'Receitas e despesas por categoria', 'Totais por categoria do plano de contas, com a participação de cada uma e as maiores despesas em gráfico.', 'categorias',
+        [{ k: 'de', label: 'De', type: 'date' }, { k: 'ate', label: 'Até', type: 'date' }, { k: 'regime', label: 'Regime', type: 'select', options: regimes, cls: 'span2' }], { de: iniAno, ate: dia, regime: 'competencia' }),
+      cartao('📈', 'DRE gerencial', 'Demonstração do resultado mês a mês do ano, com análise vertical e gráfico (página deitada).', 'dre',
+        [{ k: 'ano', label: 'Ano', type: 'select', options: Object.keys(anos).sort().reverse() }, { k: 'regime', label: 'Regime', type: 'select', options: regimes }], { ano: dia.slice(0, 4), regime: 'competencia' }),
+      cartao('🏗', 'Resultado por obra', 'Venda, custos e resultado previstos × apurados de cada obra; opcionalmente, a apuração completa de cada uma.', 'obras',
+        [{ k: 'situacao', label: 'Apuração', type: 'select', options: [{ v: 'todas', t: 'Todas' }, { v: 'abertas', t: 'Em andamento' }, { v: 'fechadas', t: 'Fechadas' }] },
+          { k: 'de', label: 'Aprovadas a partir de', type: 'date' }, { k: 'detalhar', label: 'Incluir a apuração de cada obra', type: 'checkbox', cls: 'span2' }], { situacao: 'todas', de: '', detalhar: false }),
+      cartao('🤝', 'Comissões', 'Comissão de cada venda por vendedor: liberada pelo recebido, lançada e paga.', 'comissoes', null, null)
+    ));
   });
 
   /* ------------------------------------------------------------ plano de contas */

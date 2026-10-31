@@ -298,40 +298,244 @@ window.App = window.App || {};
     return [cab.join(';')].concat(d.linhas.map(linha), [linha(d.fora)]).join('\r\n');
   }
 
-  /* ------------------------------------------------------------ resultado por obra */
+  /* ------------------------------------------------------------ resultado por obra (apuração) */
+
+  // linhas da apuração: o custo previsto na composição de preço da proposta × o realizado nos lançamentos da obra
+  const LINHAS_OBRA = [
+    { id: 'kit', label: 'Kit de equipamentos (módulos, inversor, estrutura, baterias)', cats: ['cat-cus-kit'] },
+    { id: 'maoobra', label: 'Mão de obra de instalação', cats: ['cat-cus-maoobra'] },
+    { id: 'materialCA', label: 'Material CA (infraestrutura elétrica)', cats: ['cat-cus-materiais'] },
+    { id: 'outros', label: 'Outros custos da proposta (frete, projeto, ART)', cats: ['cat-cus-frete', 'cat-cus-projeto'] },
+    { id: 'comissao', label: 'Comissão de vendas', cats: ['cat-com-comissoes'] },
+    { id: 'impostos', label: 'Impostos sobre a venda', grupos: ['deducao'] },
+    { id: 'adicionais', label: 'Custos adicionais da obra', resto: true }
+  ];
+
+  /** Linha da apuração em que entra um lançamento a pagar da obra (null: fora do resultado). */
+  function linhaObra(l, categorias) {
+    const g = grupoDe(categorias, l.categoriaId);
+    if (g === 'fora') return null;
+    const d = LINHAS_OBRA.find(function (x) { return (x.cats && x.cats.indexOf(l.categoriaId) >= 0) || (x.grupos && x.grupos.indexOf(g) >= 0); });
+    return d ? d.id : 'adicionais';
+  }
+
+  /** Parâmetros da apuração guardados na configuração (alíquota dos impostos sobre a venda) e as instalações. */
+  function parametrosObras() {
+    const S = App.Store;
+    const c = S ? (S.config().financeiro || {}) : {};
+    return { aliquota: Math.max(0, num(c.aliquotaImpostos)), instalacoes: S ? S.list('instalacoes') : [] };
+  }
 
   /**
-   * Obras (propostas aprovadas): vendido, recebido e a receber; custos, comissões, deduções e outras despesas lançados com a
-   * obra (obraId = id da proposta); resultado e margem real × margem prevista na proposta.
+   * Custos previstos na composição de preço da proposta: kit (FV + armazenamento), mão de obra de instalação (a da composição;
+   * nas propostas sem preço pela margem, estimada pelas premissas: módulos × R$/módulo da faixa), material CA (lista ou valor da
+   * infraestrutura), outros valores, comissão e os impostos sobre a venda (alíquota da apuração).
    */
-  function resultadoObras(propostas, lancs, categorias, ctx) {
-    const C = App.Calc;
-    return (propostas || []).filter(function (p) { return p.status === 'aprovada'; }).map(function (p) {
-      let r = null;
-      try { r = C.calcular(U.clone(p), ctx); } catch (e) { r = null; }
-      const vendido = r ? arred(r.total) : num((p.resumo || {}).total);
-      const ls = (lancs || []).filter(function (l) { return l.obraId === p.id && l.situacao !== 'cancelado' && l.tipo !== 'transferencia'; });
-      const x = { recebido: 0, aReceber: 0, custo: 0, comissao: 0, deducao: 0, outras: 0, custoPago: 0, porCategoria: {} };
-      ls.forEach(function (l) {
-        const v = num(l.valor);
-        if (l.tipo === 'receber') { if (l.situacao === 'pago') x.recebido += v; else x.aReceber += v; return; }
-        const g = grupoDe(categorias, l.categoriaId);
-        if (g === 'deducao') x.deducao += v;
-        else if (l.categoriaId === 'cat-com-comissoes') x.comissao += v;
-        else if (g === 'custo') { x.custo += v; if (l.situacao === 'pago') x.custoPago += v; }
-        else if (g !== 'fora') x.outras += v;
-        x.porCategoria[l.categoriaId || ''] = arred((x.porCategoria[l.categoriaId || ''] || 0) + v);
-      });
-      const custos = arred(x.custo + x.comissao + x.deducao + x.outras);
-      const resultado = arred(vendido - custos);
-      const lucroPrev = r && typeof r.lucro === 'number' ? arred(r.lucro) : null;
-      return {
-        p: p, vendido: vendido, recebido: arred(x.recebido), aReceber: arred(x.aReceber), custo: arred(x.custo), custoPago: arred(x.custoPago), comissao: arred(x.comissao),
-        deducao: arred(x.deducao), outras: arred(x.outras), custos: custos, resultado: resultado, margem: vendido > 0 ? resultado / vendido : 0,
-        margemPrevista: lucroPrev != null && vendido > 0 ? lucroPrev / vendido : null, lucroPrevisto: lucroPrev,
-        lancamentos: ls, porCategoria: x.porCategoria, semCustos: x.custo === 0
-      };
-    }).sort(function (a, b) { return String(b.p.aprovadaEm || b.p.data).localeCompare(String(a.p.aprovadaEm || a.p.data)); });
+  function previstoProposta(p, ctx, o) {
+    let r = null;
+    try { r = App.Calc.calcular(U.clone(p), ctx); } catch (e) { r = null; }
+    const aliq = Math.max(0, num(o && o.aliquota));
+    if (!r) {
+      const t = arred(num((p.resumo || {}).total));
+      return { r: null, venda: t, aliquota: aliq, semCalculo: true, valores: { kit: 0, maoobra: 0, materialCA: 0, outros: 0, comissao: 0, impostos: arred(t * aliq), adicionais: 0 } };
+    }
+    const cen = r.cen || null;
+    const kitArm = cen ? num(cen.kitArm) : 0, instArm = cen ? num(cen.instalArm) : 0;
+    let instalacao = r.incluiFV ? num(r.instalacao) : 0, estimada = false, porModulo = num(r.instalacaoModulo);
+    if (!r.precoMargem && r.incluiFV) {
+      const pp = (ctx.premissas && ctx.premissas.preco) || {};
+      porModulo = Number(p.instalacaoFaixa) === 2 ? num(pp.instalacaoFaixa2) : num(pp.instalacaoFaixa1);
+      instalacao = num(r.nModulos) * porModulo;
+      estimada = instalacao > 0;
+    }
+    const venda = arred(num(r.total));
+    return {
+      r: r, venda: venda, aliquota: aliq, precoMargem: !!r.precoMargem, maoobraEstimada: estimada, instalacaoModulo: porModulo, nModulos: r.incluiFV ? num(r.nModulos) : 0,
+      outrosDescricao: num(r.outros) > 0 ? r.outrosDescricao : '', infraLista: p.infraModo === 'lista',
+      valores: {
+        kit: arred((r.incluiFV ? num(r.kit) : 0) + kitArm), maoobra: arred(instalacao + instArm), materialCA: arred(r.incluiFV ? num(r.infra) : 0),
+        outros: arred(r.incluiFV ? num(r.outros) : 0), comissao: arred(num(r.comissao)), impostos: arred(venda * aliq), adicionais: 0
+      }
+    };
+  }
+
+  /**
+   * Apuração do resultado de uma obra (proposta aprovada). Para cada linha de custo: previsto (proposta), realizado (lançamentos
+   * a pagar com a obra; no material CA sem lançamento, o consumo registrado na instalação) e apurado — com a apuração aberta, o
+   * maior entre previsto e realizado (custos ainda não lançados ficam pelo previsto); fechada, o realizado. Receita: o preço de
+   * venda (aberta, o maior entre ele e o lançado a receber; fechada, o lançado). Resultado = receita − custos apurados.
+   * o: {aliquota, instalacoes}
+   */
+  function apuracaoObra(p, lancs, categorias, ctx, o) {
+    o = o || {};
+    const prev = previstoProposta(p, ctx, o);
+    const ls = (lancs || []).filter(function (l) { return l.obraId === p.id && l.situacao !== 'cancelado' && l.tipo !== 'transferencia'; });
+    const real = { kit: 0, maoobra: 0, materialCA: 0, outros: 0, comissao: 0, impostos: 0, adicionais: 0 };
+    const nLanc = { kit: 0, maoobra: 0, materialCA: 0, outros: 0, comissao: 0, impostos: 0, adicionais: 0 };
+    let lancadoRec = 0, recebido = 0, pago = 0, aPagar = 0;
+    ls.forEach(function (l) {
+      const v = num(l.valor);
+      if (l.tipo === 'receber') { lancadoRec += v; if (l.situacao === 'pago') recebido += v; return; }
+      const id = linhaObra(l, categorias);
+      if (!id) return;
+      real[id] += v; nLanc[id]++;
+      if (l.situacao === 'pago') pago += v; else aPagar += v;
+    });
+    const inst = (o.instalacoes || []).find(function (i) { return i.propostaId === p.id && i.situacao !== 'cancelada'; }) || null;
+    const statusInst = inst && App.Instalacao ? App.Instalacao.status(inst) : '';
+    const fontes = {};
+    if (!(real.materialCA > 0) && inst && App.Materiais) {
+      const usado = App.Materiais.resumo(inst, p).usado;
+      if (usado > 0) { real.materialCA = usado; fontes.materialCA = 'consumo registrado na instalação'; }
+    }
+    const fechada = !!(p.apuracao && p.apuracao.fechada);
+    const linhas = LINHAS_OBRA.map(function (d) {
+      const previsto = arred(prev.valores[d.id]), realizado = arred(real[d.id]);
+      const apurado = arred(fechada ? realizado : Math.max(previsto, realizado));
+      let label = d.label;
+      if (d.id === 'outros' && prev.outrosDescricao) label = 'Outros custos da proposta (' + prev.outrosDescricao + ')';
+      if (d.id === 'impostos' && prev.aliquota) label += ' (' + String(arred(prev.aliquota * 100)).replace('.', ',') + '% no previsto)';
+      let nota = fontes[d.id] || '';
+      if (d.id === 'maoobra' && prev.maoobraEstimada) nota = 'previsto estimado: ' + prev.nModulos + ' módulos × R$ ' + String(arred(prev.instalacaoModulo)).replace('.', ',') + ' (premissas)';
+      return { id: d.id, label: label, previsto: previsto, realizado: realizado, apurado: apurado, variacao: arred(previsto - apurado), lancamentos: nLanc[d.id],
+        pelo: fechada || (realizado > 0 && realizado >= previsto) ? 'realizado' : 'previsto', nota: nota };
+    });
+    const soma = function (k) { return arred(linhas.reduce(function (s, x) { return s + x[k]; }, 0)); };
+    const vendaPrev = prev.venda;
+    const receita = arred(fechada ? (lancadoRec > 0 ? lancadoRec : vendaPrev) : Math.max(vendaPrev, lancadoRec));
+    const custoPrevisto = soma('previsto'), custoRealizado = soma('realizado'), custoApurado = soma('apurado');
+    const resultadoPrevisto = arred(vendaPrev - custoPrevisto), resultado = arred(receita - custoApurado);
+    return {
+      p: p, prev: prev, linhas: linhas, fechada: fechada, fechadaEm: fechada ? (p.apuracao.em || '') : '', instalacao: inst, statusInstalacao: statusInst,
+      vendido: vendaPrev, receita: receita, lancadoReceber: arred(lancadoRec), recebido: arred(recebido), aReceber: arred(lancadoRec - recebido),
+      pago: arred(pago), aPagar: arred(aPagar), saldoCaixa: arred(recebido - pago),
+      custoPrevisto: custoPrevisto, custoRealizado: custoRealizado, custoApurado: custoApurado, custos: custoApurado,
+      resultadoPrevisto: resultadoPrevisto, resultado: resultado, variacao: arred(resultado - resultadoPrevisto),
+      margem: receita > 0 ? resultado / receita : 0, margemPrevista: vendaPrev > 0 ? resultadoPrevisto / vendaPrev : null,
+      lancamentos: ls, semLancamentos: !ls.some(function (l) { return l.tipo === 'pagar'; }), semCalculo: !!prev.semCalculo
+    };
+  }
+
+  /** Obras (propostas aprovadas) com a apuração, das aprovadas mais recentes para as mais antigas. o: {aliquota, instalacoes} */
+  function resultadoObras(propostas, lancs, categorias, ctx, o) {
+    return (propostas || []).filter(function (p) { return p.status === 'aprovada'; }).map(function (p) { return apuracaoObra(p, lancs, categorias, ctx, o); })
+      .sort(function (a, b) { return String(b.p.aprovadaEm || b.p.data).localeCompare(String(a.p.aprovadaEm || a.p.data)); });
+  }
+
+  /** Totais das obras: venda, receita, custos e resultados (previsto e apurado), recebido, a receber e margens. */
+  function totaisObras(lista) {
+    const t = { n: lista.length, vendido: 0, receita: 0, custoPrevisto: 0, custoRealizado: 0, custoApurado: 0, resultadoPrevisto: 0, resultado: 0, recebido: 0, aReceber: 0, pago: 0, aPagar: 0, fechadas: 0 };
+    lista.forEach(function (o) {
+      ['vendido', 'receita', 'custoPrevisto', 'custoRealizado', 'custoApurado', 'resultadoPrevisto', 'resultado', 'recebido', 'aReceber', 'pago', 'aPagar'].forEach(function (k) { t[k] += o[k]; });
+      if (o.fechada) t.fechadas++;
+    });
+    Object.keys(t).forEach(function (k) { if (k !== 'n' && k !== 'fechadas') t[k] = arred(t[k]); });
+    t.margem = t.receita > 0 ? t.resultado / t.receita : 0;
+    t.margemPrevista = t.vendido > 0 ? t.resultadoPrevisto / t.vendido : 0;
+    return t;
+  }
+
+  /* ------------------------------------------------------------ dados dos relatórios */
+
+  const FILTROS = [
+    { id: 'aberto', label: 'Em aberto (inclui vencidos)' }, { id: 'vencidos', label: 'Vencidos' }, { id: '30', label: 'Vencem nos próximos 30 dias' },
+    { id: 'mes', label: 'Vencimento neste mês' }, { id: 'pagosMes', label: 'Baixados neste mês' }, { id: 'periodo', label: 'Vencimento no período' }, { id: 'todos', label: 'Todos' }
+  ];
+
+  /** Lançamentos a receber ou a pagar pelo filtro da lista (o: {filtro, q, de, ate, hoje}), na ordem de vencimento (baixados: de pagamento). */
+  function filtrar(lancs, tipo, o) {
+    o = o || {};
+    const f = o.filtro || 'aberto', dia = o.hoje || hojeISO(), ate30 = somarDias(dia, 30), mes = dia.slice(0, 7);
+    const busca = String(o.q || '').trim().toLowerCase();
+    return (lancs || []).filter(function (l) {
+      if (l.tipo !== tipo) return false;
+      const s = situacao(l, dia);
+      if (f === 'aberto' && !(s === 'aberto' || s === 'vencido')) return false;
+      if (f === 'vencidos' && s !== 'vencido') return false;
+      if (f === '30' && !(s === 'aberto' && l.vencimento <= ate30)) return false;
+      if (f === 'mes' && String(l.vencimento).slice(0, 7) !== mes) return false;
+      if (f === 'pagosMes' && !(s === 'pago' && String(l.pagoEm).slice(0, 7) === mes)) return false;
+      if (f === 'periodo' && ((o.de && l.vencimento < o.de) || (o.ate && l.vencimento > o.ate))) return false;
+      if (busca && [l.descricao, l.pessoa && l.pessoa.nome, l.documento, l.origem && l.origem.numero].join(' ').toLowerCase().indexOf(busca) < 0) return false;
+      return true;
+    }).sort(function (a, b) {
+      if (f === 'pagosMes') return String(b.pagoEm).localeCompare(String(a.pagoEm));
+      return String(a.vencimento).localeCompare(String(b.vencimento));
+    });
+  }
+
+  const FAIXAS_ATRASO = [{ id: 'aVencer', label: 'A vencer' }, { id: 'd30', label: '1 a 30 dias' }, { id: 'd60', label: '31 a 60 dias' }, { id: 'd90', label: '61 a 90 dias' }, { id: 'd90mais', label: 'Mais de 90 dias' }];
+
+  /** Inadimplência (contas a receber) ou atrasos (a pagar) por pessoa, nas faixas de atraso. */
+  function atrasos(lancs, tipo, hoje) {
+    const dia = hoje || hojeISO();
+    const porPessoa = {};
+    (lancs || []).forEach(function (l) {
+      if (l.tipo !== (tipo || 'receber') || l.situacao !== 'aberto') return;
+      const nome = (l.pessoa && l.pessoa.nome) || '(sem nome)';
+      const x = porPessoa[nome] = porPessoa[nome] || { pessoa: nome, aVencer: 0, d30: 0, d60: 0, d90: 0, d90mais: 0, vencido: 0, total: 0, n: 0, maisAntigo: '' };
+      const v = num(l.valor), dias = diasEntre(l.vencimento, dia);
+      const faixa = dias <= 0 ? 'aVencer' : dias <= 30 ? 'd30' : dias <= 60 ? 'd60' : dias <= 90 ? 'd90' : 'd90mais';
+      x[faixa] += v; x.total += v; x.n++;
+      if (dias > 0) { x.vencido += v; if (!x.maisAntigo || l.vencimento < x.maisAntigo) x.maisAntigo = l.vencimento; }
+    });
+    const lista = Object.keys(porPessoa).map(function (k) { const x = porPessoa[k]; ['aVencer', 'd30', 'd60', 'd90', 'd90mais', 'vencido', 'total'].forEach(function (c) { x[c] = arred(x[c]); }); return x; })
+      .sort(function (a, b) { return (b.vencido - a.vencido) || (b.total - a.total); });
+    const tot = { aVencer: 0, d30: 0, d60: 0, d90: 0, d90mais: 0, vencido: 0, total: 0, n: 0 };
+    lista.forEach(function (x) { Object.keys(tot).forEach(function (k) { tot[k] += x[k]; }); });
+    Object.keys(tot).forEach(function (k) { if (k !== 'n') tot[k] = arred(tot[k]); });
+    return { lista: lista, total: tot };
+  }
+
+  /**
+   * Receitas e despesas por categoria no período. regime 'competencia': lançamentos não cancelados pela competência (valor);
+   * 'caixa': os pagos pela data do pagamento (valor pago). Fora do resultado separado.
+   */
+  function porCategoria(lancs, categorias, de, ate, regime) {
+    const caixa = regime === 'caixa';
+    const acc = {};
+    (lancs || []).forEach(function (l) {
+      if (l.tipo === 'transferencia' || l.situacao === 'cancelado' || (caixa && l.situacao !== 'pago')) return;
+      const data = String(caixa ? l.pagoEm : (l.competencia || l.vencimento) || '').slice(0, 10);
+      if ((de && data < de) || (ate && data > ate)) return;
+      const k = l.tipo + '|' + (l.categoriaId || '');
+      const c = (categorias || []).find(function (x) { return x.id === l.categoriaId; });
+      const x = acc[k] = acc[k] || { tipo: l.tipo, categoriaId: l.categoriaId || '', nome: c ? c.nome : 'Sem categoria', grupo: c ? c.grupo : (l.tipo === 'receber' ? 'receita' : 'despesa_admin'), total: 0, n: 0 };
+      x.total += caixa ? num(l.valorPago || l.valor) : num(l.valor); x.n++;
+    });
+    const todos = Object.keys(acc).map(function (k) { acc[k].total = arred(acc[k].total); return acc[k]; });
+    const montar = function (tipo, fora) {
+      const l = todos.filter(function (x) { return x.tipo === tipo && (x.grupo === 'fora') === fora; }).sort(function (a, b) { return b.total - a.total; });
+      const t = arred(l.reduce(function (s, x) { return s + x.total; }, 0));
+      l.forEach(function (x) { x.pct = t > 0 ? x.total / t : 0; });
+      return { lista: l, total: t };
+    };
+    const rec = montar('receber', false), desp = montar('pagar', false), foraE = montar('receber', true), foraS = montar('pagar', true);
+    return { regime: caixa ? 'caixa' : 'competencia', receitas: rec, despesas: desp, foraEntradas: foraE, foraSaidas: foraS, resultado: arred(rec.total - desp.total) };
+  }
+
+  /** Movimento de caixa do período (realizado, todas as contas): linhas por data, totais e saldos de cada conta. */
+  function movimento(lancs, contas, categorias, de, ate) {
+    const ativas = (contas || []).filter(function (c) { return c.ativo !== false; });
+    const linhas = [];
+    let entradas = 0, saidas = 0, transf = 0;
+    (lancs || []).forEach(function (l) {
+      if (l.situacao !== 'pago') return;
+      const d = String(l.pagoEm || '').slice(0, 10);
+      if ((de && d < de) || (ate && d > ate)) return;
+      const v = num(l.valorPago || l.valor);
+      if (l.tipo === 'transferencia') { transf++; return; }
+      const c = (contas || []).find(function (x) { return x.id === l.contaId; });
+      const cat = (categorias || []).find(function (x) { return x.id === l.categoriaId; });
+      linhas.push({ data: d, descricao: l.descricao, pessoa: (l.pessoa && l.pessoa.nome) || '', conta: c ? c.nome : '—', categoria: cat ? cat.nome : '—', entrada: l.tipo === 'receber' ? v : 0, saida: l.tipo === 'pagar' ? v : 0, l: l });
+      if (l.tipo === 'receber') entradas += v; else saidas += v;
+    });
+    linhas.sort(function (a, b) { return a.data.localeCompare(b.data) || (b.entrada - a.entrada); });
+    const saldos = ativas.map(function (c) {
+      const ex = extrato(c, lancs, de || '', ate || hojeISO());
+      return { conta: c, anterior: ex.anterior, entradas: arred(ex.linhas.reduce(function (s, m) { return s + m.entrada; }, 0)), saidas: arred(ex.linhas.reduce(function (s, m) { return s + m.saida; }, 0)), final: ex.final };
+    });
+    return { linhas: linhas, entradas: arred(entradas), saidas: arred(saidas), saldo: arred(entradas - saidas), transferencias: transf, saldos: saldos };
   }
 
   /* ------------------------------------------------------------ comissões */
@@ -493,6 +697,8 @@ window.App = window.App || {};
     novoLancamento: novoLancamento, situacao: situacao, gerarParcelas: gerarParcelas, baixar: baixar, estornar: estornar, transferencia: transferencia,
     movimentos: movimentos, saldoConta: saldoConta, saldoTotal: saldoTotal, extrato: extrato, resumo: resumo, fluxo: fluxo,
     dre: dre, dreCsv: dreCsv, resultadoObras: resultadoObras, comissoes: comissoes, lerOfx: lerOfx, conciliar: conciliar, categoriaSugerida: categoriaSugerida,
+    LINHAS_OBRA: LINHAS_OBRA, linhaObra: linhaObra, parametrosObras: parametrosObras, previstoProposta: previstoProposta, apuracaoObra: apuracaoObra, totaisObras: totaisObras,
+    FAIXAS_ATRASO: FAIXAS_ATRASO, atrasos: atrasos, porCategoria: porCategoria, movimento: movimento, FILTROS: FILTROS, filtrar: filtrar,
     baseDe: baseDe, lancadosDe: lancadosDe
   };
 })(window.App);

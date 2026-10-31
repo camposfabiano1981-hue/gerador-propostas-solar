@@ -29,7 +29,8 @@ window.App = window.App || {};
   function vazio() { return P([], { after: 100 }); }
   function IMG(ref, cx, cy, nome) { return { tipo: 'img', ref: ref, cx: cx, cy: cy, nome: nome }; }
   function TC(filhos, o) { return { tipo: 'tc', o: o || {}, filhos: lista(filhos) }; }
-  function TR(celulas, cabecalho, o) { return { tipo: 'tr', cabecalho: !!cabecalho, celulas: celulas, naoQuebrar: !!(o && o.naoQuebrar) }; }
+  /** o: {naoQuebrar (a linha não se divide entre páginas), comProxima (fica na mesma página que a linha seguinte, ex.: título de grupo)} */
+  function TR(celulas, cabecalho, o) { return { tipo: 'tr', cabecalho: !!cabecalho, celulas: celulas, naoQuebrar: !!(o && o.naoQuebrar), comProxima: !!(o && o.comProxima) }; }
   /** o: {jc: 'center' (tabela centralizada na página), manterJunto (a tabela inteira na mesma página)} */
   function TBL(larguras, linhas, o) {
     o = o || {};
