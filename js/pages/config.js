@@ -466,8 +466,8 @@
     // regras atualizadas (perfis da equipe e páginas públicas): quem já tinha publicado as antigas precisa publicar de novo
     if (cfgAtual) {
       cont.appendChild(h('div.card.dica',
-        h('p', h('strong', 'Equipe com login e financeiro (versão 2026.10.30.8): '), 'as regras do Firestore passaram a ter os perfis (administrador, vendedor e técnico), a coleção ',
-          h('code', 'equipe'), ' e as páginas públicas (', h('code', 'match /acompanhamento/{codigo}'), '). Se você publicou as regras antes desta versão, abra o passo a passo abaixo, ',
+        h('p', h('strong', 'Equipe com login (versão 2026.10.31.2): '), 'as regras do Firestore têm os perfis (administrador, vendedor e técnico), a coleção ',
+          h('code', 'equipe'), ' (com a confirmação do e-mail de quem entra) e as páginas públicas (', h('code', 'match /acompanhamento/{codigo}'), '). Se você publicou as regras antes desta versão, abra o passo a passo abaixo, ',
           'copie as regras do passo 5 e publique de novo na aba Regras do Firestore. Para a equipe entrar com e-mail e senha, ative também ', h('strong', 'E-mail/senha'), ' (passo 2).')));
     }
     // já configurado: o passo a passo fica recolhido (consulta)

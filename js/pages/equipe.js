@@ -47,7 +47,8 @@
             }
           }, 'Esqueci a senha')),
         h('div.portao-ou', h('span', 'ou')),
-        h('button.btn.portao-google', { type: 'button', onclick: function () { App.Nuvem.entrar().catch(function (e) { mostrarMsg(e.message, true); }); } }, 'Entrar com Google (dono da conta)'),
+        h('button.btn.portao-google', { type: 'button', onclick: function () { App.Nuvem.entrar().catch(function (e) { mostrarMsg(e.message, true); }); } }, 'Entrar com Google'),
+        h('p.portao-rodape', 'Com Google: o dono da conta e quem da equipe tem e-mail do Google (Gmail).'),
         h('p.portao-rodape', 'Versão ' + App.VERSAO_APP)));
     document.body.appendChild(portao);
     return portao;
@@ -133,6 +134,11 @@
 
   /* ------------------------------------------------------------ equipe e acessos (administrador) */
 
+  const MSG_SEM_SENHA = 'O login por e-mail e senha não está ativado no Firebase: no console, Authentication › Método de login › Adicionar novo provedor › E-mail/senha › Ativar › Salvar.';
+
+  /** E-mail de conta Google (Gmail/Googlemail): a pessoa pode entrar com "Entrar com Google". */
+  function contaGoogle(email) { return /@(gmail|googlemail)\.com$/i.test(String(email || '').trim()); }
+
   function senhaAleatoria() {
     const b = new Uint8Array(12);
     crypto.getRandomValues(b);
@@ -145,8 +151,9 @@
       N && N.usuario ? [h('button.btn.primario', { type: 'button', onclick: adicionar }, '+ Adicionar pessoa')] : null));
     cont.appendChild(h('div.card.dica',
       h('p', h('strong', 'Perfis: '), A.PERFIS.map(function (p) { return p.label + ' — ' + p.desc; }).join(' ')),
-      h('p', h('strong', 'Antes do primeiro cadastro (uma vez só, no console do Firebase): '), '1) Authentication › Método de login › ', h('strong', 'E-mail/senha'), ' › Ativar; ',
-        '2) publique as regras do Firestore com os perfis (', h('a', { href: '#/nuvem' }, 'Sincronização (nuvem)'), ' › passo 5). As regras garantem no servidor o que cada perfil pode ler e gravar.')));
+      h('p', h('strong', 'Antes do primeiro cadastro (uma vez só, no console do Firebase): '), '1) Authentication › Método de login › Adicionar novo provedor › ', h('strong', 'E-mail/senha'), ' › Ativar › Salvar; ',
+        '2) publique as regras do Firestore com os perfis (', h('a', { href: '#/nuvem' }, 'Sincronização (nuvem)'), ' › passo 5). As regras garantem no servidor o que cada perfil pode ler e gravar.'),
+      h('p', h('strong', 'E-mail do Google (Gmail): '), 'a pessoa também pode entrar com "Entrar com Google", mesmo sem o E-mail/senha ativado no Firebase.')));
     const box = h('div.card.sem-pad');
     cont.appendChild(box);
     if (!N || !N.usuario) {
@@ -171,13 +178,22 @@
         }, A.PERFIS.map(function (p) { const o = h('option', { value: p.id }, p.label); if (p.id === m.perfil) o.selected = true; return o; }));
         tb.appendChild(h('tr',
           h('td', h('strong', m.nome || '—')),
-          h('td', m.email),
+          h('td', m.email, h('div.mini', m.uid ? 'entra com e-mail e senha' + (contaGoogle(m.email) ? ' ou Google' : '') : contaGoogle(m.email) ? 'entra com Google' : 'sem senha criada: use 🔑 Senha')),
           h('td', sel),
           h('td', m.ativo === false ? UI.badge('Desativado', 'cinza') : UI.badge('Ativo', 'ok')),
           h('td.acoes-col',
             h('button.btn.pequeno', {
               type: 'button', title: 'Enviar e-mail para criar ou trocar a senha', onclick: async function () {
-                try { await N.redefinirSenha(m.email); UI.toast('E-mail de senha enviado para ' + m.email + '.', 'ok'); } catch (e) { UI.toast(e.message, 'erro'); }
+                try {
+                  // cadastrado sem conta de senha (ex.: E-mail/senha estava desativado no Firebase): cria a conta antes do e-mail
+                  if (!m.uid) {
+                    const r = await N.equipe.criarConta(m.email, senhaAleatoria());
+                    if (r.semSenha) throw new Error(MSG_SEM_SENHA);
+                    if (r.uid) { m.uid = r.uid; await N.equipe.salvar(m); }
+                  }
+                  await N.redefinirSenha(m.email);
+                  UI.toast('E-mail de senha enviado para ' + m.email + '.', 'ok');
+                } catch (e) { UI.toast(e.message, 'erro'); }
               }
             }, '🔑 Senha'),
             h('button.btn.pequeno', {
@@ -215,13 +231,16 @@
               if (est.senha && est.senha.length < 6) { UI.toast('A senha precisa de pelo menos 6 caracteres.', 'erro'); return false; }
               (async function () {
                 try {
-                  const nova = await N.equipe.criarConta(est.email, est.senha || senhaAleatoria());
-                  await N.equipe.salvar({ nome: est.nome, email: est.email, perfil: est.perfil, ativo: true });
+                  const conta = await N.equipe.criarConta(est.email, est.senha || senhaAleatoria());
+                  await N.equipe.salvar({ nome: est.nome, email: est.email, perfil: est.perfil, ativo: true, uid: conta.uid });
                   let aviso;
-                  if (!est.senha) { await N.redefinirSenha(est.email); aviso = 'Enviamos para ' + est.email + ' o e-mail para criar a senha.'; }
-                  else aviso = nova ? 'Conta criada: passe o endereço do app, o e-mail e a senha para ' + est.nome + '.' : 'Este e-mail já tinha conta: a pessoa entra com a senha que já usa (ou em "Esqueci a senha").';
+                  if (conta.semSenha) {
+                    aviso = (contaGoogle(est.email) ? 'A pessoa já pode entrar com "Entrar com Google" usando ' + est.email + '. ' : '') +
+                      'Para entrar com e-mail e senha, ative E-mail/senha no Firebase (Authentication › Método de login) e depois use 🔑 Senha nesta lista.';
+                  } else if (!est.senha) { await N.redefinirSenha(est.email); aviso = 'Enviamos para ' + est.email + ' o e-mail para criar a senha.'; }
+                  else aviso = conta.criada ? 'Conta criada: passe o endereço do app, o e-mail e a senha para ' + est.nome + '.' : 'Este e-mail já tinha conta: a pessoa entra com Google (se for Gmail) ou cria uma senha nova em "Esqueci a senha".';
                   fechar();
-                  UI.toast('Cadastro feito: ' + est.nome + ' (' + A.rotulo(est.perfil) + '). ' + aviso, 'ok');
+                  UI.toast('Cadastro feito: ' + est.nome + ' (' + A.rotulo(est.perfil) + '). ' + aviso, conta.semSenha ? 'info' : 'ok');
                   carregar();
                 } catch (e) { UI.toast(e.message, 'erro'); }
               })();

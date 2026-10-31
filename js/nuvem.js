@@ -79,7 +79,9 @@ window.App = window.App || {};
       '    function email() { return request.auth.token.email.lower(); }\n' +
       '    function dono() { return logado() && email() == "' + conta + '" && request.auth.token.email_verified == true; }\n' +
       '    function cadastro() { return get(/databases/$(database)/documents/equipe/$(email())).data; }\n' +
-      '    function membro() { return logado() && exists(/databases/$(database)/documents/equipe/$(email())) && cadastro().ativo == true; }\n' +
+      // equipe: e-mail confirmado (login com Google ou senha redefinida pelo link) ou a conta de senha criada pelo administrador (uid no cadastro)
+      '    function membro() { return logado() && exists(/databases/$(database)/documents/equipe/$(email())) && cadastro().ativo == true\n' +
+      "      && (request.auth.token.email_verified == true || cadastro().get('uid', '') == request.auth.uid); }\n" +
       '    function admin() { return dono() || (membro() && cadastro().perfil == "admin"); }\n' +
       '    function daEmpresa(uid) { return (dono() && request.auth.uid == uid) || (membro() && cadastro().base == uid); }\n' +
       '    function le(col) {\n' +
@@ -314,7 +316,7 @@ window.App = window.App || {};
       if (!N.usuario || !fb) throw new Error('Entre na sua conta para gerir a equipe.');
       const email = String(m.email || '').trim().toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('E-mail inválido.');
-      const reg = { email: email, nome: String(m.nome || '').trim() || email, perfil: m.perfil || 'vendedor', ativo: m.ativo !== false, base: base(),
+      const reg = { email: email, nome: String(m.nome || '').trim() || email, perfil: m.perfil || 'vendedor', ativo: m.ativo !== false, base: base(), uid: m.uid || '',
         criadoEm: m.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(), criadoPor: m.criadoPor || N.usuario.email };
       try { await fb.m.fs.setDoc(fb.m.fs.doc(fb.db, 'equipe', email), reg); } catch (e) { throw new Error(traduzir(e)); }
       return reg;
@@ -325,18 +327,21 @@ window.App = window.App || {};
     },
     /**
      * Cria a conta de login (e-mail e senha) sem trocar a conta de quem está usando: um segundo app do Firebase faz o cadastro e sai.
-     * Devolve false quando o e-mail já tinha conta (a pessoa entra com a senha que já usa ou pede uma nova).
+     * Devolve {criada, uid} — criada false quando o e-mail já tinha conta; {semSenha: true} quando o login por e-mail e senha não
+     * está ativado no Firebase (a pessoa ainda pode entrar com Google, se o e-mail for uma conta Google).
      */
     criarConta: async function (email, senha) {
       if (!fb) throw new Error('Sincronização não configurada.');
       const app2 = fb.m.app.initializeApp(N.config(), 'equipe-' + Date.now());
       try {
         const auth2 = fb.m.auth.getAuth(app2);
-        await fb.m.auth.createUserWithEmailAndPassword(auth2, String(email).trim(), senha);
+        const cred = await fb.m.auth.createUserWithEmailAndPassword(auth2, String(email).trim(), senha);
         await fb.m.auth.signOut(auth2);
-        return true;
+        return { criada: true, uid: (cred && cred.user && cred.user.uid) || '' };
       } catch (e) {
-        if (/email-already-in-use/.test((e && e.code) || '')) return false;
+        const c = (e && e.code) || '';
+        if (/email-already-in-use/.test(c)) return { criada: false, uid: '' };
+        if (/operation-not-allowed|admin-restricted-operation/.test(c)) return { criada: false, uid: '', semSenha: true };
         throw new Error(traduzir(e));
       } finally {
         try { await fb.m.app.deleteApp(app2); } catch (e) { /* encerrado */ }
@@ -531,6 +536,10 @@ window.App = window.App || {};
     if (erro && !/permission-denied/.test(erro.code || '') && anterior && anterior.uid === u.uid) return anterior;
     if (cad) {
       if (cad.ativo === false) return { bloqueado: true };
+      // conta de senha que não é a criada pelo administrador e sem e-mail confirmado: as regras recusam
+      if (!u.emailVerified && (cad.uid || '') !== u.uid) {
+        return { bloqueado: true, motivo: 'Este acesso ainda não foi confirmado. Se o seu e-mail é do Google (Gmail), use "Entrar com Google"; senão, peça ao administrador para enviar o e-mail de senha (🔑 Senha em Equipe e acessos) e crie a senha pelo link.' };
+      }
       return { uid: u.uid, email: email, nome: cad.nome || u.displayName || email, perfil: cad.perfil || 'vendedor', base: cad.base || u.uid, dono: false };
     }
     return { uid: u.uid, email: email, nome: u.displayName || email, perfil: 'admin', base: u.uid, dono: true };
@@ -559,7 +568,7 @@ window.App = window.App || {};
   async function iniciarSync(u) {
     pararSync();
     const s = await identificar(u);
-    if (s.bloqueado) { await naoAutorizado('Seu acesso está desativado. Fale com o administrador.'); return; }
+    if (s.bloqueado) { await naoAutorizado(s.motivo || 'Seu acesso está desativado. Fale com o administrador.'); return; }
     const anterior = App.Acesso.sessao();
     // outra pessoa, outro perfil (ou a primeira entrada da equipe) neste aparelho: começa sem os dados locais, para não misturar,
     // não enviar à empresa nem manter o que o perfil novo não vê — a nuvem devolve o que ele pode ler

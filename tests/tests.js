@@ -1534,7 +1534,8 @@
     const regras = N.regras('Fulano@Gmail.com ');
     ok('nuvem: regras do Firestore — dono pelo e-mail verificado, equipe cadastrada e coleções por perfil', /email\(\) == "fulano@gmail\.com" && request\.auth\.token\.email_verified == true/.test(regras) &&
       /match \/usuarios\/\{uid\}\/\{col\}\/\{id\}/.test(regras) && /match \/usuarios\/\{uid\}\/partes\/\{parte\}/.test(regras) && /match \/equipe\/\{conta\}/.test(regras) &&
-      /\['lancamentos', 'contasFin', 'categoriasFin'\]/.test(regras) && !/\{documento=\*\*\}/.test(regras), regras);
+      /\['lancamentos', 'contasFin', 'categoriasFin'\]/.test(regras) && !/\{documento=\*\*\}/.test(regras) &&
+      /request\.auth\.token\.email_verified == true \|\| cadastro\(\)\.get\('uid', ''\) == request\.auth\.uid/.test(regras), regras);
     const siteAntes = App.NUVEM_CONFIG, localAntes = localStorage.getItem('gsp.nuvem');
     try {
       App.NUVEM_CONFIG = { apiKey: 'site', projectId: 'site-proj' };
