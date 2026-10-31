@@ -183,14 +183,14 @@
             h('button.btn.pequeno', {
               type: 'button', onclick: async function () {
                 const ativo = m.ativo === false;
-                if (!ativo && !(await UI.confirmar('Desativar o acesso de ' + m.nome + '? Ela deixa de abrir os dados da empresa na hora.', 'Desativar', true))) return;
+                if (!ativo && !(await UI.confirmar('Desativar o acesso de ' + m.nome + '? Os dados da empresa deixam de abrir para esta pessoa na hora.', 'Desativar', true))) return;
                 try { await N.equipe.salvar(Object.assign({}, m, { ativo: ativo })); UI.toast(m.nome + (ativo ? ': acesso reativado.' : ': acesso desativado.'), 'ok'); carregar(); } catch (e) { UI.toast(e.message, 'erro'); }
               }
             }, m.ativo === false ? 'Reativar' : 'Desativar'),
             h('button.btn-icone.perigo', {
               type: 'button', title: 'Remover da equipe', 'aria-label': 'Remover ' + m.nome, onclick: async function () {
                 if (!(await UI.confirmar('Remover ' + m.nome + ' da equipe? O acesso termina na hora (a conta de login continua no Firebase).', 'Remover', true))) return;
-                try { await N.equipe.remover(m.email); UI.toast(m.nome + ' removida da equipe.', 'ok'); carregar(); } catch (e) { UI.toast(e.message, 'erro'); }
+                try { await N.equipe.remover(m.email); UI.toast(m.nome + ' saiu da equipe.', 'ok'); carregar(); } catch (e) { UI.toast(e.message, 'erro'); }
               }
             }, '🗑'))));
       });
@@ -204,7 +204,7 @@
         { k: 'email', label: 'E-mail (login)', type: 'email', required: true },
         { k: 'perfil', label: 'Perfil', type: 'select', options: A.PERFIS.map(function (p) { return { v: p.id, t: p.label + ' — ' + p.desc }; }), cls: 'span2' },
         { k: 'senha', label: 'Senha inicial (opcional)', type: 'text', placeholder: 'Em branco: a pessoa recebe e-mail para criar a senha', cls: 'span2',
-          help: 'Com senha, passe para a pessoa o endereço do app, o e-mail e a senha; ela pode trocar depois em Minha conta. Mínimo de 6 caracteres.' }
+          help: 'Com senha, passe para a pessoa o endereço do app, o e-mail e a senha; a senha pode ser trocada depois em Minha conta. Mínimo de 6 caracteres.' }
       ], est, null, 2));
       UI.modal({
         titulo: 'Adicionar pessoa à equipe', corpo: corpo, acoes: [
@@ -221,7 +221,7 @@
                   if (!est.senha) { await N.redefinirSenha(est.email); aviso = 'Enviamos para ' + est.email + ' o e-mail para criar a senha.'; }
                   else aviso = nova ? 'Conta criada: passe o endereço do app, o e-mail e a senha para ' + est.nome + '.' : 'Este e-mail já tinha conta: a pessoa entra com a senha que já usa (ou em "Esqueci a senha").';
                   fechar();
-                  UI.toast(est.nome + ' cadastrada como ' + A.rotulo(est.perfil) + '. ' + aviso, 'ok');
+                  UI.toast('Cadastro feito: ' + est.nome + ' (' + A.rotulo(est.perfil) + '). ' + aviso, 'ok');
                   carregar();
                 } catch (e) { UI.toast(e.message, 'erro'); }
               })();
