@@ -683,3 +683,8 @@ td.num.saida { color: var(--vermelho); }
 .tabela-apuracao tr.apur-total td { background: var(--azul-claro); font-weight: 700; color: var(--azul); border-top: 1.5px solid var(--azul-borda); }
 .detalhe-obra .barra-itens { margin: 12px 0 6px; flex-wrap: wrap; }
 .obra-caixa { font-size: 13px; color: var(--texto-2); background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
+.cartao-regras { border-color: #FDE68A; background: #FFFBEB; }
+.cartao-regras h3 { margin: 0 0 6px; color: var(--ambar); }
+.cartao-regras .passos-regras { margin: 8px 0 12px; padding-left: 20px; line-height: 1.6; }
+.cartao-regras details { margin-top: 10px; }
+.cartao-regras pre { max-height: 260px; overflow: auto; }

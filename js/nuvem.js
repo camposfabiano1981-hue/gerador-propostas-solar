@@ -301,12 +301,28 @@ window.App = window.App || {};
   /** Equipe guardada neste aparelho (para escolher o vendedor da proposta, sem consultar a nuvem). */
   N.equipeLocal = function () { try { return JSON.parse(localStorage.getItem(CHAVE_EQUIPE) || '[]') || []; } catch (e) { return []; } };
 
+  /** Erro da equipe: recusa do Firebase (regras sem a equipe ou publicadas com outro e-mail) marcada para a tela orientar. */
+  function erroEquipe(e) {
+    const regras = /permission-denied/.test((e && e.code) || '');
+    const x = new Error(regras ? 'O Firebase recusou o acesso à equipe: as regras publicadas no Firestore ainda não têm a equipe (são de uma versão anterior) ou foram publicadas com outro e-mail.' : traduzir(e));
+    x.regras = regras;
+    return x;
+  }
+
+  /** Endereços do console do Firebase deste projeto (regras do Firestore e métodos de login). */
+  N.console = function () {
+    const id = (N.config() || {}).projectId || '';
+    const b = 'https://console.firebase.google.com/project/' + encodeURIComponent(id);
+    return { regras: b + '/firestore/rules', login: b + '/authentication/providers', projeto: id };
+  };
+
   N.equipe = {
     /** Pessoas cadastradas na base da empresa. */
     listar: async function () {
       if (!N.usuario || !fb) throw new Error('Entre na sua conta para ver a equipe.');
       const fs = fb.m.fs;
-      const snap = await fs.getDocs(fs.query(fs.collection(fb.db, 'equipe'), fs.where('base', '==', base())));
+      let snap;
+      try { snap = await fs.getDocs(fs.query(fs.collection(fb.db, 'equipe'), fs.where('base', '==', base()))); } catch (e) { throw erroEquipe(e); }
       const lista = snap.docs.map(function (d) { return d.data(); }).sort(function (a, b) { return String(a.nome).localeCompare(String(b.nome), 'pt-BR'); });
       guardarEquipe(lista.map(function (m) { return { email: m.email, nome: m.nome, perfil: m.perfil, ativo: m.ativo !== false }; }));
       return lista;
@@ -318,12 +334,12 @@ window.App = window.App || {};
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('E-mail inválido.');
       const reg = { email: email, nome: String(m.nome || '').trim() || email, perfil: m.perfil || 'vendedor', ativo: m.ativo !== false, base: base(), uid: m.uid || '',
         criadoEm: m.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(), criadoPor: m.criadoPor || N.usuario.email };
-      try { await fb.m.fs.setDoc(fb.m.fs.doc(fb.db, 'equipe', email), reg); } catch (e) { throw new Error(traduzir(e)); }
+      try { await fb.m.fs.setDoc(fb.m.fs.doc(fb.db, 'equipe', email), reg); } catch (e) { throw erroEquipe(e); }
       return reg;
     },
     remover: async function (email) {
       if (!N.usuario || !fb) throw new Error('Entre na sua conta para gerir a equipe.');
-      try { await fb.m.fs.deleteDoc(fb.m.fs.doc(fb.db, 'equipe', String(email).toLowerCase())); } catch (e) { throw new Error(traduzir(e)); }
+      try { await fb.m.fs.deleteDoc(fb.m.fs.doc(fb.db, 'equipe', String(email).toLowerCase())); } catch (e) { throw erroEquipe(e); }
     },
     /**
      * Cria a conta de login (e-mail e senha) sem trocar a conta de quem está usando: um segundo app do Firebase faz o cadastro e sai.

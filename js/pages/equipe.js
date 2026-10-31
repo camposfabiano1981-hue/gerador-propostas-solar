@@ -145,14 +145,42 @@
     return Array.prototype.map.call(b, function (x) { return 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'[x % 56]; }).join('') + '#9';
   }
 
+  /** Cartão com o passo a passo para publicar as regras (quando o Firebase recusa a equipe): copiar e abrir o console. */
+  function cartaoRegras(msg) {
+    const N = App.Nuvem;
+    const c = N.console();
+    const sess = A.sessao() || {};
+    const pre = h('pre.regras-nuvem', N.regras(sess.dono ? sess.email : ''));
+    const copiar = h('button.btn.primario', {
+      type: 'button', onclick: async function () {
+        try { await navigator.clipboard.writeText(pre.textContent); UI.toast('Regras copiadas. Cole no Firebase e clique em Publicar.', 'ok'); } catch (e) {
+          const sel = window.getSelection(); const r = document.createRange(); r.selectNodeContents(pre); sel.removeAllRanges(); sel.addRange(r);
+          pre.parentElement.open = true;
+          UI.toast('Selecionei o texto das regras: copie com Ctrl+C.', 'info');
+        }
+      }
+    }, '📋 Copiar regras');
+    return h('div.card.cartao-regras',
+      h('h3', '⚠️ Publique as regras novas do Firestore'),
+      h('p', msg),
+      h('ol.passos-regras',
+        h('li', 'Clique em ', h('strong', '📋 Copiar regras'), (sess.dono ? ' (já estão com o seu e-mail, ' + sess.email + ').' : ' — confira o e-mail do dono da conta em Sincronização (nuvem) › passo 5.')),
+        h('li', 'Clique em ', h('strong', 'Abrir as regras no Firebase'), ' (entre com a sua conta Google), apague todo o texto da aba Regras e cole.'),
+        h('li', 'Clique em ', h('strong', 'Publicar'), ', aguarde um minuto e recarregue esta página.')),
+      h('div.barra-itens', copiar, h('a.btn', { href: c.regras, target: '_blank', rel: 'noopener' }, '↗ Abrir as regras no Firebase')),
+      h('details', h('summary', 'Ver as regras'), pre));
+  }
+
   UI.rota('/equipe', function (cont) {
     const N = App.Nuvem;
     cont.appendChild(UI.cabecalho('Equipe e acessos', 'Técnicos, vendedores e administradores entram com e-mail e senha; cada perfil vê só o que precisa.',
       N && N.usuario ? [h('button.btn.primario', { type: 'button', onclick: adicionar }, '+ Adicionar pessoa')] : null));
     cont.appendChild(h('div.card.dica',
       h('p', h('strong', 'Perfis: '), A.PERFIS.map(function (p) { return p.label + ' — ' + p.desc; }).join(' ')),
-      h('p', h('strong', 'Antes do primeiro cadastro (uma vez só, no console do Firebase): '), '1) Authentication › Método de login › Adicionar novo provedor › ', h('strong', 'E-mail/senha'), ' › Ativar › Salvar; ',
-        '2) publique as regras do Firestore com os perfis (', h('a', { href: '#/nuvem' }, 'Sincronização (nuvem)'), ' › passo 5). As regras garantem no servidor o que cada perfil pode ler e gravar.'),
+      h('p', h('strong', 'Antes do primeiro cadastro (uma vez só, no console do Firebase): '), '1) Authentication › Método de login › Adicionar novo provedor › ', h('strong', 'E-mail/senha'), ' › Ativar › Salvar (',
+        h('a', { href: N && N.configurada() ? N.console().login : '#/nuvem', target: '_blank', rel: 'noopener' }, 'abrir no Firebase'), '); ',
+        '2) publique as regras do Firestore com os perfis (', h('a', { href: '#/nuvem' }, 'Sincronização (nuvem)'), ' › passo 5, ou ', h('a', { href: N && N.configurada() ? N.console().regras : '#/nuvem', target: '_blank', rel: 'noopener' }, 'abrir as regras no Firebase'),
+        '). As regras garantem no servidor o que cada perfil pode ler e gravar.'),
       h('p', h('strong', 'E-mail do Google (Gmail): '), 'a pessoa também pode entrar com "Entrar com Google", mesmo sem o E-mail/senha ativado no Firebase.')));
     const box = h('div.card.sem-pad');
     cont.appendChild(box);
@@ -163,7 +191,7 @@
     let lista = [];
     async function carregar() {
       box.replaceChildren(h('p.ajuda-sec', { style: { padding: '16px' } }, 'Carregando a equipe…'));
-      try { lista = await N.equipe.listar(); } catch (e) { box.replaceChildren(h('div.vazio', h('p', '⚠️ ' + e.message))); return; }
+      try { lista = await N.equipe.listar(); } catch (e) { box.replaceChildren(e.regras ? cartaoRegras(e.message) : h('div.vazio', h('p', '⚠️ ' + e.message))); return; }
       desenhar();
     }
     function desenhar() {
@@ -231,8 +259,10 @@
               if (est.senha && est.senha.length < 6) { UI.toast('A senha precisa de pelo menos 6 caracteres.', 'erro'); return false; }
               (async function () {
                 try {
+                  // primeiro o cadastro (confere as regras do Firestore); depois a conta de login, sem sobrar conta se o Firebase recusar
+                  const reg = await N.equipe.salvar({ nome: est.nome, email: est.email, perfil: est.perfil, ativo: true, uid: '' });
                   const conta = await N.equipe.criarConta(est.email, est.senha || senhaAleatoria());
-                  await N.equipe.salvar({ nome: est.nome, email: est.email, perfil: est.perfil, ativo: true, uid: conta.uid });
+                  if (conta.uid) await N.equipe.salvar(Object.assign({}, reg, { uid: conta.uid }));
                   let aviso;
                   if (conta.semSenha) {
                     aviso = (contaGoogle(est.email) ? 'A pessoa já pode entrar com "Entrar com Google" usando ' + est.email + '. ' : '') +
@@ -242,7 +272,10 @@
                   fechar();
                   UI.toast('Cadastro feito: ' + est.nome + ' (' + A.rotulo(est.perfil) + '). ' + aviso, conta.semSenha ? 'info' : 'ok');
                   carregar();
-                } catch (e) { UI.toast(e.message, 'erro'); }
+                } catch (e) {
+                  UI.toast(e.message, 'erro');
+                  if (e.regras) { fechar(); box.replaceChildren(cartaoRegras(e.message + ' O cadastro não foi gravado: publique as regras e cadastre de novo.')); }
+                }
               })();
               return false;
             }
