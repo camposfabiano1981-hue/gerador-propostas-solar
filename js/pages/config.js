@@ -452,7 +452,7 @@
     // passo a passo
     const emailRegras = { email: (N.usuario && N.usuario.email) || '' };
     const regras = h('pre.regras-nuvem', N.regras(emailRegras.email));
-    const campoEmail = UI.grade([{ k: 'email', label: 'Seu e-mail Google (o único com acesso aos dados)', type: 'text', placeholder: 'voce@gmail.com', cls: 'span2' }],
+    const campoEmail = UI.grade([{ k: 'email', label: 'E-mail Google do dono da conta (administrador principal)', type: 'text', placeholder: 'voce@gmail.com', cls: 'span2' }],
       emailRegras, function () { regras.textContent = N.regras(emailRegras.email); }, 2);
     const copiar = h('button.btn', {
       type: 'button', onclick: async function () {
@@ -463,28 +463,33 @@
       }
     }, 'Copiar regras');
     const passo = function (n, titulo) { return h('li', h('strong', titulo), Array.prototype.slice.call(arguments, 2)); };
-    // regras atualizadas para a página pública de acompanhamento das obras (quem já tinha publicado as antigas precisa publicar de novo)
+    // regras atualizadas (perfis da equipe e páginas públicas): quem já tinha publicado as antigas precisa publicar de novo
     if (cfgAtual) {
       cont.appendChild(h('div.card.dica',
-        h('p', h('strong', 'Página "Acompanhe sua obra" (Instalações › Avisos ao cliente): '), 'para o cliente abrir o link, as regras do Firestore precisam do trecho ',
-          h('code', 'match /acompanhamento/{codigo}'), '. Se você publicou as regras antes desta versão, abra o passo a passo abaixo, copie as regras do passo 5 e publique de novo na aba Regras do Firestore.')));
+        h('p', h('strong', 'Equipe com login e financeiro (versão 2026.10.30.8): '), 'as regras do Firestore passaram a ter os perfis (administrador, vendedor e técnico), a coleção ',
+          h('code', 'equipe'), ' e as páginas públicas (', h('code', 'match /acompanhamento/{codigo}'), '). Se você publicou as regras antes desta versão, abra o passo a passo abaixo, ',
+          'copie as regras do passo 5 e publique de novo na aba Regras do Firestore. Para a equipe entrar com e-mail e senha, ative também ', h('strong', 'E-mail/senha'), ' (passo 2).')));
     }
     // já configurado: o passo a passo fica recolhido (consulta)
     cont.appendChild(h('details.card.passos-card', { open: !cfgAtual },
       h('summary', h('h3', 'Passo a passo para ligar (uma vez só, de graça)')),
       h('ol.passos-nuvem',
         passo(1, 'Crie o projeto: ', 'entre em console.firebase.google.com com a sua conta Google › “Criar um projeto” (ex.: genesis-propostas). O Google Analytics pode ficar desativado. O plano gratuito (Spark) é suficiente.'),
-        passo(2, 'Ative o login com Google: ', 'menu Criação › Authentication › “Vamos começar” › Método de login › Google › Ativar › Salvar.'),
+        passo(2, 'Ative o login: ', 'menu Criação › Authentication › “Vamos começar” › Método de login › Google › Ativar › Salvar (o dono entra com Google). ',
+          'Depois, Adicionar novo provedor › ', h('strong', 'E-mail/senha'), ' › Ativar › Salvar (técnicos, vendedores e administradores da equipe entram com e-mail e senha).'),
         passo(3, 'Autorize este endereço: ', 'Authentication › Configurações › Domínios autorizados › Adicionar domínio: ', h('code', location.hostname || 'localhost'), '.'),
         passo(4, 'Crie o banco: ', 'Criação › Firestore Database › Criar banco de dados › local ', h('code', 'southamerica-east1 (São Paulo)'), ' › iniciar no modo de produção.'),
-        passo(5, 'Proteja os dados: ', 'na aba Regras do Firestore, apague o texto, cole as regras abaixo (com o seu e-mail) e clique em Publicar.',
+        passo(5, 'Proteja os dados: ', 'na aba Regras do Firestore, apague o texto, cole as regras abaixo (com o e-mail do dono) e clique em Publicar. ',
+          'Elas liberam a base da empresa para o dono e para quem estiver cadastrado em Equipe e acessos, cada um conforme o perfil (o financeiro, só para administradores).',
           campoEmail, regras, h('div.barra-itens', copiar)),
         passo(6, 'Copie a configuração: ', 'engrenagem ⚙️ › Configurações do projeto › Seus apps › ícone Web (</>) › dê um apelido e registre (sem Firebase Hosting). Copie o bloco firebaseConfig e cole no campo “Projeto Firebase” acima.'),
-        passo(7, 'Entre em cada aparelho: ', 'clique em “Entrar com Google” com a mesma conta no computador, no celular e no tablet. No primeiro login, tudo o que já está cadastrado no aparelho sobe para a nuvem e é mantido.')),
+        passo(7, 'Entre em cada aparelho: ', 'o dono clica em “Entrar com Google” com a mesma conta no computador, no celular e no tablet (no primeiro login, tudo o que já está cadastrado no aparelho sobe para a nuvem e é mantido). ',
+          'A equipe é cadastrada em ', h('a', { href: '#/equipe' }, 'Configurações › Equipe e acessos'), ' e entra com o e-mail e a senha.')),
       origem === 'site' ? null : h('p.ajuda-sec', 'Se preferir não colar a configuração em cada aparelho, envie o bloco firebaseConfig para ser publicado no site: aí basta entrar com Google.')));
 
     cont.appendChild(h('div.card.dica',
-      h('p', h('strong', 'Sincroniza: '), 'clientes, cadastros (equipamentos, concessionárias, localidades, pagamentos, serviços), propostas, propostas avulsas, contratos, projetos realizados (com fotos), dados da empresa, premissas, textos, modelo do contrato e numeração.'),
+      h('p', h('strong', 'Sincroniza: '), 'clientes, cadastros (equipamentos, concessionárias, localidades, pagamentos, serviços), propostas, propostas avulsas, contratos, instalações, ordens de serviço, pedidos de compra, ',
+        'financeiro (só para administradores), projetos realizados (com fotos), dados da empresa, premissas, textos, modelo do contrato e numeração. Cada perfil da equipe recebe só o que pode ver.'),
       h('p', h('strong', 'Não sincroniza (fica em cada aparelho): '), 'a chave da API do Claude e o modelo escolhido (cadastre a chave em cada aparelho em que for usar a IA), o modo de leitura do datasheet e a configuração do Firebase colada aqui.'),
       h('p', h('strong', 'Primeiro login: '), 'os registros já existentes neste aparelho são enviados e mantidos; se outro aparelho já tiver enviado os dele, as duas bases são somadas. Quando o mesmo registro foi alterado nos dois, vale a alteração mais recente.'),
       h('p', h('strong', 'Sem internet: '), 'a plataforma continua funcionando; as alterações ficam na fila e são enviadas quando a conexão voltar. O backup .json (Backup e dados) continua disponível.'),

@@ -596,3 +596,64 @@ dialog.modal.visualizar .modal-corpo { flex: 1; background: #E2E8F0; padding: 12
 .envio-link[hidden] { display: none; }
 .envio-link input { flex: 1 1 260px; }
 .btn-formato.enviar { font-size: 12px; padding: 2px 6px; border-color: #86EFAC; }
+
+/* ---------- acesso: login, usuário e equipe */
+.nuvem-status.naoAutorizado { color: #FECACA; background: rgba(220,38,38,.18); }
+.usuario-chip { display: block; margin: 6px 10px 0; padding: 6px 10px; border-radius: 8px; font-size: 13px; color: #fff; text-decoration: none; background: rgba(255,255,255,.08); }
+.usuario-chip[hidden] { display: none; }
+.usuario-chip small { display: block; font-size: 11px; color: #C7D2FE; }
+.usuario-chip:hover { background: rgba(255,255,255,.14); }
+.nav .nav-grupo[hidden], .nav a[hidden] { display: none; }
+body.bloqueado .lateral, body.bloqueado main, body.bloqueado .barra-mobile, body.bloqueado #veu { visibility: hidden; }
+.portao { position: fixed; inset: 0; z-index: 60; background: linear-gradient(160deg, #1E3A8A 0%, #0F1F4D 70%); display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
+.portao[hidden] { display: none; }
+.portao-caixa { background: #fff; border-radius: 16px; padding: 28px 24px; width: min(400px, 100%); box-shadow: 0 20px 50px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.portao-logo { max-height: 72px; max-width: 220px; margin: 0 auto; object-fit: contain; }
+.portao-caixa h1 { font-size: 22px; color: var(--azul); }
+.portao-sub { margin: 0; font-size: 13px; color: var(--muted); }
+.portao-form { display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.portao-entrar { margin-top: 6px; min-height: 44px; font-size: 15px; }
+.portao-msg { margin: 0; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--azul-claro); color: var(--azul); text-align: left; }
+.portao-msg.erro { background: var(--vermelho-bg); color: var(--vermelho); }
+.portao-msg[hidden] { display: none; }
+.portao-links { display: flex; justify-content: center; }
+.portao-ou { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.portao-ou::before, .portao-ou::after { content: ""; flex: 1; height: 1px; background: var(--borda); }
+.portao-google { min-height: 40px; }
+.portao-rodape { margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+.conta-kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+tr.eu td { background: #F8FAFF; }
+
+/* ---------- financeiro */
+.fin-tiles { margin-bottom: 16px; }
+.fin-totais { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.fin-totais strong { color: var(--texto); }
+.fin-totais .vencido strong { color: var(--vermelho); }
+.fin-regime { margin: 0; }
+.tabela-fin td { vertical-align: top; }
+.tabela-fin .acoes-col { white-space: nowrap; width: auto; }
+tr.linha-vencida td { background: #FFF7F7; }
+tr.linha-vencida td:first-child strong { color: var(--vermelho); }
+.negativo { color: var(--vermelho); }
+td.num.entrada { color: var(--verde); }
+td.num.saida { color: var(--vermelho); }
+.btn-baixar { white-space: nowrap; }
+.btn-formato.financeiro { font-size: 12px; padding: 2px 6px; border-color: #FCD34D; }
+.btn-formato.financeiro.lancado { background: #FEF9C3; }
+.previa-parcelas { margin-top: 6px; }
+.tabela-dre { font-size: 12.5px; }
+.tabela-dre th, .tabela-dre td { padding: 6px 8px; white-space: nowrap; }
+.tabela-dre td:first-child { white-space: normal; min-width: 220px; position: sticky; left: 0; background: #fff; }
+.tabela-dre tr.dre-grupo td { font-weight: 600; background: #F8FAFC; }
+.tabela-dre tr.dre-grupo td:first-child { background: #F8FAFC; }
+.tabela-dre tr.dre-cat td { color: var(--texto-2); }
+.tabela-dre tr.dre-cat td:first-child { padding-left: 22px; }
+.tabela-dre tr.dre-subtotal td { font-weight: 700; color: var(--azul); border-top: 1.5px solid var(--azul-borda); }
+.tabela-dre tr.dre-final td { background: var(--azul-claro); font-size: 13.5px; }
+.tabela-dre tr.dre-final td:first-child { background: var(--azul-claro); }
+.tabela-dre tr.dre-fora td { color: var(--muted); font-style: italic; border-top: 1px dashed var(--borda-forte); }
+.conciliacao select { max-width: 100%; }
+.conciliacao td:last-child { min-width: 240px; }
+.conciliacao td:last-child select + select { margin-top: 4px; }
+.tabela-obras td:first-child strong { white-space: nowrap; }
+.tabela-obras th, .tabela-obras td { padding-left: 8px; padding-right: 8px; }

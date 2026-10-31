@@ -3,7 +3,7 @@
   'use strict';
 
   /** Versão publicada — a mesma usada em ?v= no index.html (evita o navegador usar arquivos antigos em cache). */
-  App.VERSAO_APP = '2026.10.30.7';
+  App.VERSAO_APP = '2026.10.30.8';
 
   App.atualizarMarca = function () {
     const emp = App.Store.config().empresa;
@@ -142,7 +142,10 @@
         status.title = n.mensagem || (n.usuario ? 'Conta: ' + n.usuario.email : '');
       });
       App.Nuvem.iniciar();
+      // com a sincronização configurada, o app só abre depois do login (perfis da equipe)
+      if (App.Portao) App.Portao.iniciar();
     }
+    if (App.Acesso) App.Acesso.aplicarMenu();
     iniciarAplicativo();
   }
 

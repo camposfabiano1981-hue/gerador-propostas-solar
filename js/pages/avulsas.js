@@ -98,7 +98,8 @@
         h('td', h('div.texto-curto', (a.itens || []).map(function (i) { return i.descricao; }).join(', ') || '—')),
         h('td.num', U.brl(r.total)),
         h('td', statusBadge(a.status), sel),
-        h('td.acoes-col', App.Envio.botao(function () { App.enviarAvulsa(a, function () { S.save('avulsas', a); recarregar(); }); }, 'proposta ' + a.numero), App.Visualizar.botao(function () { return A.gerarPdf(a, C.contexto()); }, 'Proposta avulsa ' + a.numero), btnPdf, btnDocx,
+        h('td.acoes-col', App.Envio.botao(function () { App.enviarAvulsa(a, function () { S.save('avulsas', a); recarregar(); }); }, 'proposta ' + a.numero), App.Visualizar.botao(function () { return A.gerarPdf(a, C.contexto()); }, 'Proposta avulsa ' + a.numero),
+          a.status === 'aprovada' && App.botaoFinanceiro ? App.botaoFinanceiro('avulsa', a, recarregar) : null, btnPdf, btnDocx,
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
               if (await UI.confirmar('Excluir a proposta ' + a.numero + '?', 'Excluir', true)) {

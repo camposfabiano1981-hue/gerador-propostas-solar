@@ -355,4 +355,6 @@
     }
     desenhar();
   });
+  // componentes de gráfico reutilizados no financeiro (fluxo de caixa)
+  App.Graficos = { COR: COR, svg: svg, texto: texto, compacto: compacto, passoBonito: passoBonito, barra: barra, cartaoGrafico: cartaoGrafico, alvo: alvo, tabelaSimples: tabelaSimples, legenda: legenda, tile: tile };
 })(window.App);

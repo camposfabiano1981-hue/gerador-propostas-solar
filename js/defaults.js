@@ -440,6 +440,57 @@ window.App = window.App || {};
     }
   ];
 
+  /*
+   * Financeiro: grupos da DRE gerencial (na ordem do demonstrativo; sinal das receitas +1, das despesas −1) e o plano de contas
+   * padrão (editável em Financeiro › Plano de contas). "fora" = fora do resultado (investimentos, empréstimos, aportes e retiradas).
+   */
+  D.GRUPOS_DRE = [
+    { id: 'receita', label: 'Receita bruta de vendas e serviços', sinal: 1 },
+    { id: 'deducao', label: '(−) Deduções da receita (impostos sobre vendas, devoluções)', sinal: -1 },
+    { id: 'custo', label: '(−) Custos diretos das obras e serviços', sinal: -1 },
+    { id: 'despesa_comercial', label: '(−) Despesas comerciais', sinal: -1 },
+    { id: 'despesa_admin', label: '(−) Despesas administrativas', sinal: -1 },
+    { id: 'financeiro_receita', label: '(+) Receitas financeiras', sinal: 1 },
+    { id: 'financeiro_despesa', label: '(−) Despesas financeiras', sinal: -1 },
+    { id: 'imposto_lucro', label: '(−) IRPJ e CSLL', sinal: -1 },
+    { id: 'fora', label: 'Fora do resultado (investimentos, empréstimos, aportes e retiradas)', sinal: 0 }
+  ];
+
+  function cat(id, nome, grupo, tipo) { return { id: id, nome: nome, grupo: grupo, tipo: tipo, ativo: true }; }
+  D.categoriasFin = [
+    cat('cat-rec-sistemas', 'Venda de sistemas fotovoltaicos', 'receita', 'receber'),
+    cat('cat-rec-servicos', 'Serviços (propostas avulsas e OS)', 'receita', 'receber'),
+    cat('cat-rec-outras', 'Outras receitas operacionais', 'receita', 'receber'),
+    cat('cat-ded-impostos', 'Impostos sobre vendas (Simples Nacional, ISS, ICMS)', 'deducao', 'pagar'),
+    cat('cat-ded-devolucoes', 'Devoluções e cancelamentos', 'deducao', 'pagar'),
+    cat('cat-cus-kit', 'Kit fotovoltaico (módulos, inversor, estrutura)', 'custo', 'pagar'),
+    cat('cat-cus-materiais', 'Materiais elétricos (infraestrutura CA)', 'custo', 'pagar'),
+    cat('cat-cus-maoobra', 'Mão de obra de instalação (terceiros)', 'custo', 'pagar'),
+    cat('cat-cus-frete', 'Frete e logística das obras', 'custo', 'pagar'),
+    cat('cat-cus-projeto', 'Projeto, ART e homologação', 'custo', 'pagar'),
+    cat('cat-com-comissoes', 'Comissões de vendas', 'despesa_comercial', 'pagar'),
+    cat('cat-com-marketing', 'Marketing e publicidade', 'despesa_comercial', 'pagar'),
+    cat('cat-adm-pessoal', 'Salários e encargos', 'despesa_admin', 'pagar'),
+    cat('cat-adm-prolabore', 'Pró-labore', 'despesa_admin', 'pagar'),
+    cat('cat-adm-aluguel', 'Aluguel e condomínio', 'despesa_admin', 'pagar'),
+    cat('cat-adm-contabilidade', 'Contabilidade e serviços profissionais', 'despesa_admin', 'pagar'),
+    cat('cat-adm-utilidades', 'Energia, água, internet e telefone', 'despesa_admin', 'pagar'),
+    cat('cat-adm-veiculos', 'Veículos e combustível', 'despesa_admin', 'pagar'),
+    cat('cat-adm-software', 'Software e assinaturas', 'despesa_admin', 'pagar'),
+    cat('cat-adm-outras', 'Outras despesas administrativas', 'despesa_admin', 'pagar'),
+    cat('cat-fin-rendimentos', 'Rendimentos e juros recebidos', 'financeiro_receita', 'receber'),
+    cat('cat-fin-tarifas', 'Tarifas bancárias e taxas de cartão', 'financeiro_despesa', 'pagar'),
+    cat('cat-fin-juros', 'Juros e multas pagos', 'financeiro_despesa', 'pagar'),
+    cat('cat-imp-irpj', 'IRPJ e CSLL', 'imposto_lucro', 'pagar'),
+    cat('cat-fora-investimentos', 'Investimentos (equipamentos, ferramentas, veículos)', 'fora', 'pagar'),
+    cat('cat-fora-emprestimos-pag', 'Pagamento de empréstimos (principal)', 'fora', 'pagar'),
+    cat('cat-fora-emprestimos-rec', 'Empréstimos recebidos', 'fora', 'receber'),
+    cat('cat-fora-aportes', 'Aportes dos sócios', 'fora', 'receber'),
+    cat('cat-fora-retiradas', 'Distribuição de lucros e retiradas', 'fora', 'pagar')
+  ];
+
+  D.contasFin = [{ id: 'conta-caixa', nome: 'Caixa da empresa', tipo: 'caixa', banco: '', agencia: '', numero: '', saldoInicial: 0, dataSaldoInicial: '', ativo: true }];
+
   D.pagamentos = [
     { id: 'pg-avista', nome: 'À vista', tipo: 'avista', parcelas: 1, taxa: 0, obs: '', ativo: true },
     { id: 'pg-c12', nome: 'Cartão', tipo: 'acrescimo', parcelas: 12, taxa: 0.1149, obs: 'Outras bandeiras', ativo: true },

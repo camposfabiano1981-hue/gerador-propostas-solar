@@ -70,7 +70,8 @@
           h('td', obra ? obra.titulo || obra.clienteNome : '—'),
           h('td', v.total && v.n === v.total ? UI.badge('No cadastro', 'ok') : (v.n ? UI.badge(v.n + ' de ' + v.total, 'ambar') : UI.badge('Pendente', 'cinza'))),
           h('td', badge(c.situacao)),
-          h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfCompra(c, App.Calc.contexto()); }, 'Pedido de compra ' + (c.numero || '')), (function () {
+          h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfCompra(c, App.Calc.contexto()); }, 'Pedido de compra ' + (c.numero || '')),
+            App.botaoFinanceiro ? App.botaoFinanceiro('compra', c, desenhar) : null, (function () {
             const btn = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar o pedido em PDF', onclick: function () { baixarPdf(c, btn); } }, 'PDF');
             return btn;
           })(), h('button.btn-icone.perigo', {
@@ -154,6 +155,10 @@
       h('a.btn', { href: '#/compras' }, '← Pedidos de compra'),
       h('button.btn', { type: 'button', onclick: visualizar }, '👁 Visualizar'),
       btnPdfTopo,
+      App.Acesso.podeGravar('lancamentos') ? h('button.btn', { type: 'button', onclick: function () {
+        if ((sujo || !c.id) && !salvar(false)) return;
+        App.lancarNoFinanceiro('compra', c);
+      } }, '💰 Lançar a pagar') : null,
       h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'))));
 
     const colForm = h('div.form-col');

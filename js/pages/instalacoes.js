@@ -245,7 +245,7 @@
     const subt = h('p.sub');
     const atualizarTopo = function () {
       titulo.textContent = (id || inst.id ? 'Instalação' : 'Nova instalação') + (inst.clienteNome ? ' — ' + inst.clienteNome : '');
-      subt.textContent = inst.propostaNumero ? 'Proposta ' + inst.propostaNumero + (inst.valor ? ' · ' + U.brl(inst.valor) : '') : 'Instalação sem proposta de origem.';
+      subt.textContent = inst.propostaNumero ? 'Proposta ' + inst.propostaNumero + (inst.valor && App.Acesso.veValores() ? ' · ' + U.brl(inst.valor) : '') : 'Instalação sem proposta de origem.';
     };
     atualizarTopo();
     cont.appendChild(h('div.pagina-topo', h('div', titulo, subt), h('div.acoes',
@@ -574,8 +574,11 @@
           }
         }, '↻ Puxar previsto da proposta'));
       }
-      botoes.push(h('button.btn.pequeno', { type: 'button', onclick: lancarPedido }, '🛒 Lançar pedido de compra'));
-      if (inst.id) botoes.push(h('a.btn.pequeno', { href: '#/compra/nova?instalacao=' + inst.id }, '+ Novo pedido para esta obra'));
+      // pedidos de compra: fora do perfil do técnico
+      if (App.Acesso.podeLer('compras')) {
+        botoes.push(h('button.btn.pequeno', { type: 'button', onclick: lancarPedido }, '🛒 Lançar pedido de compra'));
+        if (inst.id) botoes.push(h('a.btn.pequeno', { href: '#/compra/nova?instalacao=' + inst.id }, '+ Novo pedido para esta obra'));
+      }
       c.appendChild(App.Materiais.editor(inst.materiais, {
         equipamentos: ctx.equipamentos, modo: 'instalacao', botoes: botoes,
         vazio: prop ? 'A proposta ' + prop.numero + ' não tem lista de materiais CA. Lance os pedidos de compra da obra ou adicione os materiais usados.' : 'Lance os pedidos de compra da obra ou adicione os materiais usados.'
@@ -723,7 +726,7 @@
         kpi('Etapa atual', st === 'concluida' ? 'Todas concluídas' : (atual ? (inst.etapas.indexOf(atual) + 1) + '. ' + atual.titulo : '—')),
         kpi(st === 'concluida' ? 'Concluída em' : 'Previsão de conclusão', U.dataBR(I.previsaoConclusao(inst)) || '—'),
         kpi('Sistema', [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh' : ''].filter(Boolean).join(' + ') || '—'),
-        kpi('Valor', inst.valor ? U.brl(inst.valor) : '—'),
+        App.Acesso.veValores() ? kpi('Valor', inst.valor ? U.brl(inst.valor) : '—') : null,
         (function () { const pc = I.progressoChecklist(inst); return kpi('Checklist', pc.total ? pc.feitos + ' de ' + pc.total + ' itens' : '—'); })(),
         (function () {
           const rm = App.Materiais.resumo(inst, inst.propostaId ? S.get('propostas', inst.propostaId) : null);
@@ -743,11 +746,11 @@
         })));
       }
       const links = [];
-      if (inst.propostaId && S.get('propostas', inst.propostaId)) {
+      if (inst.propostaId && S.get('propostas', inst.propostaId) && App.Acesso.podeLer('propostas')) {
         links.push(h('a.btn', { href: '#/proposta/' + inst.propostaId }, '📄 Abrir proposta'));
         links.push(h('a.btn', { href: '#/contrato/novo?proposta=' + inst.propostaId }, '✍ Gerar contrato'));
       }
-      if (st === 'concluida' && inst.id) {
+      if (st === 'concluida' && inst.id && App.Acesso.podeGravar('projetos')) {
         const proj = S.list('projetos').find(function (x) { return x.instalacaoId === inst.id; });
         links.push(proj ? h('a.btn', { href: '#/projetos' }, '📸 Ver em Projetos realizados') : h('button.btn', {
           type: 'button', onclick: function () {

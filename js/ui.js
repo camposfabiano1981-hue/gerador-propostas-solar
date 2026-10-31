@@ -26,7 +26,8 @@ window.App = window.App || {};
   };
 
   UI.despachar = function (forcar) {
-    const hash = location.hash || '#/painel';
+    const inicio = App.Acesso ? App.Acesso.inicio() : '/painel';
+    const hash = location.hash || '#' + inicio;
     if (!forcar && hash === hashAtual) return;
     if (UI.guarda && hashAtual && UI.guarda() === false) {
       history.replaceState(null, '', hashAtual);
@@ -34,9 +35,19 @@ window.App = window.App || {};
     }
     UI.guarda = null;
     hashAtual = hash;
-    const caminho = hash.replace(/^#/, '').split('?')[0] || '/painel';
+    const caminho = hash.replace(/^#/, '').split('?')[0] || inicio;
     const qs = new URLSearchParams(hash.split('?')[1] || '');
     const main = document.getElementById('conteudo');
+    // tela fora do perfil de quem está usando
+    if (App.Acesso && !App.Acesso.rota(caminho)) {
+      main.innerHTML = '';
+      main.appendChild(h('div.card.vazio', h('h2', 'Sem acesso a esta tela'),
+        h('p', 'O seu perfil (' + App.Acesso.rotulo(App.Acesso.perfil()) + ') não abre esta tela. Fale com o administrador se precisar.'),
+        h('a.btn.primario', { href: '#' + inicio }, 'Ir para o início')));
+      UI.marcarMenu(caminho);
+      document.body.classList.remove('menu-aberto');
+      return;
+    }
     for (const r of rotas) {
       const m = caminho.match(r.re);
       if (m) {
@@ -56,7 +67,7 @@ window.App = window.App || {};
         return;
       }
     }
-    UI.ir('#/painel');
+    UI.ir('#' + inicio);
   };
 
   /** Troca o endereço sem recarregar a página atual (ex.: após salvar uma proposta nova). */
@@ -68,7 +79,8 @@ window.App = window.App || {};
   UI.marcarMenu = function (caminho) {
     document.querySelectorAll('.nav a').forEach(function (a) {
       const alvo = a.getAttribute('href').replace(/^#/, '');
-      a.classList.toggle('ativo', caminho === alvo || (alvo !== '/painel' && caminho.indexOf(alvo + '/') === 0) ||
+      a.classList.toggle('ativo', caminho === alvo || (alvo !== '/painel' && alvo !== '/financeiro' && caminho.indexOf(alvo + '/') === 0) ||
+        (alvo === '/financeiro/contas' && caminho.indexOf('/financeiro/conta/') === 0) ||
         (alvo === '/propostas' && caminho.indexOf('/proposta/') === 0 && caminho !== '/proposta/nova') ||
         (alvo === '/instalacoes' && caminho.indexOf('/instalacao/') === 0) || (alvo === '/ordens' && caminho.indexOf('/ordem/') === 0) ||
         (alvo === '/compras' && caminho.indexOf('/compra/') === 0));

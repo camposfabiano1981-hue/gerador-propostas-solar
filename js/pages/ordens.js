@@ -52,7 +52,8 @@
         h('td', os.status === 'concluida' ? 'Concluída em ' + U.dataBR(os.concluidaEm) : (U.dataBR(os.agendadaPara) || '—'),
           O.atrasada(os, hoje) ? h('div', UI.badge('Atrasada', 'erro')) : null),
         h('td', badge(O.STATUS, os.status)),
-        recarregar ? h('td.acoes-col', App.Envio.botao(function () { App.enviarOS(os, function () { S.save('ordens', os); }); }, 'OS ' + (os.numero || '')), App.Visualizar.botao(function () { return App.Relatorios.pdfOS(os, C.contexto()); }, 'Ordem de serviço ' + (os.numero || '')), (function () {
+        recarregar ? h('td.acoes-col', App.Envio.botao(function () { App.enviarOS(os, function () { S.save('ordens', os); }); }, 'OS ' + (os.numero || '')), App.Visualizar.botao(function () { return App.Relatorios.pdfOS(os, C.contexto()); }, 'Ordem de serviço ' + (os.numero || '')),
+          U.numOr(os.valor, 0) > 0 && App.botaoFinanceiro ? App.botaoFinanceiro('os', os, recarregar) : null, (function () {
           const btn = h('button.btn-formato.pdf', { type: 'button', title: 'Baixar a OS em PDF', onclick: function () { baixarPdf(os, btn); } }, 'PDF');
           return btn;
         })(), h('button.btn-icone.perigo', {
@@ -257,7 +258,12 @@
           App.enviarOS(os, function () { salvar(false); });
         } }, '📲 Enviar ao cliente'),
         h('button.btn', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return App.Relatorios.pdfOS(os, C.contexto()); }, { titulo: 'Ordem de serviço ' + (os.numero || '') }); } }, '👁 Visualizar OS'),
-        btnPdf));
+        btnPdf,
+        App.Acesso.podeGravar('lancamentos') ? h('button.btn', { type: 'button', onclick: function () {
+          if (!(U.numOr(os.valor, 0) > 0)) { UI.toast('Informe o valor da OS para lançar a receber.', 'erro'); return; }
+          if ((sujo || !os.id) && !salvar(false)) return;
+          App.lancarNoFinanceiro('os', os);
+        } }, '💰 Lançar no financeiro') : null));
       if (os.instalacaoId && S.get('instalacoes', os.instalacaoId)) resumo.appendChild(h('a.btn', { href: '#/instalacao/' + os.instalacaoId }, '🏗 Abrir a instalação'));
       resumo.appendChild(h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'));
     }

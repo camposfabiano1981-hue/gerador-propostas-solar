@@ -133,7 +133,8 @@
         h('td', h('div.texto-curto', ct.objeto || '—')),
         h('td.num', U.brl(K.total(ct))),
         h('td', statusBadge(ct.status), sel),
-        h('td.acoes-col', App.Visualizar.botao(function () { return K.gerarPdf(ct, C.contexto()); }, 'Contrato ' + (ct.numero || '')), btnPdf, btnDocx,
+        h('td.acoes-col', App.Visualizar.botao(function () { return K.gerarPdf(ct, C.contexto()); }, 'Contrato ' + (ct.numero || '')),
+          App.botaoFinanceiro ? App.botaoFinanceiro('contrato', ct, recarregar) : null, btnPdf, btnDocx,
           h('button.btn-icone.perigo', {
             type: 'button', title: 'Excluir', 'aria-label': 'Excluir', onclick: async function () {
               if (await UI.confirmar('Excluir o contrato ' + ct.numero + '?', 'Excluir', true)) {
@@ -445,7 +446,11 @@
         h('p.mini', cli ? cli.nome : 'Sem contratante'),
         pend.length ? h('div.nota.aviso', h('ul', pend.map(function (x) { return h('li', x); }))) : h('div.nota.ok', 'Pronto para gerar.'),
         h('div.resumo-acoes', h('button.btn', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return K.gerarPdf(ct, C.contexto()); }, { titulo: 'Contrato ' + (ct.numero || '') }); } }, '👁 Visualizar'),
-          h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ PDF'), h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ DOCX'))));
+          h('button.btn.primario', { type: 'button', onclick: function () { gerar('pdf'); } }, '⬇ PDF'), h('button.btn', { type: 'button', onclick: function () { gerar('docx'); } }, '⬇ DOCX')),
+        App.Acesso.podeGravar('lancamentos') ? h('div.resumo-acoes', h('button.btn', { type: 'button', onclick: function () {
+          if (!salvar(false)) return;
+          App.lancarNoFinanceiro('contrato', ct, atualizarResumo);
+        } }, '💰 Lançar as parcelas no financeiro')) : null));
     }
 
     function salvar(avisar) {

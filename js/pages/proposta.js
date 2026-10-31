@@ -50,6 +50,8 @@
     } else {
       p = C.novaProposta(ctx);
       p.itensSync = true;
+      const sessao = App.Acesso.sessao();
+      if (sessao && sessao.perfil !== 'tecnico' && App.Nuvem && App.Nuvem.configurada()) p.vendedor = { email: sessao.email, nome: sessao.nome };
       if (qs && qs.get('cliente')) p.clienteId = qs.get('cliente');
       if (qs && (qs.get('tipo') === 'hibrido' || qs.get('tipo') === 'bess')) p.tipoSistema = qs.get('tipo');
       if (p.tipoSistema === 'hibrido') p.cargas = U.clone(D.cargasExemplo);
@@ -183,7 +185,28 @@
         { k: 'status', label: 'Situação', type: 'select', options: D.STATUS.map(function (s) { return { v: s.id, t: s.label }; }),
           onChange: function (nv) { p.statusEm = ''; App.Crm.mudarStatus(p, nv); } } // data da aprovação/recusa para o dashboard
       ], p, mudou, 4));
+      // vendedor responsável (comissões no financeiro): a equipe guardada neste aparelho e quem está usando
+      const opVend = vendedores();
+      if (opVend.length) {
+        const est = { vendedor: p.vendedor ? p.vendedor.email : '' };
+        c.appendChild(UI.grade([{
+          k: 'vendedor', label: 'Vendedor (comissão)', type: 'select', cls: 'span2',
+          options: [{ v: '', t: '— sem vendedor —' }].concat(opVend.map(function (v) { return { v: v.email, t: v.nome + (v.nome !== v.email ? ' — ' + v.email : '') }; })),
+          onChange: function (nv) { const v = opVend.find(function (x) { return x.email === nv; }); p.vendedor = v ? { email: v.email, nome: v.nome } : null; }
+        }], est, mudou, 4));
+      }
     });
+
+    /** Quem pode ser o vendedor da proposta: administradores e vendedores da equipe, quem está usando e o já escolhido. */
+    function vendedores() {
+      const lista = [];
+      const add = function (email, nome) { if (email && !lista.some(function (x) { return x.email === email; })) lista.push({ email: email, nome: nome || email }); };
+      const s = App.Acesso.sessao();
+      if (s && s.perfil !== 'tecnico') add(s.email, s.nome);
+      (App.Nuvem && App.Nuvem.equipeLocal ? App.Nuvem.equipeLocal() : []).forEach(function (m) { if (m.perfil !== 'tecnico' && m.ativo !== false) add(m.email, m.nome); });
+      if (p.vendedor) add(p.vendedor.email, p.vendedor.nome);
+      return lista;
+    }
 
     /* ---------------- seção: cliente */
     secao('cliente', 'Cliente', function (c) {

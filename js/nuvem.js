@@ -64,21 +64,49 @@ window.App = window.App || {};
   };
 
   /**
-   * Regras de segurança do Firestore: só a conta Google informada lê e grava os próprios dados. A página "Acompanhe sua obra"
-   * (acompanhamento/{código}) pode ser lida por quem tem o link — só pelo código, sem listar as obras — e só essa conta grava.
+   * Regras de segurança do Firestore. Dados da empresa em usuarios/{uid do dono}: o dono (a conta Google informada) e a equipe
+   * cadastrada em equipe/{e-mail} (perfil, base e ativo) — administrador tudo; vendedor tudo menos o financeiro; técnico
+   * instalações e OS (e consulta clientes e equipamentos). A equipe só é gerida pelo administrador. As páginas públicas
+   * (acompanhamento/{código}) são lidas só pelo código do link, sem listar.
    */
   N.regras = function (email) {
     const conta = String(email || 'SEU-EMAIL@gmail.com').trim().toLowerCase();
+    const fin = "['lancamentos', 'contasFin', 'categoriasFin']";
     return "rules_version = '2';\n" +
       'service cloud.firestore {\n' +
       '  match /databases/{database}/documents {\n' +
-      '    match /usuarios/{uid}/{documento=**} {\n' +
-      '      allow read, write: if request.auth != null && request.auth.uid == uid\n' +
-      '        && request.auth.token.email == "' + conta + '";\n' +
+      '    function logado() { return request.auth != null && request.auth.token.email != null; }\n' +
+      '    function email() { return request.auth.token.email.lower(); }\n' +
+      '    function dono() { return logado() && email() == "' + conta + '" && request.auth.token.email_verified == true; }\n' +
+      '    function cadastro() { return get(/databases/$(database)/documents/equipe/$(email())).data; }\n' +
+      '    function membro() { return logado() && exists(/databases/$(database)/documents/equipe/$(email())) && cadastro().ativo == true; }\n' +
+      '    function admin() { return dono() || (membro() && cadastro().perfil == "admin"); }\n' +
+      '    function daEmpresa(uid) { return (dono() && request.auth.uid == uid) || (membro() && cadastro().base == uid); }\n' +
+      '    function le(col) {\n' +
+      '      return dono() || cadastro().perfil == "admin"\n' +
+      '        || (cadastro().perfil == "vendedor" && !(col in ' + fin + '))\n' +
+      "        || (cadastro().perfil == \"tecnico\" && col in ['instalacoes', 'ordens', 'clientes', 'equipamentos', 'config', 'fotos']);\n" +
+      '    }\n' +
+      '    function grava(col) {\n' +
+      '      return dono() || cadastro().perfil == "admin"\n' +
+      '        || (cadastro().perfil == "vendedor" && !(col in ' + fin + '))\n' +
+      "        || (cadastro().perfil == \"tecnico\" && col in ['instalacoes', 'ordens', 'config', 'fotos']);\n" +
+      '    }\n' +
+      '    match /usuarios/{uid}/partes/{parte} {\n' +
+      "      allow read: if daEmpresa(uid) && le(parte.split('__')[0]);\n" +
+      "      allow write: if daEmpresa(uid) && grava(parte.split('__')[0]);\n" +
+      '    }\n' +
+      '    match /usuarios/{uid}/{col}/{id} {\n' +
+      "      allow read: if col != 'partes' && daEmpresa(uid) && le(col);\n" +
+      "      allow write: if col != 'partes' && daEmpresa(uid) && grava(col);\n" +
+      '    }\n' +
+      '    match /equipe/{conta} {\n' +
+      '      allow get: if logado() && email() == conta;\n' +
+      '      allow read, write: if admin();\n' +
       '    }\n' +
       '    match /acompanhamento/{codigo} {\n' +
       '      allow get: if true;\n' +
-      '      allow create, update, delete: if request.auth != null && request.auth.token.email == "' + conta + '";\n' +
+      '      allow create, update, delete: if dono() || membro();\n' +
       '    }\n' +
       '  }\n' +
       '}\n';
@@ -113,7 +141,13 @@ window.App = window.App || {};
     const c = (e && e.code) || '';
     if (/permission-denied/.test(c)) return 'Sem permissão no banco da nuvem: confira as regras de segurança do Firestore e o e-mail autorizado.';
     if (/unauthorized-domain/.test(c)) return 'Este endereço não está autorizado no Firebase (Authentication › Configurações › Domínios autorizados): adicione ' + location.hostname + '.';
-    if (/operation-not-allowed/.test(c)) return 'O login com Google não está ativado no Firebase (Authentication › Método de login › Google).';
+    if (/operation-not-allowed/.test(c)) return 'Este método de login não está ativado no Firebase (Authentication › Método de login › E-mail/senha ou Google).';
+    if (/invalid-credential|wrong-password|user-not-found|invalid-login/.test(c)) return 'E-mail ou senha incorretos.';
+    if (/too-many-requests/.test(c)) return 'Muitas tentativas seguidas. Aguarde alguns minutos ou use "Esqueci a senha".';
+    if (/invalid-email/.test(c)) return 'E-mail inválido.';
+    if (/email-already-in-use/.test(c)) return 'Já existe uma conta com este e-mail.';
+    if (/weak-password/.test(c)) return 'Senha fraca: use pelo menos 6 caracteres.';
+    if (/user-disabled/.test(c)) return 'Esta conta foi desativada no Firebase.';
     if (/network-request-failed|unavailable/.test(c)) return 'Sem conexão com a nuvem no momento.';
     if (/internal-error/.test(c)) return 'Não foi possível abrir o login do Google: verifique a internet e se ' + (location.hostname || 'este endereço') + ' está nos domínios autorizados do Firebase.';
     if (/invalid-api-key|api-key-not-valid/.test(c)) return 'Configuração do Firebase inválida (apiKey). Cole de novo o firebaseConfig.';
@@ -146,8 +180,8 @@ window.App = window.App || {};
       fb = { m: m, app: app, auth: auth, db: db };
       m.auth.getRedirectResult(auth).catch(function (e) { definirEstado('erro', traduzir(e)); });
       m.auth.onAuthStateChanged(auth, function (u) {
-        if (u) iniciarSync(u);
-        else { pararSync(); N.usuario = null; definirEstado('desconectado'); }
+        if (u) iniciarSync(u).catch(function (e) { console.error(e); definirEstado('erro', traduzir(e)); });
+        else { pararSync(); N.usuario = null; if (N.estado !== 'naoAutorizado') definirEstado('desconectado'); }
       });
     } catch (e) {
       fb = null;
@@ -171,16 +205,36 @@ window.App = window.App || {};
     }
   };
 
-  N.sair = async function () {
+  /** Login com e-mail e senha (contas da equipe criadas pelo administrador). */
+  N.entrarComSenha = async function (email, senha) {
+    if (!fb) await N.iniciar();
+    if (!fb) throw new Error(N.mensagem || 'Sincronização não configurada.');
+    try { await fb.m.auth.signInWithEmailAndPassword(fb.auth, String(email || '').trim(), senha || ''); } catch (e) { throw new Error(traduzir(e)); }
+  };
+
+  /** E-mail do Firebase para criar ou trocar a senha. */
+  N.redefinirSenha = async function (email) {
+    if (!fb) await N.iniciar();
+    if (!fb) throw new Error(N.mensagem || 'Sincronização não configurada.');
+    try { await fb.m.auth.sendPasswordResetEmail(fb.auth, String(email || '').trim()); } catch (e) { throw new Error(traduzir(e)); }
+  };
+
+  /** Sai da conta; com limpar, apaga os dados da empresa deste aparelho (aparelho compartilhado ou de outra pessoa). */
+  N.sair = async function (limpar) {
     if (!fb) return;
     pararSync();
+    N.usuario = null;
+    App.Acesso.gravarSessao(null);
+    if (limpar) App.Store.limparDados();
     await fb.m.auth.signOut(fb.auth);
   };
 
   /* ------------------------------------------------------------ leitura e gravação no Firestore */
 
-  function refDoc(col, id) { return fb.m.fs.doc(fb.db, 'usuarios', N.usuario.uid, col, id); }
-  function refParte(col, id, i) { return fb.m.fs.doc(fb.db, 'usuarios', N.usuario.uid, 'partes', col + '__' + id + '__' + i); }
+  // dados da empresa: usuarios/{uid do dono} — o dono usa a própria conta; a equipe, a base do cadastro dela
+  function base() { return (N.usuario && (N.usuario.base || N.usuario.uid)) || ''; }
+  function refDoc(col, id) { return fb.m.fs.doc(fb.db, 'usuarios', base(), col, id); }
+  function refParte(col, id, i) { return fb.m.fs.doc(fb.db, 'usuarios', base(), 'partes', col + '__' + id + '__' + i); }
 
   async function gravarDoc(col, id, obj) {
     const json = JSON.stringify(obj);
@@ -225,15 +279,70 @@ window.App = window.App || {};
 
   function enviar(col, id, obj) {
     if (!N.usuario || !fb) return;
+    if (App.Acesso && !App.Acesso.podeGravar(col, N.usuario.perfil)) return; // coleção fora do perfil: fica só neste aparelho
     if (col !== 'config') (conhecidos[col] = conhecidos[col] || {})[id] = true;
     acompanhar(gravarDoc(col, id, obj));
   }
 
   function enviarExclusao(col, id, ts) {
     if (!N.usuario || !fb) return;
+    if (App.Acesso && !App.Acesso.podeGravar(col, N.usuario.perfil)) return;
     if (conhecidos[col]) delete conhecidos[col][id];
     acompanhar(fb.m.fs.setDoc(refDoc(col, id), { excluido: true, partes: 0, atualizadoEm: ts || new Date().toISOString() }));
   }
+
+  /* ------------------------------------------------------------ equipe (administrador) */
+
+  const CHAVE_EQUIPE = 'gsp.equipe';
+  function guardarEquipe(lista) { try { localStorage.setItem(CHAVE_EQUIPE, JSON.stringify(lista)); } catch (e) { /* indisponível */ } }
+
+  /** Equipe guardada neste aparelho (para escolher o vendedor da proposta, sem consultar a nuvem). */
+  N.equipeLocal = function () { try { return JSON.parse(localStorage.getItem(CHAVE_EQUIPE) || '[]') || []; } catch (e) { return []; } };
+
+  N.equipe = {
+    /** Pessoas cadastradas na base da empresa. */
+    listar: async function () {
+      if (!N.usuario || !fb) throw new Error('Entre na sua conta para ver a equipe.');
+      const fs = fb.m.fs;
+      const snap = await fs.getDocs(fs.query(fs.collection(fb.db, 'equipe'), fs.where('base', '==', base())));
+      const lista = snap.docs.map(function (d) { return d.data(); }).sort(function (a, b) { return String(a.nome).localeCompare(String(b.nome), 'pt-BR'); });
+      guardarEquipe(lista.map(function (m) { return { email: m.email, nome: m.nome, perfil: m.perfil, ativo: m.ativo !== false }; }));
+      return lista;
+    },
+    /** Cadastra ou altera uma pessoa (perfil, nome, ativo) na base da empresa. */
+    salvar: async function (m) {
+      if (!N.usuario || !fb) throw new Error('Entre na sua conta para gerir a equipe.');
+      const email = String(m.email || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('E-mail inválido.');
+      const reg = { email: email, nome: String(m.nome || '').trim() || email, perfil: m.perfil || 'vendedor', ativo: m.ativo !== false, base: base(),
+        criadoEm: m.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(), criadoPor: m.criadoPor || N.usuario.email };
+      try { await fb.m.fs.setDoc(fb.m.fs.doc(fb.db, 'equipe', email), reg); } catch (e) { throw new Error(traduzir(e)); }
+      return reg;
+    },
+    remover: async function (email) {
+      if (!N.usuario || !fb) throw new Error('Entre na sua conta para gerir a equipe.');
+      try { await fb.m.fs.deleteDoc(fb.m.fs.doc(fb.db, 'equipe', String(email).toLowerCase())); } catch (e) { throw new Error(traduzir(e)); }
+    },
+    /**
+     * Cria a conta de login (e-mail e senha) sem trocar a conta de quem está usando: um segundo app do Firebase faz o cadastro e sai.
+     * Devolve false quando o e-mail já tinha conta (a pessoa entra com a senha que já usa ou pede uma nova).
+     */
+    criarConta: async function (email, senha) {
+      if (!fb) throw new Error('Sincronização não configurada.');
+      const app2 = fb.m.app.initializeApp(N.config(), 'equipe-' + Date.now());
+      try {
+        const auth2 = fb.m.auth.getAuth(app2);
+        await fb.m.auth.createUserWithEmailAndPassword(auth2, String(email).trim(), senha);
+        await fb.m.auth.signOut(auth2);
+        return true;
+      } catch (e) {
+        if (/email-already-in-use/.test((e && e.code) || '')) return false;
+        throw new Error(traduzir(e));
+      } finally {
+        try { await fb.m.app.deleteApp(app2); } catch (e) { /* encerrado */ }
+      }
+    }
+  };
 
   /* ------------------------------------------------------------ página pública "Acompanhe sua obra" */
 
@@ -314,7 +423,10 @@ window.App = window.App || {};
 
   /* ------------------------------------------------------------ sincronização */
 
-  const COLECOES = function () { return App.Store.COLECOES.concat(['config']); };
+  const COLECOES = function () {
+    const lista = App.Acesso && N.usuario ? App.Acesso.colecoes(N.usuario.perfil) : App.Store.COLECOES;
+    return lista.concat(['config']);
+  };
 
   function todasLidas() { return COLECOES().every(function (c) { return primeira[c]; }); }
 
@@ -405,17 +517,74 @@ window.App = window.App || {};
     if (mudou) avisarMudanca(col);
   }
 
-  function iniciarSync(u) {
+  /**
+   * Quem entrou: cadastrado na equipe (equipe/{e-mail}: perfil, base da empresa, ativo) ou o dono da conta (a base é a própria
+   * conta; as regras do Firestore confirmam pelo e-mail). Sem internet, vale a sessão guardada neste aparelho.
+   */
+  async function identificar(u) {
+    const email = String(u.email || '').trim().toLowerCase();
+    const anterior = App.Acesso.sessao();
+    let cad = null, erro = null;
+    if (email) {
+      try { const s = await fb.m.fs.getDoc(fb.m.fs.doc(fb.db, 'equipe', email)); if (s.exists()) cad = s.data(); } catch (e) { erro = e; }
+    }
+    if (erro && !/permission-denied/.test(erro.code || '') && anterior && anterior.uid === u.uid) return anterior;
+    if (cad) {
+      if (cad.ativo === false) return { bloqueado: true };
+      return { uid: u.uid, email: email, nome: cad.nome || u.displayName || email, perfil: cad.perfil || 'vendedor', base: cad.base || u.uid, dono: false };
+    }
+    return { uid: u.uid, email: email, nome: u.displayName || email, perfil: 'admin', base: u.uid, dono: true };
+  }
+
+  async function naoAutorizado(msg) {
     pararSync();
-    N.usuario = { uid: u.uid, email: u.email || '', nome: u.displayName || '' };
+    N.usuario = null;
+    App.Acesso.gravarSessao(null);
+    App.Acesso.aplicarMenu();
+    definirEstado('naoAutorizado', msg);
+    try { await fb.m.auth.signOut(fb.auth); } catch (e) { /* já saiu */ }
+    definirEstado('naoAutorizado', msg);
+  }
+
+  function erroOuvinte(col, e) {
+    if (/permission-denied/.test((e && e.code) || '') && N.usuario && !primeira[col]) {
+      naoAutorizado(N.usuario.dono
+        ? 'Este e-mail não tem acesso à base da empresa. Se você faz parte da equipe, peça ao administrador para cadastrar o seu e-mail (e publicar as regras do Firestore com os perfis).'
+        : 'O Firebase recusou o acesso deste perfil. O administrador precisa publicar as regras do Firestore com os perfis (Configurações › Sincronização (nuvem) › passo 5).');
+      return;
+    }
+    definirEstado('erro', traduzir(e));
+  }
+
+  async function iniciarSync(u) {
+    pararSync();
+    const s = await identificar(u);
+    if (s.bloqueado) { await naoAutorizado('Seu acesso está desativado. Fale com o administrador.'); return; }
+    const anterior = App.Acesso.sessao();
+    // outra pessoa, outro perfil (ou a primeira entrada da equipe) neste aparelho: começa sem os dados locais, para não misturar,
+    // não enviar à empresa nem manter o que o perfil novo não vê — a nuvem devolve o que ele pode ler
+    const trocou = anterior ? (anterior.uid !== s.uid || anterior.base !== s.base || anterior.perfil !== s.perfil) : !s.dono;
+    if (trocou) App.Store.limparDados();
+    App.Acesso.gravarSessao(s);
+    N.usuario = { uid: s.uid, email: s.email, nome: s.nome, base: s.base, perfil: s.perfil, dono: s.dono };
+    App.Acesso.aplicarMenu();
+    if (trocou) reabrirTela();
     primeira = {}; conhecidos = {}; filas = {}; enviadosNaEntrada = 0;
     definirEstado('sincronizando');
     COLECOES().forEach(function (col) {
-      const ref = fb.m.fs.collection(fb.db, 'usuarios', N.usuario.uid, col);
+      const ref = fb.m.fs.collection(fb.db, 'usuarios', base(), col);
       ouvintes.push(fb.m.fs.onSnapshot(ref, { includeMetadataChanges: true }, function (snap) {
         filas[col] = (filas[col] || Promise.resolve()).then(function () { return tratar(col, snap); }).catch(function (e) { console.error(e); });
-      }, function (e) { definirEstado('erro', traduzir(e)); }));
+      }, function (e) { erroOuvinte(col, e); }));
     });
+  }
+
+  /** Depois de trocar os dados locais (outra pessoa ou outro perfil): reabre a tela, ou vai ao início do perfil se ela não for dele. */
+  function reabrirTela() {
+    if (!App.UI || (App.Portao && App.Portao.visivel())) return; // a tela de login cuida disso ao sair
+    const c = (location.hash || '').replace(/^#/, '').split('?')[0];
+    if (c && !App.Acesso.rota(c)) App.UI.ir('#' + App.Acesso.inicio());
+    else App.UI.despachar(true);
   }
 
   function pararSync() {
@@ -433,7 +602,7 @@ window.App = window.App || {};
   function aoSubstituirTudo() {
     if (!N.usuario || !fb) return;
     const ts = new Date().toISOString();
-    App.Store.COLECOES.forEach(function (col) {
+    App.Store.COLECOES.filter(function (col) { return App.Acesso.podeGravar(col, N.usuario.perfil); }).forEach(function (col) {
       const locais = {};
       App.Store.list(col).forEach(function (o) { locais[o.id] = true; enviar(col, o.id, o); });
       Object.keys(conhecidos[col] || {}).forEach(function (id) { if (!locais[id]) enviarExclusao(col, id, ts); });
@@ -471,6 +640,7 @@ window.App = window.App || {};
       case 'semInternet': return '📴 Sem internet' + (N.pendentes ? ' — ' + N.pendentes + ' alteração(ões) na fila' : ' — dados guardados');
       case 'ok': return '☁️ Sincronizado';
       case 'erro': return '⚠️ Erro na sincronização';
+      case 'naoAutorizado': return '⛔ Acesso não autorizado';
       default: return '☁️ Sincronização';
     }
   };

@@ -7,10 +7,10 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 11;
+  const VERSAO = 12;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
-  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens', 'compras'];
+  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens', 'compras', 'lancamentos', 'contasFin', 'categoriasFin'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
 
@@ -121,6 +121,12 @@ window.App = window.App || {};
     if (v < 10 && ler('col.ordens', null) == null) gravar('col.ordens', []);
     // pedidos de compra (orçamentos dos fornecedores e custo dos materiais)
     if (v < 11 && ler('col.compras', null) == null) gravar('col.compras', []);
+    // financeiro: lançamentos, contas (caixa e bancos) e o plano de contas padrão
+    if (v < 12) {
+      if (ler('col.lancamentos', null) == null) gravar('col.lancamentos', []);
+      if (ler('col.contasFin', null) == null) gravar('col.contasFin', U.clone(D.contasFin));
+      if (ler('col.categoriasFin', null) == null) gravar('col.categoriasFin', U.clone(D.categoriasFin));
+    }
     gravar('v', VERSAO);
   };
 
@@ -222,6 +228,9 @@ window.App = window.App || {};
     gravar('col.instalacoes', []);
     gravar('col.ordens', []);
     gravar('col.compras', []);
+    gravar('col.lancamentos', []);
+    gravar('col.contasFin', U.clone(D.contasFin));
+    gravar('col.categoriasFin', U.clone(D.categoriasFin));
     gravar('v', VERSAO);
   };
 
@@ -389,6 +398,18 @@ window.App = window.App || {};
     else gravar('v', VERSAO);
     carimbarTudo();
     avisar('aoSubstituirTudo');
+  };
+
+  /**
+   * Apaga os dados da empresa deste aparelho (outra pessoa entrou ou saiu limpando o aparelho): coleções vazias, sem os padrões,
+   * para nada ser enviado à nuvem — os dados voltam pela sincronização, conforme o perfil de quem entrar.
+   */
+  Store.limparDados = function () {
+    COLECOES.forEach(function (c) { gravar('col.' + c, []); });
+    gravar('config', { seq: {} });
+    gravar('sync.excluidos', {});
+    gravar('v', VERSAO);
+    if (App.Fotos && App.Fotos.limpar) App.Fotos.limpar();
   };
 
   Store.restaurarPadroes = function () {

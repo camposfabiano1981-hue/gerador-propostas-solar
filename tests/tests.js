@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '11');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '12');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,7 +641,8 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8 → v11: versão da base (atual), instalações, ordens de serviço e pedidos de compra', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) ? ' ok' : ''), '11 ok');
+      igual('migração v8 → v12: versão da base (atual), instalações, ordens de serviço, pedidos de compra e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) &&
+        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '12 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -1066,7 +1067,7 @@
       pub.progresso.feitas === inst.etapas.length - 1 && pub.etapas[2].status === 'andamento' && pub.etapas[2].atual === true && pub.etapas.filter(function (e) { return e.atual; }).length === 1 &&
       pub.empresa.telefone === '(67) 99999-0000' && pub.situacao.label === 'Em andamento', JSON.stringify(pub.progresso));
     const regras = App.Nuvem.regras('dono@gmail.com');
-    ok('avisos: regras do Firestore liberam só a leitura pelo código (sem listar) e a gravação da conta', /match \/acompanhamento\/\{codigo\} \{\n\s+allow get: if true;\n\s+allow create, update, delete: if request\.auth != null && request\.auth\.token\.email == "dono@gmail\.com";/.test(regras) &&
+    ok('avisos: regras do Firestore liberam só a leitura pelo código (sem listar) e a gravação da empresa', /match \/acompanhamento\/\{codigo\} \{\n\s+allow get: if true;\n\s+allow create, update, delete: if dono\(\) \|\| membro\(\);/.test(regras) &&
       !/acompanhamento[\s\S]*allow (read|list)/.test(regras), regras);
   })();
 
@@ -1531,8 +1532,9 @@
     try { N.lerConfig('apiKey: "x"'); } catch (e) { erro = e.message; }
     ok('nuvem: configuração incompleta é recusada', /incompleta/.test(erro), erro);
     const regras = N.regras('Fulano@Gmail.com ');
-    ok('nuvem: regras do Firestore limitadas à conta e ao e-mail', /match \/usuarios\/\{uid\}\/\{documento=\*\*\}/.test(regras) && /request\.auth\.uid == uid/.test(regras) &&
-      /request\.auth\.token\.email == "fulano@gmail\.com"/.test(regras), regras);
+    ok('nuvem: regras do Firestore — dono pelo e-mail verificado, equipe cadastrada e coleções por perfil', /email\(\) == "fulano@gmail\.com" && request\.auth\.token\.email_verified == true/.test(regras) &&
+      /match \/usuarios\/\{uid\}\/\{col\}\/\{id\}/.test(regras) && /match \/usuarios\/\{uid\}\/partes\/\{parte\}/.test(regras) && /match \/equipe\/\{conta\}/.test(regras) &&
+      /\['lancamentos', 'contasFin', 'categoriasFin'\]/.test(regras) && !/\{documento=\*\*\}/.test(regras), regras);
     const siteAntes = App.NUVEM_CONFIG, localAntes = localStorage.getItem('gsp.nuvem');
     try {
       App.NUVEM_CONFIG = { apiKey: 'site', projectId: 'site-proj' };
@@ -1546,6 +1548,196 @@
       App.NUVEM_CONFIG = siteAntes;
       if (localAntes) localStorage.setItem('gsp.nuvem', localAntes); else localStorage.removeItem('gsp.nuvem');
     }
+  })();
+
+  // ---------------------------------------------------------------- acesso por perfil
+  (function () {
+    const A = App.Acesso;
+    igual('acesso: sem a sincronização configurada, o app é de uma pessoa só (administrador)', A.perfil(), 'admin');
+    const todas = App.Store.COLECOES;
+    ok('acesso: coleções novas do financeiro na base', ['lancamentos', 'contasFin', 'categoriasFin'].every(function (c) { return todas.indexOf(c) >= 0; }), todas.join(','));
+    igual('acesso: administrador sincroniza tudo', A.colecoes('admin').length, todas.length);
+    ok('acesso: vendedor sincroniza tudo menos o financeiro', A.colecoes('vendedor').length === todas.length - 3 && A.colecoes('vendedor').indexOf('lancamentos') < 0 && A.colecoes('vendedor').indexOf('propostas') >= 0);
+    igual('acesso: técnico sincroniza instalações, OS, clientes e equipamentos', A.colecoes('tecnico').slice().sort().join(','), 'clientes,equipamentos,instalacoes,ordens');
+    ok('acesso: técnico grava instalações e OS, só consulta clientes e equipamentos', A.podeGravar('instalacoes', 'tecnico') && A.podeGravar('ordens', 'tecnico') &&
+      A.podeLer('clientes', 'tecnico') && !A.podeGravar('clientes', 'tecnico') && !A.podeLer('propostas', 'tecnico') && !A.podeLer('compras', 'tecnico'));
+    ok('acesso: numeração (config) e fotos liberadas para todos os perfis', ['admin', 'vendedor', 'tecnico'].every(function (x) { return A.podeGravar('config', x) && A.podeGravar('fotos', x); }));
+    ok('acesso: vendedor sem financeiro; grava propostas, contratos e compras', !A.podeLer('lancamentos', 'vendedor') && !A.podeGravar('contasFin', 'vendedor') &&
+      A.podeGravar('propostas', 'vendedor') && A.podeGravar('contratos', 'vendedor') && A.podeGravar('compras', 'vendedor'));
+    ok('acesso: telas do vendedor (sem financeiro, configurações e equipe)', A.rota('/propostas', 'vendedor') && A.rota('/proposta/abc', 'vendedor') && A.rota('/painel', 'vendedor') &&
+      A.rota('/conta', 'vendedor') && A.rota('/nuvem', 'vendedor') && !A.rota('/financeiro', 'vendedor') && !A.rota('/financeiro/dre', 'vendedor') && !A.rota('/empresa', 'vendedor') &&
+      !A.rota('/premissas', 'vendedor') && !A.rota('/equipe', 'vendedor') && !A.rota('/dados', 'vendedor'));
+    ok('acesso: telas do técnico (instalações e OS)', A.rota('/instalacoes', 'tecnico') && A.rota('/instalacao/x1', 'tecnico') && A.rota('/ordens', 'tecnico') && A.rota('/ordem/nova', 'tecnico') &&
+      A.rota('/conta', 'tecnico') && !A.rota('/painel', 'tecnico') && !A.rota('/propostas', 'tecnico') && !A.rota('/compras', 'tecnico') && !A.rota('/financeiro', 'tecnico') && !A.rota('/clientes', 'tecnico'));
+    ok('acesso: administrador abre todas as telas', ['/financeiro', '/financeiro/dre', '/equipe', '/empresa', '/propostas'].every(function (r) { return A.rota(r, 'admin'); }));
+    ok('acesso: tela inicial e valores por perfil', A.inicio('tecnico') === '/instalacoes' && A.inicio('vendedor') === '/painel' && !A.veValores('tecnico') && A.veValores('vendedor'));
+  })();
+
+  // ---------------------------------------------------------------- financeiro
+  (function () {
+    const F = App.Fin;
+    const cats = U.clone(D.categoriasFin);
+    let seq = 0;
+    const L = function (tipo, x) { return F.novoLancamento(tipo, Object.assign({ id: 'l' + (++seq) }, x)); };
+
+    // plano de contas padrão
+    ok('financeiro: plano de contas com receitas, deduções, custos, despesas, financeiro, IR e fora do resultado',
+      D.GRUPOS_DRE.every(function (g) { return cats.some(function (c) { return c.grupo === g.id; }); }) && cats.every(function (c) { return c.tipo === 'receber' || c.tipo === 'pagar'; }) &&
+      cats.filter(function (c) { return c.grupo === 'receita'; }).every(function (c) { return c.tipo === 'receber'; }), cats.length);
+    ok('financeiro: ids das categorias únicos', (function () { const v = {}; return cats.every(function (c) { if (v[c.id]) return false; v[c.id] = true; return true; }); })());
+
+    // parcelas
+    const pa = F.gerarParcelas({ tipo: 'receber', descricao: 'Venda', categoriaId: 'cat-rec-sistemas' }, { total: 1000, n: 3, primeiroVencimento: '2026-01-31', competencia: '2026-01-20' });
+    igual('parcelas: valores com o arredondamento na última', pa.map(function (x) { return x.valor; }).join('|'), '333.33|333.33|333.34');
+    igual('parcelas: vencimentos mensais (fim de mês ajustado)', pa.map(function (x) { return x.vencimento; }).join('|'), '2026-01-31|2026-02-28|2026-03-31');
+    ok('parcelas: mesma competência, mesmo grupo, numeradas', pa.every(function (x) { return x.competencia === '2026-01-20' && x.parcela.grupo === pa[0].parcela.grupo && x.parcela.de === 3 && x.situacao === 'aberto'; }) &&
+      pa[2].parcela.n === 3 && / — parcela 3\/3$/.test(pa[2].descricao), pa[2].descricao);
+    const pe = F.gerarParcelas({ tipo: 'receber', descricao: 'Venda' }, { total: 1000, n: 2, entrada: 100, dataEntrada: '2026-01-10', primeiroVencimento: '2026-02-10', intervaloDias: 15 });
+    igual('parcelas: entrada + 2 parcelas a cada 15 dias', pe.map(function (x) { return x.vencimento + ':' + x.valor; }).join('|'), '2026-01-10:100|2026-02-10:450|2026-02-25:450');
+    ok('parcelas: entrada como parcela 1 de 3', pe[0].parcela.n === 1 && pe[0].parcela.de === 3 && / — entrada$/.test(pe[0].descricao) && pe[2].parcela.n === 3);
+    igual('parcelas: valor único sem sufixo', F.gerarParcelas({ tipo: 'pagar', descricao: 'Aluguel' }, { total: 1500, n: 1, primeiroVencimento: '2026-01-05' })[0].descricao, 'Aluguel');
+
+    // baixa, saldo parcial, estorno, situação
+    const l1 = L('receber', { descricao: 'Parcela', valor: 1000, vencimento: '2026-02-10' });
+    igual('situação: em aberto vencido', F.situacao(l1, '2026-02-11'), 'vencido');
+    igual('situação: em aberto no prazo', F.situacao(l1, '2026-02-10'), 'aberto');
+    const b1 = F.baixar(U.clone(l1), { data: '2026-02-12', contaId: 'cx', valor: 400, juros: 10, forma: 'pix' });
+    ok('baixa parcial: paga 400 (+ juros 10) e cria o saldo de 600 em aberto', b1.lancamento.situacao === 'pago' && b1.lancamento.valor === 400 && b1.lancamento.valorPago === 410 &&
+      b1.lancamento.pagoEm === '2026-02-12' && b1.lancamento.contaId === 'cx' && b1.saldo && b1.saldo.valor === 600 && b1.saldo.situacao === 'aberto' && !b1.saldo.id &&
+      b1.saldo.vencimento === '2026-02-10' && / \(saldo\)$/.test(b1.saldo.descricao), JSON.stringify(b1.saldo));
+    const b2 = F.baixar(U.clone(l1), { data: '2026-02-09', contaId: 'cx', valor: '', desconto: 50 });
+    ok('baixa total com desconto: valor pago 950, sem saldo', b2.lancamento.valorPago === 950 && b2.saldo === null && b2.lancamento.valor === 1000);
+    const es = F.estornar(U.clone(b2.lancamento));
+    ok('estorno: volta para em aberto, sem data e valor pago', es.situacao === 'aberto' && !es.pagoEm && !es.valorPago && !es.desconto);
+
+    // caixa e bancos
+    const cA = { id: 'cA', nome: 'Banco', saldoInicial: 1000, dataSaldoInicial: '2026-01-01', ativo: true }, cB = { id: 'cB', nome: 'Caixa', saldoInicial: 0, ativo: true };
+    const mov = [
+      L('receber', { valor: 500, situacao: 'pago', pagoEm: '2026-02-10', valorPago: 500, contaId: 'cA', descricao: 'Recebimento' }),
+      L('pagar', { valor: 200, situacao: 'pago', pagoEm: '2026-02-15', valorPago: 200, contaId: 'cA', descricao: 'Pagamento' }),
+      F.transferencia('cA', 'cB', 300, '2026-02-20', 'Sangria'),
+      L('pagar', { valor: 999, situacao: 'aberto', vencimento: '2026-02-18', contaId: 'cA' }),
+      L('receber', { valor: 50, situacao: 'pago', pagoEm: '2025-12-20', valorPago: 50, contaId: 'cA', descricao: 'antes do saldo inicial' })
+    ];
+    igual('caixa: saldo = inicial + entradas − saídas − transferência (em aberto e antes do saldo inicial não entram)', F.saldoConta(cA, mov, '2026-02-28'), 1000);
+    igual('caixa: transferência entra na conta de destino', F.saldoConta(cB, mov, '2026-02-28'), 300);
+    igual('caixa: saldo numa data', F.saldoConta(cA, mov, '2026-02-12'), 1500);
+    igual('caixa: saldo total das contas ativas', F.saldoTotal([cA, cB, { id: 'cC', saldoInicial: 70, ativo: false }], mov, '2026-02-28'), 1300);
+    const ex = F.extrato(cA, mov, '2026-02-12', '2026-02-28');
+    ok('extrato: saldo anterior, linhas do período e saldo corrente', ex.anterior === 1500 && ex.linhas.length === 2 && ex.linhas[0].saida === 200 && ex.linhas[0].saldo === 1300 &&
+      ex.linhas[1].saida === 300 && ex.final === 1000, JSON.stringify(ex.linhas.map(function (x) { return [x.data, x.saldo]; })));
+    const rs = F.resumo(mov.concat([L('receber', { valor: 800, vencimento: '2026-03-05' }), L('receber', { valor: 120, vencimento: '2026-02-01' })]), [cA, cB], '2026-02-20');
+    ok('resumo: saldo, a receber em 30 dias, vencidos e realizado no mês', rs.saldo === 1300 && rs.aReceber30 === 800 && rs.vencRec.n === 1 && rs.vencRec.valor === 120 &&
+      rs.vencPag.n === 1 && rs.vencPag.valor === 999 && rs.recebidoMes === 500 && rs.pagoMes === 200, JSON.stringify(rs));
+    const fl = F.fluxo(mov.concat([L('receber', { valor: 800, vencimento: '2026-03-05' }), L('pagar', { valor: 100, vencimento: '2026-04-02' })]), [cA, cB], '2026-02-20', 1, 2);
+    ok('fluxo: mês passado realizado; atual com vencidos; seguintes previstos; saldo projetado', fl.length === 4 && fl[0].mes === '2026-01' && fl[0].passado && fl[0].entradas === 0 &&
+      fl[1].atual && fl[1].entradas === 500 && fl[1].saidas === 200 + 999 && fl[1].saldo === 1300 - 999 && fl[2].entradas === 800 && fl[2].saldo === 1300 - 999 + 800 &&
+      fl[3].saidas === 100 && fl[3].saldo === 1300 - 999 + 800 - 100 && fl[0].saldo === 1000 && fl[1].rot === 'fev/26', JSON.stringify(fl.map(function (m) { return [m.mes, m.entradas, m.saidas, m.saldo]; })));
+
+    // DRE
+    const dl = [
+      L('receber', { valor: 10000, categoriaId: 'cat-rec-sistemas', competencia: '2026-03-05', vencimento: '2026-03-10' }),
+      L('pagar', { valor: 4000, categoriaId: 'cat-cus-kit', competencia: '2026-03-06', situacao: 'pago', pagoEm: '2026-04-02', valorPago: 4000 }),
+      L('pagar', { valor: 300, categoriaId: 'cat-ded-impostos', competencia: '2026-03-31' }),
+      L('pagar', { valor: 1000, categoriaId: 'cat-adm-aluguel', competencia: '2026-03-01', situacao: 'pago', pagoEm: '2026-04-10', juros: 20, valorPago: 1020 }),
+      L('pagar', { valor: 5000, categoriaId: 'cat-fora-investimentos', competencia: '2026-03-15' }),
+      L('pagar', { valor: 77, categoriaId: 'cat-adm-outras', competencia: '2026-03-15', situacao: 'cancelado' }),
+      L('receber', { valor: 90, categoriaId: 'cat-rec-outras', competencia: '2025-12-15' }),
+      F.transferencia('cA', 'cB', 300, '2026-03-20')
+    ];
+    const dc = F.dre(dl, cats, '2026', 'competencia');
+    const lin = function (d, label) { return d.linhas.find(function (x) { return x.label === label; }); };
+    const grp = function (d, id) { return d.linhas.find(function (x) { return x.tipo === 'grupo' && x.id === id; }); };
+    ok('DRE competência: receita, deduções, receita líquida e lucro bruto no mês da venda', grp(dc, 'receita').valores[2] === 10000 && grp(dc, 'deducao').total === -300 &&
+      lin(dc, '= Receita líquida').total === 9700 && dc.receitaLiquida === 9700 && lin(dc, '= Lucro bruto (margem de contribuição das obras)').valores[2] === 5700);
+    ok('DRE competência: despesas, juros da baixa no mês do pagamento e resultado líquido', grp(dc, 'despesa_admin').total === -1000 && grp(dc, 'financeiro_despesa').valores[3] === -20 &&
+      lin(dc, '= Resultado operacional').total === 4700 && dc.linhas[dc.linhas.length - 1].total === 4680 && dc.linhas[dc.linhas.length - 1].destaque);
+    ok('DRE: investimentos fora do resultado; cancelados, transferências e outro ano não entram', dc.fora.total === -5000 && grp(dc, 'receita').total === 10000 && dc.semCategoria === 0);
+    ok('DRE: linhas por categoria dentro do grupo', dc.linhas.some(function (x) { return x.tipo === 'categoria' && x.id === 'cat-cus-kit' && x.total === -4000; }) &&
+      dc.linhas.some(function (x) { return x.tipo === 'categoria' && x.id === 'juros-pagos' && x.label === 'Juros e multas pagos (nas baixas)'; }));
+    const dx = F.dre(dl, cats, '2026', 'caixa');
+    ok('DRE caixa: só o realizado, no mês do pagamento', grp(dx, 'receita').total === 0 && grp(dx, 'custo').valores[3] === -4000 && grp(dx, 'custo').valores[2] === 0 &&
+      grp(dx, 'despesa_admin').valores[3] === -1000 && dx.linhas[dx.linhas.length - 1].total === -5020 && dx.regime === 'caixa');
+    const dsc = F.dre([L('pagar', { valor: 50, categoriaId: 'inexistente', competencia: '2026-05-01' })], cats, '2026');
+    ok('DRE: lançamento sem categoria vai para despesas administrativas e é contado', dsc.semCategoria === 1 && grp(dsc, 'despesa_admin').total === -50);
+    const csv = F.dreCsv(dc);
+    ok('DRE em planilha: ; e vírgula decimal, 14 colunas', /^Linha;jan\/2026;fev\/2026/.test(csv) && /"= Resultado líquido do período";0;0;4700;-20;/.test(csv) && /;97;/.test(csv.split('\r\n')[2]) === false &&
+      csv.split('\r\n')[0].split(';').length === 15, csv.split('\r\n').slice(0, 3).join(' / '));
+
+    // resultado por obra e comissões
+    const obra = Object.assign(U.clone(p), { id: 'obra1', status: 'aprovada', aprovadaEm: '2026-03-01', precificacao: 'margem', instalacaoFaixa: 1, lucroModo: 'pct', lucroPct: 0.15, comissaoPct: 0.05,
+      infraValor: '', valorTotal: '', vendedor: { email: 'vend@empresa.com', nome: 'Vendedora' } });
+    const ro = C.calcular(U.clone(obra), ctx);
+    const ol = [
+      L('receber', { valor: U.round(ro.total / 2, 2), obraId: 'obra1', situacao: 'pago', pagoEm: '2026-03-02', valorPago: U.round(ro.total / 2, 2), categoriaId: 'cat-rec-sistemas' }),
+      L('receber', { valor: U.round(ro.total / 2, 2), obraId: 'obra1', categoriaId: 'cat-rec-sistemas' }),
+      L('pagar', { valor: 8177.08, obraId: 'obra1', categoriaId: 'cat-cus-kit' }),
+      L('pagar', { valor: 720, obraId: 'obra1', categoriaId: 'cat-cus-maoobra', situacao: 'pago', pagoEm: '2026-03-20', valorPago: 720 }),
+      L('pagar', { valor: 100, obraId: 'obra1', categoriaId: 'cat-com-comissoes', origem: { tipo: 'comissao', id: 'obra1', numero: obra.numero } }),
+      L('pagar', { valor: 400, obraId: 'obra1', categoriaId: 'cat-ded-impostos' })
+    ];
+    const res = F.resultadoObras([obra, Object.assign(U.clone(p), { id: 'outra', status: 'enviada' })], ol, cats, ctx);
+    const o1 = res[0];
+    ok('obras: só as aprovadas; vendido, recebido e a receber', res.length === 1 && Math.abs(o1.vendido - ro.total) < 0.01 && Math.abs(o1.recebido + o1.aReceber - ro.total) < 0.02, JSON.stringify(res.map(function (x) { return x.p.id; })));
+    ok('obras: custos diretos, comissão, impostos e resultado', o1.custo === 8897.08 && o1.custoPago === 720 && o1.comissao === 100 && o1.deducao === 400 &&
+      Math.abs(o1.resultado - (ro.total - 8897.08 - 500)) < 0.01 && Math.abs(o1.margem - o1.resultado / o1.vendido) < 1e-9 && !o1.semCustos, JSON.stringify({ custo: o1.custo, resultado: o1.resultado }));
+    ok('obras: margem prevista = lucro da composição ÷ valor de venda', Math.abs(o1.margemPrevista - 0.15) < 1e-6, o1.margemPrevista);
+    const cm = F.comissoes([obra], ol, ctx);
+    const v1 = cm.vendedores[0];
+    ok('comissões: 5% da venda, liberada na proporção do recebido (50%), menos o já lançado', cm.vendas.length === 1 && v1.email === 'vend@empresa.com' && v1.nome === 'Vendedora' &&
+      Math.abs(v1.comissao - ro.total * 0.05) < 0.01 && Math.abs(cm.vendas[0].fracao - 0.5) < 1e-4 && Math.abs(v1.liberada - ro.total * 0.025) < 0.02 && v1.lancada === 100 && v1.paga === 0 &&
+      Math.abs(v1.aLancar - (v1.liberada - 100)) < 0.01, JSON.stringify(v1, ['email', 'comissao', 'liberada', 'lancada', 'aLancar']));
+    ok('comissões: venda sem vendedor fica de fora', F.comissoes([Object.assign(U.clone(obra), { vendedor: null })], ol, ctx).vendas.length === 0);
+
+    // OFX e conciliação
+    const sgml = 'OFXHEADER:100\r\nDATA:OFXSGML\r\n\r\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><BANKID>001<BRANCHID>1234-5<ACCTID>98765-0</BANKACCTFROM>' +
+      '<BANKTRANLIST><DTSTART>20260201<DTEND>20260228120000[-3:BRT]' +
+      '<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260211120000[-3:BRT]<TRNAMT>500.00<FITID>F1<MEMO>PIX RECEBIDO MARIA</STMTTRN>' +
+      '<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260221<TRNAMT>-150,00<FITID>F2<NAME>ENERGISA<MEMO>PAGTO CONTA</STMTTRN>' +
+      '<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260225<TRNAMT>-12.90<FITID>F3<MEMO>TARIFA PACOTE SERVICOS</STMTTRN>' +
+      '<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260226<TRNAMT>3.21<FITID>F4<MEMO>RENDIMENTO APLIC</STMTTRN>' +
+      '<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260227<TRNAMT>-80.00<FITID>F5<MEMO>PIX ENVIADO</STMTTRN>' +
+      '</BANKTRANLIST><LEDGERBAL><BALAMT>1.240,31<DTASOF>20260228</LEDGERBAL></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>';
+    const ofx = F.lerOfx(sgml);
+    ok('OFX (SGML): conta, período, saldo e transações', ofx.banco === '001' && ofx.agencia === '1234-5' && ofx.conta === '98765-0' && ofx.inicio === '2026-02-01' && ofx.fim === '2026-02-28' &&
+      ofx.saldo === 1240.31 && ofx.transacoes.length === 5 && ofx.transacoes[1].valor === -150 && ofx.transacoes[1].descricao === 'ENERGISA — PAGTO CONTA' && ofx.transacoes[0].data === '2026-02-11',
+      JSON.stringify(ofx).slice(0, 300));
+    const xml = '<?xml version="1.0"?><OFX><STMTTRN><TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20260305</DTPOSTED><TRNAMT>-45.5</TRNAMT><FITID>X1</FITID><MEMO>JUROS CHEQUE ESPECIAL</MEMO></STMTTRN></OFX>';
+    const ox = F.lerOfx(xml);
+    ok('OFX (XML): transação lida', ox.transacoes.length === 1 && ox.transacoes[0].valor === -45.5 && ox.transacoes[0].descricao === 'JUROS CHEQUE ESPECIAL' && ox.saldo === null);
+    let erroOfx = '';
+    try { F.lerOfx('não é ofx'); } catch (e) { erroOfx = e.message; }
+    ok('OFX: arquivo inválido é recusado', /não parece um extrato OFX/.test(erroOfx));
+    ok('OFX: categoria sugerida (tarifa, juros, rendimento)', F.categoriaSugerida(ofx.transacoes[2]) === 'cat-fin-tarifas' && F.categoriaSugerida(ox.transacoes[0]) === 'cat-fin-juros' &&
+      F.categoriaSugerida(ofx.transacoes[3]) === 'cat-fin-rendimentos' && F.categoriaSugerida(ofx.transacoes[4]) === 'cat-adm-outras');
+    const lc = [
+      L('receber', { valor: 500, situacao: 'pago', pagoEm: '2026-02-10', valorPago: 500, contaId: 'cA' }),
+      L('pagar', { valor: 150, situacao: 'aberto', vencimento: '2026-02-25', contaId: 'cA' }),
+      L('pagar', { valor: 80, situacao: 'pago', pagoEm: '2026-02-27', valorPago: 80, contaId: 'cA', conciliado: { fitid: 'F5' } }),
+      L('receber', { valor: 500, situacao: 'pago', pagoEm: '2026-02-11', valorPago: 500, contaId: 'outra-conta' })
+    ];
+    const cc = F.conciliar(ofx.transacoes, lc, 'cA');
+    igual('conciliação: conciliar o pago, baixar o aberto, criar os sem lançamento e reconhecer o já conciliado', cc.map(function (x) { return x.acao; }).join(','), 'conciliar,baixar,novo,novo,ja');
+    ok('conciliação: casa com o lançamento da mesma conta e com a categoria sugerida', cc[0].lanc.id === lc[0].id && cc[1].lanc.id === lc[1].id && cc[2].categoriaId === 'cat-fin-tarifas' && cc[4].lanc.id === lc[2].id);
+    const cc2 = F.conciliar([ofx.transacoes[0], Object.assign({}, ofx.transacoes[0], { fitid: 'F1b' })], lc, 'cA');
+    ok('conciliação: um lançamento casa com uma transação só', cc2[0].acao === 'conciliar' && cc2[1].acao === 'novo');
+
+    // lançar a partir dos documentos
+    const bp = F.baseDe('proposta', Object.assign(U.clone(obra), { clienteNome: 'Cliente Exemplo' }), ctx);
+    ok('documentos: proposta → a receber de vendas de sistemas, ligada à obra', Math.abs(bp.total - ro.total) < 0.01 && bp.base.tipo === 'receber' && bp.base.categoriaId === 'cat-rec-sistemas' &&
+      bp.base.obraId === 'obra1' && bp.base.origem.tipo === 'proposta' && bp.base.pessoa.nome === 'Cliente Exemplo' && bp.base.competencia === '2026-03-01');
+    const bc = F.baseDe('compra', { id: 'pc1', numero: 'PC-1', data: '2026-03-03', fornecedor: { nome: 'Elétrica' }, itens: [{ descricao: 'Cabo', qtd: 10, preco: 5 }], frete: 20, docFornecedor: '16.220' }, ctx);
+    ok('documentos: pedido de compra → a pagar de materiais', bc.total === 70 && bc.base.tipo === 'pagar' && bc.base.categoriaId === 'cat-cus-materiais' && bc.base.documento === '16.220' &&
+      bc.base.pessoa.nome === 'Elétrica' && bc.base.origem.tipo === 'compra', JSON.stringify({ t: bc.total }));
+    const bk = F.baseDe('contrato', { id: 'k1', numero: 'CT-1', data: '2026-03-04', propostaId: 'obra1', clienteSnapshot: { nome: 'Maria' }, parcelas: [{ descricao: 'Entrada', valor: 3000 }, { descricao: 'Final', valor: 2000 }] }, ctx);
+    ok('documentos: contrato → as parcelas do contrato, ligadas à obra', bk.total === 5000 && bk.parcelas.length === 2 && bk.parcelas[0].descricao === 'Entrada' && bk.base.obraId === 'obra1' && bk.base.pessoa.nome === 'Maria');
+    const bo = F.baseDe('os', { id: 'os1', numero: 'OS-1', valor: '350,00', clienteNome: 'João' }, ctx);
+    ok('documentos: OS → a receber de serviços', bo.total === 350 && bo.base.categoriaId === 'cat-rec-servicos' && bo.base.pessoa.nome === 'João');
+    let erroDoc = '';
+    try { F.baseDe('xyz', {}, ctx); } catch (e) { erroDoc = e.message; }
+    ok('documentos: tipo desconhecido recusado', /sem lançamento/.test(erroDoc));
+    const ld = [L('receber', { origem: { tipo: 'proposta', id: 'obra1' } }), L('receber', { origem: { tipo: 'proposta', id: 'obra1' }, situacao: 'cancelado' }), L('receber', { origem: { tipo: 'os', id: 'obra1' } })];
+    igual('documentos: lançamentos já feitos do documento (sem os cancelados)', F.lancadosDe(ld, 'proposta', 'obra1').length, 1);
   })();
 
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };

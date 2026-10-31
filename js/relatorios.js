@@ -1,6 +1,6 @@
 /*
  * PDFs da execução: ordem de serviço, relatório de instalação (termo de entrega), com as assinaturas colhidas na tela e,
- * no relatório, as fotos dos equipamentos com as legendas, e pedido de compra para o fornecedor. Mesmo motor de documento da proposta (App.Pdf), sem capa.
+ * no relatório, as fotos dos equipamentos com as legendas, pedido de compra para o fornecedor e recibo do financeiro. Mesmo motor de documento da proposta (App.Pdf), sem capa.
  */
 window.App = window.App || {};
 
@@ -410,5 +410,52 @@ window.App = window.App || {};
     return { blob: out.blob, nome: 'Pedido_' + c.numero + (forn ? '_' + U.slug(forn) : '') + '.pdf', modelo: modelo };
   }
 
-  App.Relatorios = { montarOS: montarOS, pdfOS: pdfOS, montarInstalacao: montarInstalacao, pdfInstalacao: pdfInstalacao, montarCompra: montarCompra, pdfCompra: pdfCompra };
+  /* ------------------------------------------------------------ recibo (financeiro) */
+
+  /** Número do recibo: o documento do lançamento ou um código curto e estável do registro. */
+  function numeroRecibo(l) { return String(l.documento || '').trim() || 'R-' + String(l.id || '').slice(-6).toUpperCase(); }
+
+  function montarRecibo(l, ctx, rec) {
+    const emp = ctx.empresa;
+    const papel = papelDe(emp);
+    const k = (papel.w - 2880) / 9360;
+    const valor = U.numOr(l.valorPago, U.numOr(l.valor, 0));
+    const forma = App.Fin ? App.Fin.rotulo(App.Fin.FORMAS, l.forma) : l.forma;
+    const pagador = (l.pessoa && l.pessoa.nome) || '';
+    const num = numeroRecibo(l);
+    const b = [];
+    b.push(faixa('RECIBO', 'Nº ' + num + '  ·  ' + U.dataBR(l.pagoEm), [['Valor:', U.brl(valor), AZUL]]));
+    b.push(P([], { after: 120 }));
+    b.push(quadro('Recebemos' + (pagador ? ' de ' + pagador : '') + ' a importância de ' + U.brl(valor) + ' (' + U.extenso(valor) + '), referente a ' +
+      String(l.descricao || 'pagamento').replace(/\.$/, '') + (l.parcela ? ' — parcela ' + l.parcela.n + ' de ' + l.parcela.de : '') + '.', { sz: 22 }));
+    b.push(secao('Dados do pagamento'));
+    b.push(pares([
+      ['Data do pagamento', U.dataBR(l.pagoEm)], ['Forma de pagamento', forma],
+      ['Valor da parcela', U.brl(U.numOr(l.valor, 0))], U.num(l.juros) > 0 ? ['Juros / multa', U.brl(U.num(l.juros))] : null,
+      U.num(l.desconto) > 0 ? ['Desconto', U.brl(U.num(l.desconto))] : null, ['Vencimento', U.dataBR(l.vencimento)],
+      l.origem && l.origem.numero ? ['Documento de origem', l.origem.numero] : null
+    ]));
+    b.push(secao('Emitente'));
+    b.push(pares([
+      ['Empresa', emp.razaoSocial || emp.razao], ['CNPJ', emp.cnpj],
+      ['Endereço', [emp.endereco, emp.bairro].filter(Boolean).join(', ')], ['Cidade / UF', [emp.cidade, emp.uf].filter(Boolean).join(' / ')]
+    ]));
+    b.push(P([], { after: 160 }));
+    b.push(P([R('Para clareza, firmamos o presente recibo, dando plena quitação do valor acima.', { color: GRAFITE, sz: 19 })], { after: 80 }));
+    b.push(P([R([emp.cidade, U.dataBR(l.pagoEm)].filter(Boolean).join(', ') + '.', { color: GRAFITE, sz: 19 })], { jc: 'right', after: 120 }));
+    b.push(blocoAceite('Assinatura', '', [{ nome: emp.responsavel || emp.razao, papel: (emp.razaoSocial || emp.razao) + (emp.cnpj ? ' — CNPJ ' + emp.cnpj : '') }], rec.imagens));
+    const cr = cabecalhoRodape(emp, rec.logo, 'Recibo ' + num);
+    return { papel: papel, k: k, corpo: b, cabecalho: cr.cabecalho, rodape: cr.rodape, imagens: rec.imagens };
+  }
+
+  async function pdfRecibo(l, ctx) {
+    ctx = ctx || App.Calc.contexto();
+    const rec = await carregar(ctx, {});
+    const modelo = montarRecibo(l, ctx, rec);
+    const out = await App.Pdf.pacote(modelo, { logo: rec.logo }, { titulo: 'Recibo ' + numeroRecibo(l), assunto: 'Recibo de pagamento', autor: ctx.empresa.razao });
+    return { blob: out.blob, nome: 'Recibo_' + U.slug(numeroRecibo(l)) + (l.pessoa && l.pessoa.nome ? '_' + U.slug(l.pessoa.nome) : '') + '.pdf', modelo: modelo };
+  }
+
+  App.Relatorios = { montarOS: montarOS, pdfOS: pdfOS, montarInstalacao: montarInstalacao, pdfInstalacao: pdfInstalacao, montarCompra: montarCompra, pdfCompra: pdfCompra,
+    montarRecibo: montarRecibo, pdfRecibo: pdfRecibo };
 })(window.App);

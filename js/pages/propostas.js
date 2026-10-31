@@ -83,6 +83,7 @@
         h('td.acoes-col',
           App.Envio.botao(function () { App.enviarProposta(p, function () { S.save('propostas', p); recarregar(); }); }, 'proposta ' + p.numero),
           App.Visualizar.botao(function () { return App.Pdf.gerar(p, C.contexto()); }, 'Proposta ' + p.numero),
+          p.status === 'aprovada' && App.botaoFinanceiro ? App.botaoFinanceiro('proposta', p, recarregar) : null,
           btnPdf,
           btnDocx,
           h('button.btn-icone', { type: 'button', title: 'Gerar contrato', 'aria-label': 'Gerar contrato', onclick: function () { UI.ir('#/contrato/novo?proposta=' + p.id); } }, '✍'),

@@ -126,6 +126,13 @@ window.App = window.App || {};
     return pend.length;
   };
 
+  /** Apaga as fotos e documentos deste aparelho (troca de usuário); continuam na nuvem. */
+  F.limpar = function () {
+    Object.keys(mem).forEach(function (k) { delete mem[k]; });
+    gravarExcluir([]);
+    return pedido('readwrite', function (l) { return l.clear(); }, function () { /* sem IndexedDB */ }).catch(function (e) { console.error(e); });
+  };
+
   /** Todas as fotos deste aparelho (para o backup). */
   F.todas = function () {
     return listarLocal().then(function (l) { return l.map(function (r) { return { id: r.id, dataURL: r.dataURL, w: r.w, h: r.h, tipo: r.tipo || '', nome: r.nome || '', criadoEm: r.criadoEm }; }); });
