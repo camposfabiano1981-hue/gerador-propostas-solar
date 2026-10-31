@@ -226,8 +226,13 @@
       const salvarAss = function () { mudou(); if (os.id) salvar(false); };
       c.appendChild(h('div.assinaturas-grade',
         App.Assinatura.campo('Assinatura do cliente', os.assinaturas.cliente, { nomePadrao: function () { return os.clienteNome; }, declaracao: termo }, salvarAss),
-        App.Assinatura.campo('Assinatura do técnico', os.assinaturas.tecnico, { nomePadrao: function () { return os.responsavel; } }, salvarAss)));
-      c.appendChild(h('p.ajuda-sec', 'O cliente assina com o dedo no celular ou tablet (ou com o mouse). As assinaturas saem no PDF da OS; sem assinatura, o PDF traz a linha para assinar à mão.'));
+        App.Assinatura.campo('Assinatura do técnico', os.assinaturas.tecnico, { nomePadrao: function () { return os.responsavel; }, usarGuardada: App.Acesso.perfil() === 'admin' }, salvarAss)));
+      c.appendChild(h('p.ajuda-sec', 'O cliente assina com o dedo no celular ou tablet (ou com o mouse) — ou envie a foto da assinatura (🖼). As assinaturas saem no PDF da OS; sem assinatura, o PDF traz a linha para assinar à mão.'));
+      c.appendChild(App.Assinatura.govbr(os, {
+        documento: 'ordem de serviço', aoMudar: salvarAss,
+        gerarPdf: function () { return App.Relatorios.pdfOS(os, C.contexto()); },
+        telefone: function () { return os.telefone; }, cliente: function () { return os.clienteNome; }
+      }));
     });
 
     function desenharResumo() {

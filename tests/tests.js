@@ -1856,5 +1856,29 @@
     }
   })();
 
+  // ---------------------------------------------------------------- assinaturas (imagem, guardada, gov.br)
+  (function () {
+    const A = App.Assinatura;
+    const enc = function (t) { return Array.from(new TextEncoder().encode(t)); };
+    const cn = function (t) { const b = enc(t); return [0x06, 0x03, 0x55, 0x04, 0x03, 0x0C, b.length].concat(b); };
+    const hex = function (arr) { return arr.map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); };
+    const pdf = function (der, extra) {
+      const s = '%PDF-1.7\n1 0 obj << /Type /Sig /ByteRange [0 100 300 50] /Contents <' + hex(der) + '0'.repeat(80) + '> ' + (extra || '') + ' >> endobj\n%%EOF';
+      return new Uint8Array(Array.from(s).map(function (c) { return c.charCodeAt(0); }));
+    };
+    const gov = A.analisarPdf(pdf([0x30, 0x82].concat(cn('AC Final do Governo Federal do Brasil v1'), cn('JOSÉ DA SILVA:12345678900'), enc(' Governo Federal ')), "/M (D:20261031101500-03'00')"));
+    ok('gov.br: PDF assinado conferido — emissor, signatário sem o CPF e data', gov.pdf && gov.assinado && gov.quantidade === 1 && gov.emissor === 'gov.br' &&
+      JSON.stringify(gov.signatarios) === '["JOSÉ DA SILVA"]' && gov.autoridades.length === 1 && gov.data === '2026-10-31T10:15:00', JSON.stringify(gov));
+    const icp = A.analisarPdf(pdf([0x30].concat(cn('AC SOLUTI Multipla v5'), cn('Autoridade Certificadora Raiz Brasileira v5'), cn('EMPRESA SOLAR LTDA:12345678000199'), enc('ICP-Brasil'))));
+    ok('certificado ICP-Brasil: emissor e titular (sem CNPJ)', icp.assinado && icp.emissor === 'ICP-Brasil' && JSON.stringify(icp.signatarios) === '["EMPRESA SOLAR LTDA"]' && icp.data === '', JSON.stringify(icp));
+    const semAss = A.analisarPdf(new Uint8Array(Array.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF').map(function (c) { return c.charCodeAt(0); })));
+    ok('PDF sem assinatura digital e arquivo que não é PDF', semAss.pdf && !semAss.assinado && !A.analisarPdf(new Uint8Array([1, 2, 3])).pdf);
+    igual('descrição da assinatura digital', A.descricaoDigital({ fotoId: 'x', emissor: 'gov.br', signatarios: ['JOSÉ DA SILVA'], assinadoEm: '2026-10-31T10:15:00' }), 'Assinado digitalmente pelo gov.br por JOSÉ DA SILVA em 31/10/2026');
+    ok('como cada assinatura foi feita (tela, imagem, guardada; antigas = tela)', /^Assinado na tela em 31\/10\/2026 às/.test(A.descricao({ fotoId: 'a', em: '2026-10-31T09:05:00', tipo: 'tela' })) &&
+      /^Imagem da assinatura incluída em/.test(A.descricao({ fotoId: 'a', em: '2026-10-31T09:05:00', tipo: 'imagem' })) &&
+      /^Assinatura guardada aplicada em/.test(A.descricao({ fotoId: 'a', em: '2026-10-31T09:05:00', tipo: 'guardada' })) &&
+      /^Assinado na tela em/.test(A.descricao({ fotoId: 'a', em: '2026-10-31T09:05:00' })) && A.descricao(A.vazia()) === '' && A.vazia().tipo === '');
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

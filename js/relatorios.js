@@ -96,20 +96,27 @@ window.App = window.App || {};
       return TC([
         T(a.nome || ' ', { top: { sz: 6, space: 4, color: '334155' }, jc: 'center', before: 40, after: 10 }, { b: true, sz: 19 }),
         T(a.papel, { jc: 'center', after: 10 }, { color: CINZA, sz: 16 }),
-        T(a.em ? 'Assinado na tela em ' + App.Assinatura.dataHora(a.em) : 'Data: ____/____/________', { jc: 'center' }, { color: CINZA, sz: 15 })
+        T(a.linha || (a.em ? 'Assinado na tela em ' + App.Assinatura.dataHora(a.em) : 'Data: ____/____/________'), { jc: 'center' }, { color: CINZA, sz: 15 })
       ], { w: w, semBorda: true, mar: { t: 0, b: 0, l: 300, r: 300 }, vAlign: 'top' });
     }), false, { naoQuebrar: true }));
     return TBL(larg, linhas, { manterJunto: true });
   }
 
   /** Assinantes do bloco de aceite a partir de {cliente, tecnico} do registro. */
-  function assinantes(as, rec, cliente, tecnico, papelTecnico) {
+  /** digital: PDF assinado pelo cliente no gov.br (anexado ao registro) — sem a assinatura na tela, a linha do cliente cita a digital. */
+  function assinantes(as, rec, cliente, tecnico, papelTecnico, digital) {
     as = as || {};
     const um = function (x, ref, nome, papel) {
       const assinado = !!(x && x.fotoId && rec.imagens[ref]);
-      return { ref: assinado ? ref : null, w: (rec.dims[ref] || {}).w, h: (rec.dims[ref] || {}).h, nome: (x && x.nome) || nome, papel: papel, em: x && x.fotoId ? x.em : '' };
+      return { ref: assinado ? ref : null, w: (rec.dims[ref] || {}).w, h: (rec.dims[ref] || {}).h, nome: (x && x.nome) || nome, papel: papel, em: x && x.fotoId ? x.em : '',
+        linha: x && x.fotoId ? App.Assinatura.descricao(x) : '' };
     };
-    return [um(as.cliente, 'assCliente', cliente, 'Cliente'), um(as.tecnico, 'assTecnico', tecnico, papelTecnico)];
+    const cli = um(as.cliente, 'assCliente', cliente, 'Cliente');
+    if (!cli.ref && digital && digital.fotoId) {
+      cli.linha = App.Assinatura.descricaoDigital(digital) + ' — arquivo assinado guardado no registro';
+      if (digital.signatarios && digital.signatarios[0]) cli.nome = digital.signatarios[0];
+    }
+    return [cli, um(as.tecnico, 'assTecnico', tecnico, papelTecnico)];
   }
 
   /** Logotipo, imagens das assinaturas e das fotos (App.Fotos) já carregadas. */
@@ -186,7 +193,7 @@ window.App = window.App || {};
     }
     const termo = N.substituir(ctx.textos.termoOS || '', vars(ctx, os.clienteNome));
     b.push(P([], { after: 160 }));
-    b.push(blocoAceite('Aceite e assinaturas', termo, assinantes(os.assinaturas, rec, os.clienteNome, os.responsavel, 'Técnico responsável — ' + (emp.nomeCurto || emp.razao)), rec.imagens));
+    b.push(blocoAceite('Aceite e assinaturas', termo, assinantes(os.assinaturas, rec, os.clienteNome, os.responsavel, 'Técnico responsável — ' + (emp.nomeCurto || emp.razao), os.assinaturaDigital), rec.imagens));
     const cr = cabecalhoRodape(emp, rec.logo, 'Ordem de serviço ' + os.numero);
     return { papel: papel, k: k, corpo: b, cabecalho: cr.cabecalho, rodape: cr.rodape, imagens: rec.imagens };
   }
@@ -303,7 +310,7 @@ window.App = window.App || {};
     // termo e assinaturas
     const termo = N.substituir(ctx.textos.termoInstalacao || '', vars(ctx, inst.clienteNome));
     b.push(P([], { after: 160 }));
-    b.push(blocoAceite('Termo de entrega e aceite', termo, assinantes(inst.assinaturas, rec, inst.clienteNome, inst.responsavel, 'Responsável técnico — ' + (emp.nomeCurto || emp.razao)), rec.imagens));
+    b.push(blocoAceite('Termo de entrega e aceite', termo, assinantes(inst.assinaturas, rec, inst.clienteNome, inst.responsavel, 'Responsável técnico — ' + (emp.nomeCurto || emp.razao), inst.assinaturaDigital), rec.imagens));
     if (ctx.textos.slogan) b.push(T(N.substituir(ctx.textos.slogan, vars(ctx, inst.clienteNome)), { top: { sz: 6, space: 4, color: DOURADO }, before: 300, jc: 'center' }, { color: AZUL, sz: 18 }));
     const cr = cabecalhoRodape(emp, rec.logo, 'Relatório de instalação' + (inst.clienteNome ? ' — ' + inst.clienteNome : ''));
     return { papel: papel, k: k, corpo: b, cabecalho: cr.cabecalho, rodape: cr.rodape, imagens: rec.imagens };

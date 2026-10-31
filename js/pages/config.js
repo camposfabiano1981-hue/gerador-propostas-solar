@@ -100,6 +100,17 @@
       { k: 'banco.documento', label: 'CPF/CNPJ do titular' },
       { k: 'banco.pix', label: 'Chave PIX' }
     ], emp, marcar)));
+    // assinatura guardada do responsável técnico: gravada na hora (independe do "Salvar alterações")
+    const assResp = Object.assign(App.Assinatura.vazia(), emp.assinaturaResponsavel || {});
+    cont.appendChild(h('div.card.assinatura-guardada-card', h('h3', 'Assinatura do responsável técnico'),
+      h('p.ajuda-sec', 'Grave uma vez (na tela ou pela foto da assinatura em papel branco). Nas instalações e ordens de serviço, o administrador aplica com um clique em "⭐ Usar assinatura guardada" no campo do técnico.'),
+      h('div.assinaturas-grade', App.Assinatura.campo('Assinatura guardada', assResp, { nomePadrao: function () { return emp.responsavel; } }, function () {
+        const c = S.config().empresa;
+        c.assinaturaResponsavel = assResp.fotoId ? U.clone(assResp) : null;
+        S.salvarConfig('empresa', c);
+        emp.assinaturaResponsavel = c.assinaturaResponsavel;
+        UI.toast(assResp.fotoId ? 'Assinatura do responsável técnico guardada.' : 'Assinatura guardada removida.', 'ok');
+      }))));
     cont.appendChild(rodapeSalvar(function () {
       if (!String(emp.razao || '').trim()) { UI.toast('Informe a razão social.', 'erro'); return; }
       try { S.salvarConfig('empresa', emp); } catch (e) { UI.toast(e.message, 'erro'); return; }

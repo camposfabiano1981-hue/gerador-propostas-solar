@@ -676,8 +676,13 @@
       const salvarAss = function () { mudou(); if (inst.id) salvar(false); };
       c.appendChild(h('div.assinaturas-grade',
         App.Assinatura.campo('Assinatura do cliente', inst.assinaturas.cliente, { nomePadrao: function () { return inst.clienteNome; }, declaracao: termo }, salvarAss),
-        App.Assinatura.campo('Assinatura do responsável técnico', inst.assinaturas.tecnico, { nomePadrao: function () { return inst.responsavel; } }, salvarAss)));
-      c.appendChild(h('p.ajuda-sec', 'Na entrega da obra, o cliente assina com o dedo no celular ou tablet. As assinaturas saem no relatório de instalação em PDF (botão no resumo); sem assinatura, o PDF traz a linha para assinar à mão.'));
+        App.Assinatura.campo('Assinatura do responsável técnico', inst.assinaturas.tecnico, { nomePadrao: function () { return inst.responsavel; }, usarGuardada: App.Acesso.perfil() === 'admin' }, salvarAss)));
+      c.appendChild(h('p.ajuda-sec', 'Na entrega da obra, o cliente assina com o dedo no celular ou tablet — ou envie a foto da assinatura (🖼). As assinaturas saem no relatório de instalação em PDF (botão no resumo); sem assinatura, o PDF traz a linha para assinar à mão.'));
+      c.appendChild(App.Assinatura.govbr(inst, {
+        documento: 'relatório de instalação', aoMudar: salvarAss,
+        gerarPdf: function () { return App.Relatorios.pdfInstalacao(inst, C.contexto()); },
+        telefone: function () { return inst.telefone; }, cliente: function () { return inst.clienteNome; }
+      }));
     });
 
     /* ---------- ordens de serviço */
