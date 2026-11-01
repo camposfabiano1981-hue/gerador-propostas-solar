@@ -59,6 +59,8 @@
     // proposta em aberto: custos dos materiais lançados por pedidos de compra depois da última gravação
     const resumoSalvo = id ? U.numOr((p.resumo || {}).total, 0) : 0;
     const custosNovos = id && ['aprovada', 'recusada'].indexOf(p.status) < 0 ? C.atualizarCustosProposta(p, ctx) : null;
+    // proposta em aberto com kit salvo: o preço do kit mudou depois de aplicado → o valor do kit acompanha
+    const kitNovo = id && ['aprovada', 'recusada'].indexOf(p.status) < 0 && App.Acesso.podeLer('kits') ? App.Kit.atualizarNaProposta(p, S.list('kits')) : null;
     const ehArm = function () { return p.tipoSistema === 'hibrido' || p.tipoSistema === 'bess'; };
     const grupoA = function () { return App.Energia.modalidade(p.modalidade).grupo === 'A'; };
     const garantirCenarios = function () { p.cenarios = C.cenariosConfig(p); return p.cenarios; };
@@ -338,6 +340,9 @@
           return;
         }
       }
+      infos.kit = h('div.kit-proposta');
+      c.appendChild(infos.kit);
+      pintarKit();
       const micro = p.tipoSistema !== 'hibrido' && p.topologia === 'micro';
       const tipoInv = p.tipoSistema === 'hibrido' ? 'hibrido' : (micro ? 'micro' : 'inversor');
       if (p.tipoSistema !== 'hibrido') {
@@ -363,6 +368,90 @@
       infos.sistema = h('div.info');
       c.appendChild(infos.sistema);
     });
+
+    /* ---------------- kit salvo (Cadastros › Kits) */
+    const K = App.Kit;
+    /** Bloco do kit no dimensionamento: o kit em uso com os avisos, ou os botões para usar um kit salvo e salvar esta proposta como kit. */
+    function pintarKit() {
+      const box = infos.kit;
+      if (!box) return;
+      box.replaceChildren();
+      if (!App.Acesso.podeLer('kits')) return;
+      const kits = S.list('kits');
+      const k = p.kitId ? kits.find(function (x) { return x.id === p.kitId; }) : null;
+      const acoes = [];
+      if (k) {
+        box.appendChild(h('div.kit-ativo', h('strong', '📦 ' + K.titulo(k.nome || p.kitNome)),
+          h('small', [k.fornecedor, 'custo do kit ' + U.brl(K.custo(k)) + ' (kit fechado' + (U.num(k.frete) > 0 ? ' + frete' : '') + ')', K.textoValidade(k)].filter(Boolean).join(' · '))));
+        if (kitNovo && sujo) box.appendChild(h('p.nota.ok', 'Kit atualizado: ' + U.brl(kitNovo.antes) + ' → ' + U.brl(kitNovo.depois) + ' (preço do kit salvo alterado). Salve para manter.'));
+        const av = K.conferir(p, k, r, ctx.equipamentos);
+        if (!p.kitManual) av.push({ tipo: 'aviso', texto: 'O preço está pela soma dos itens, não pelo valor do kit: use o kit de novo ou marque "Informar valor do kit manualmente".' });
+        else if (Math.abs(U.numOr(p.kitValor, 0) - K.custo(k)) >= 0.005) av.push({ tipo: 'aviso', texto: 'Valor do kit na proposta (' + U.brl(U.numOr(p.kitValor, 0)) + ') diferente do kit salvo (' + U.brl(K.custo(k)) + ').' });
+        if (av.length) box.appendChild(h('ul.alertas', av.map(function (a) { return h('li.' + (a.tipo === 'erro' ? 'erro' : 'aviso'), a.texto); })));
+        acoes.push(h('button.btn.pequeno', { type: 'button', onclick: escolherKit }, '🔄 Trocar kit'));
+        acoes.push(h('button.btn.pequeno', { type: 'button', onclick: function () { K.desvincular(p); sujo = true; pintarKit(); desenhar('materiais'); UI.toast('Kit desvinculado: a proposta mantém os equipamentos e o valor.', 'ok'); } }, 'Desvincular'));
+        if (p.id && p.status === 'aprovada' && App.Acesso.podeLer('compras')) {
+          const ped = S.list('compras').find(function (x) { return x.kitId && x.propostaId === p.id && x.situacao !== 'cancelado'; });
+          acoes.push(ped ? h('a.btn.pequeno', { href: '#/compra/' + ped.id }, '🛒 Pedido do kit ' + (ped.numero || ''))
+            : h('a.btn.pequeno.primario.btn-pedido-kit', { href: '#/compra/nova?kit=' + k.id + '&proposta=' + p.id }, '🛒 Gerar pedido de compra do kit'));
+        }
+      } else {
+        if (p.kitId) box.appendChild(h('p.nota.aviso', 'O kit salvo desta proposta ("' + (p.kitNome || '') + '") foi excluído: o valor do kit continua o informado.'));
+        const ativos = kits.filter(function (x) { return x.ativo !== false; }).length;
+        acoes.push(h('button.btn.pequeno.primario.btn-usar-kit', { type: 'button', disabled: !ativos, title: ativos ? '' : 'Nenhum kit salvo: cadastre em Cadastros › Kits fotovoltaicos', onclick: escolherKit },
+          '📦 Usar kit salvo' + (ativos ? ' (' + ativos + ')' : '')));
+        if (p.kitId) acoes.push(h('button.btn.pequeno', { type: 'button', onclick: function () { K.desvincular(p); sujo = true; pintarKit(); } }, 'Desvincular'));
+      }
+      if (App.Acesso.podeGravar('kits')) acoes.push(h('button.btn.pequeno.btn-salvar-kit', { type: 'button', onclick: salvarComoKit }, '💾 Salvar como kit'));
+      box.appendChild(h('div.kit-acoes', acoes));
+    }
+
+    /** Lista dos kits: do mesmo tipo primeiro e, dentro do tipo, os de potência mais próxima da necessária. */
+    function escolherKit() {
+      const lista = K.sugerir(S.list('kits'), p, r, ctx.equipamentos);
+      if (!lista.length) { UI.toast('Nenhum kit salvo. Cadastre em Cadastros › Kits fotovoltaicos.', 'erro'); return; }
+      const alvo = r && r.kwpNecessario > 0 ? r.kwpNecessario : 0;
+      let fechar = null;
+      const itens = lista.map(function (s) {
+        const k = s.kit;
+        return h('button.kit-opcao' + (s.mesmoTipo ? '' : '.outro-tipo') + (k.id === p.kitId ? '.atual' : ''), {
+          type: 'button', onclick: function () { if (fechar) fechar(); usarKit(k); }
+        },
+        h('span.kit-opcao-topo', h('strong', k.nome || '(sem nome)'), s.proximo ? UI.badge('Potência próxima', 'ok') : null,
+          !s.mesmoTipo ? UI.badge(K.rotulo(k.tipo), 'cinza') : null, App.Kits.badgeValidade(k), k.id === p.kitId ? UI.badge('Em uso', 'azul') : null),
+        h('small', [k.fornecedor, s.kwp > 0 ? U.fmtSmart(s.kwp, 2) + ' kWp' + (s.dif != null ? ' (' + (s.dif > 0 ? '+' : '') + Math.round(s.dif * 100) + '% da necessária)' : '') : '',
+          'custo ' + U.brl(K.custo(k))].filter(Boolean).join(' · ')),
+        h('small.mini', K.composicao(k, ctx.equipamentos)));
+      });
+      fechar = UI.modal({
+        titulo: 'Usar kit salvo', largo: true,
+        corpo: h('div', h('p.ajuda-sec', alvo ? 'Necessário pelo dimensionamento: ' + U.fmtSmart(alvo, 2) + ' kWp. Os kits do mesmo tipo (' + K.rotulo(K.tipoProposta(p)).toLowerCase() + ') e de potência mais próxima aparecem primeiro.'
+          : 'Informe o consumo para os kits de potência mais próxima aparecerem primeiro.'), h('div.lista-kits', itens)),
+        acoes: [{ label: 'Cancelar' }]
+      });
+    }
+
+    async function usarKit(k) {
+      const v = K.validade(k);
+      if (v.estado === 'vencida' && !(await UI.confirmar('A cotação do kit "' + k.nome + '" venceu em ' + U.dataBR(k.validade) + '. Usar mesmo assim? Confirme o preço com o fornecedor.', 'Usar o kit'))) return;
+      const res = K.aplicar(p, k, ctx.equipamentos);
+      sujo = true;
+      desenhar('sistema');
+      desenhar('materiais');
+      atualizar();
+      UI.toast('Kit "' + k.nome + '" na proposta: equipamentos, quantidades e valor do kit (' + U.brl(K.custo(k)) + ').' + (res.avisos.length ? ' ' + res.avisos.join(' ') : ''), res.avisos.length ? 'info' : 'ok');
+    }
+
+    function salvarComoKit() {
+      if (!r || !r.modulo || !(r.nModulos > 0)) { UI.toast('Escolha o módulo e dimensione o sistema antes de salvar como kit.', 'erro'); return; }
+      App.Kits.abrirForm(K.deProposta(p, r, ctx.equipamentos), function (salvo) {
+        Object.assign(p, { kitId: salvo.id, kitNome: salvo.nome, kitManual: true, kitValor: K.custo(salvo), kitAplicadoEm: new Date().toISOString() });
+        sujo = true;
+        desenhar('materiais');
+        atualizar();
+        UI.toast('Kit "' + salvo.nome + '" salvo em Cadastros › Kits e ligado a esta proposta.', 'ok');
+      }, { titulo: 'Salvar esta proposta como kit' });
+    }
 
     /* ---------------- seção: armazenamento */
     secao('hibrido', 'Armazenamento — equipamento e cargas críticas', function (c) {
@@ -489,7 +578,7 @@
       c.appendChild(modos);
       c.appendChild(UI.grade([
         { k: 'kitManual', label: 'Informar valor do kit manualmente (cotação do distribuidor)', type: 'checkbox', cls: 'span2' },
-        p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money' } : null,
+        p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money', help: p.kitId ? '📦 Do kit salvo "' + (p.kitNome || '') + '" (kit fechado + frete).' : null } : null,
         p.precoModo === 'separado'
           ? { k: 'maoObraValor', label: 'Mão de obra + projeto + homologação', type: 'money', required: true, help: 'Inclui a comissão, se houver.' }
           : { k: 'valorTotal', label: ehArm() ? 'Valor do sistema FV (sem armazenamento)' : 'Valor total da proposta', type: 'money', required: true },
@@ -514,7 +603,7 @@
       c.appendChild(h('h5.sub-preco', '1. Custos'));
       c.appendChild(UI.grade([
         { k: 'kitManual', label: 'Informar valor do kit manualmente (cotação do distribuidor)', type: 'checkbox', cls: 'span2' },
-        p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money' } : null
+        p.kitManual ? { k: 'kitValor', label: 'Valor do kit fotovoltaico', type: 'money', help: p.kitId ? '📦 Do kit salvo "' + (p.kitNome || '') + '" (kit fechado + frete).' : null } : null
       ], p, mudou, 3));
       const faixa = Number(p.instalacaoFaixa) === 2 ? 2 : 1;
       c.appendChild(h('p.rotulo-campo', 'Instalação por módulo'));
@@ -766,6 +855,7 @@
         if (mud) desenharItens();
       }
       r = C.calcular(p, ctx);
+      pintarKit();
       const cli = ctx.clientes.find(function (x) { return x.id === p.clienteId; });
       const nomeTipo = { ongrid: 'Sistema On-Grid', hibrido: 'Sistema Híbrido', bess: 'BESS' }[p.tipoSistema] || 'Sistema On-Grid';
       subtitulo.textContent = [cli ? cli.nome : 'Cliente não selecionado', nomeTipo, 'Grupo ' + r.grupo + ' ' + r.modalidade.curto, p.numero].join(' · ');
@@ -1107,6 +1197,13 @@
     atualizar();
     // proposta nova ainda não alterada pelo usuário: sair sem pedir confirmação
     if (!id) inicial = JSON.stringify(p);
+    if (kitNovo) {
+      sujo = true;
+      UI.toast('Kit atualizado: ' + U.brl(kitNovo.antes) + ' → ' + U.brl(kitNovo.depois) + ' ("' + (kitNovo.kit.nome || '') + '").' +
+        (r && resumoSalvo && Math.abs(r.total - resumoSalvo) >= 0.01 ? ' Valor da proposta ' + U.brl(resumoSalvo) + ' → ' + U.brl(r.total) + '.' : '') + ' Salve para manter.', 'ok');
+      desenhar('materiais');
+      pintarKit();
+    }
     if (custosNovos) {
       sujo = true;
       UI.toast('Custos atualizados pelos pedidos de compra (' + custosNovos.n + (custosNovos.n === 1 ? ' material' : ' materiais') + ')' +

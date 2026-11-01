@@ -729,3 +729,25 @@ td.num.saida { color: var(--vermelho); }
 .etapa-projeto { background: var(--azul-claro); border: 1px solid var(--azul-borda); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
 .conclusao-box.pronta { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 10px 12px; }
 .conclusao-titulo.pronta { color: var(--ambar); }
+
+/* ---------- kits fotovoltaicos */
+.kit-proposta { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border: 1px dashed var(--azul-borda); border-radius: 10px; background: var(--azul-claro); }
+.kit-ativo { display: flex; flex-direction: column; gap: 2px; }
+.kit-ativo strong { color: var(--azul); font-size: 15px; }
+.kit-ativo small { color: var(--muted); }
+.kit-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.lista-kits { display: flex; flex-direction: column; gap: 8px; }
+.kit-opcao { text-align: left; border: 1.5px solid var(--borda-forte); background: #fff; border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; font: inherit; }
+.kit-opcao:hover, .kit-opcao:focus { border-color: var(--azul-2); background: var(--azul-claro); }
+.kit-opcao.atual { border-color: var(--azul-2); }
+.kit-opcao.outro-tipo { opacity: .8; }
+.kit-opcao-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.kit-opcao-topo strong { font-size: 15px; color: var(--texto); margin-right: 4px; }
+.kit-opcao small { color: var(--muted); }
+.kit-itens .tabela input, .kit-itens .tabela select { width: 100%; min-width: 0; }
+.kit-itens .tabela td.num input { max-width: 90px; }
+.kit-itens tr.fora-cadastro td { background: #FFFBEB; }
+.kit-itens > .btn { margin-top: 8px; }
+.aviso-txt { color: var(--ambar); }
+.kit-historico { font-size: 13px; color: var(--texto-2); }
+@media (max-width: 700px) { .kit-itens .tabela { min-width: 620px; } }

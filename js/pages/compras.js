@@ -64,11 +64,11 @@
         const t = Cp.totais(c), v = vinculados(c), obra = c.instalacaoId && insts[c.instalacaoId];
         tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button')) UI.ir('#/compra/' + c.id); } },
           h('td', h('strong', c.numero || '(sem número)'), h('div.mini', U.dataBR(c.data))),
-          h('td', (c.fornecedor && c.fornecedor.nome) || '—', c.docFornecedor ? h('div.mini', 'Doc. ' + c.docFornecedor) : null),
+          h('td', (c.fornecedor && c.fornecedor.nome) || '—', c.docFornecedor ? h('div.mini', 'Doc. ' + c.docFornecedor) : null, c.kitId ? h('div.mini', '📦 Kit salvo') : null),
           h('td.num', String(v.total)),
           h('td.num', U.brl(t.total)),
           h('td', obra ? obra.titulo || obra.clienteNome : '—'),
-          h('td', v.total && v.n === v.total ? UI.badge('No cadastro', 'ok') : (v.n ? UI.badge(v.n + ' de ' + v.total, 'ambar') : UI.badge('Pendente', 'cinza'))),
+          h('td', c.kitFechado ? UI.badge('Kit fechado', 'azul') : (v.total && v.n === v.total ? UI.badge('No cadastro', 'ok') : (v.n ? UI.badge(v.n + ' de ' + v.total, 'ambar') : UI.badge('Pendente', 'cinza')))),
           h('td', badge(c.situacao)),
           h('td.acoes-col', App.Visualizar.botao(function () { return App.Relatorios.pdfCompra(c, App.Calc.contexto()); }, 'Pedido de compra ' + (c.numero || '')),
             App.botaoFinanceiro ? App.botaoFinanceiro('compra', c, desenhar) : null, (function () {
@@ -123,6 +123,14 @@
       c = normalizar(salvo);
     } else {
       c = Cp.nova();
+      // pedido do kit da proposta aprovada: kit fechado (uma linha com o valor do kit), fornecedor e frete, ligado à obra
+      const kit = qs && qs.get('kit') ? S.get('kits', qs.get('kit')) : null;
+      if (kit) {
+        const prop = qs.get('proposta') ? S.get('propostas', qs.get('proposta')) : null;
+        const inst = qs.get('instalacao') ? S.get('instalacoes', qs.get('instalacao'))
+          : (prop ? S.list('instalacoes').find(function (i) { return i.propostaId === prop.id && i.situacao !== 'cancelada'; }) : null);
+        c = App.Kit.paraCompra(kit, S.list('equipamentos'), { propostaId: prop ? prop.id : '', instalacaoId: inst ? inst.id : '', numeroProposta: prop ? prop.numero : '' });
+      }
       c.numero = S.proximoNumero(c.data, 'compra').numero;
       if (qs && qs.get('instalacao')) c.instalacaoId = qs.get('instalacao');
     }
@@ -308,6 +316,7 @@
         { k: 'vendedor', label: 'Vendedor / contato' },
         { k: 'condicao', label: 'Condição de pagamento' },
         { k: 'prazoEntrega', label: 'Prazo de entrega' },
+        { k: 'validade', label: 'Validade da cotação', type: 'date', help: 'Vai para o kit ao usar "Salvar como kit".' },
         { k: 'instalacaoId', label: 'Obra (instalação)', type: 'select', cls: 'span2',
           options: [{ v: '', t: '— estoque / sem obra —' }].concat(insts.map(function (x) { return { v: x.id, t: x.titulo || x.clienteNome }; })),
           help: 'Com a obra, os itens podem ser lançados nos materiais consumidos da instalação.' },
@@ -488,15 +497,32 @@
         kpi('Fornecedor', c.fornecedor.nome || '—', c.docFornecedor ? 'Doc. ' + c.docFornecedor : null),
         kpi('Itens', String(c.itens.length), 'soma ' + U.brl(t.itens)),
         kpi('Total do pedido', U.brl(t.total), t.desconto || t.frete || t.outras ? [t.desconto ? '− ' + U.brl(t.desconto) + ' desconto' : '', t.frete ? '+ ' + U.brl(t.frete) + ' frete' : '', t.outras ? '+ ' + U.brl(t.outras) + ' despesas' : ''].filter(Boolean).join(' · ') : null),
-        kpi('Materiais e acessórios', v.total ? v.n + ' de ' + v.total + ' no cadastro' : '—', c.cadastradoEm ? 'Lançado em ' + U.dataBR(c.cadastradoEm) : null)));
+        c.kitFechado ? kpi('Kit fechado', 'Custo do kit da obra', 'fora do cadastro de materiais')
+          : kpi('Materiais e acessórios', v.total ? v.n + ' de ' + v.total + ' no cadastro' : '—', c.cadastradoEm ? 'Lançado em ' + U.dataBR(c.cadastradoEm) : null)));
       const links = [];
       const btnPdf = h('button.btn', { type: 'button', onclick: function () { gerarPdf(btnPdf); } }, '⬇ Pedido em PDF');
       links.push(h('button.btn', { type: 'button', onclick: visualizar }, '👁 Visualizar'));
       links.push(btnPdf);
-      if (c.itens.length) links.push(h('button.btn', { type: 'button', onclick: cadastrar }, '📦 Lançar em Materiais'));
+      if (c.itens.length && !c.kitFechado) links.push(h('button.btn', { type: 'button', onclick: cadastrar }, '📦 Lançar em Materiais'));
+      const kitLigado = c.kitId ? S.get('kits', c.kitId) : null;
+      if (c.itens.length && !kitLigado && App.Acesso.podeGravar('kits')) links.push(h('button.btn.btn-salvar-kit', { type: 'button', onclick: salvarComoKit }, '📦 Salvar como kit'));
+      if (kitLigado) resumo.appendChild(h('p.nota.kit-ligado', '📦 ', h('a', { href: '#/kits' }, App.Kit.titulo(kitLigado.nome)),
+        c.propostaId && S.get('propostas', c.propostaId) ? ' · proposta ' + S.get('propostas', c.propostaId).numero : ''));
       if (c.instalacaoId && S.get('instalacoes', c.instalacaoId)) links.push(h('a.btn', { href: '#/instalacao/' + c.instalacaoId }, '🏗 Abrir a obra'));
       if (links.length) resumo.appendChild(h('div.resumo-links', links));
       resumo.appendChild(h('button.btn.primario', { type: 'button', onclick: function () { salvar(true); } }, 'Salvar'));
+    }
+
+    /** Orçamento do distribuidor → kit salvo (Cadastros › Kits), com os itens, o valor fechado, o frete e a validade. */
+    function salvarComoKit() {
+      const k = App.Kit.deCompra(c, S.list('equipamentos'));
+      App.Kits.abrirForm(k, function (salvo) {
+        c.kitId = salvo.id;
+        mudou();
+        if (c.id) salvar(false);
+        desenharResumo();
+        UI.toast('Kit "' + salvo.nome + '" salvo em Cadastros › Kits.', 'ok');
+      }, { titulo: 'Salvar o orçamento como kit' });
     }
 
     function salvar(avisar) {

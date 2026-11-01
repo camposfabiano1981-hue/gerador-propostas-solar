@@ -593,6 +593,14 @@
     const recarregar = function () { if (fechar) fechar(); if (depois) depois(); };
     const prop = a.p;
     const inst = a.instalacao;
+    /** Kit previsto na proposta × comprado nos pedidos de compra do kit da obra. */
+    function kitComprado(a) {
+      const k = a.kitPedidos;
+      if (!k || !k.n) return null;
+      const dif = U.round(k.previsto - k.total, 2);
+      return h('p.nota.kit-comparacao' + (dif < -0.005 ? '.aviso' : '.ok'), '📦 Kit: previsto na proposta ' + U.brl(k.previsto) + ' × comprado ' + U.brl(k.total) + ' (pedido ' + k.numeros.join(', ') + ')' +
+        (Math.abs(dif) < 0.005 ? ' — igual ao previsto.' : (dif > 0 ? ' — ' + U.brl(dif) + ' abaixo do previsto.' : ' — ' + U.brl(-dif) + ' acima do previsto.')));
+    }
     const corpo = h('div.detalhe-obra',
       h('div.kpis.obra-kpis',
         h('div.kpi', h('span', 'Preço de venda'), h('strong', U.brl(a.vendido))),
@@ -603,6 +611,7 @@
         : 'Apuração em andamento: cada custo entra pelo maior entre o previsto na proposta e o realizado; os ainda não lançados ficam pelo previsto. Feche a apuração quando todos os custos estiverem lançados.',
         inst ? ' Instalação: ' + ((App.Instalacao.STATUS.find(function (x) { return x.id === a.statusInstalacao; }) || {}).label || '') + '.' : ''),
       a.semCalculo ? h('p.nota.aviso', 'Não foi possível recalcular a proposta: o previsto usa só o valor total gravado.') : null,
+      kitComprado(a),
       tabelaApuracao(a),
       h('div.barra-itens',
         h('button.btn', { type: 'button', onclick: function () { maisCusto(prop, recarregar); } }, '+ Custo'),

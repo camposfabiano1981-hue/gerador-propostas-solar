@@ -669,6 +669,13 @@
       if (App.Acesso.podeLer('compras')) {
         botoes.push(h('button.btn.pequeno', { type: 'button', onclick: lancarPedido }, '🛒 Lançar pedido de compra'));
         if (inst.id) botoes.push(h('a.btn.pequeno', { href: '#/compra/nova?instalacao=' + inst.id }, '+ Novo pedido para esta obra'));
+        // kit salvo da proposta: pedido de compra do kit (uma vez; depois, o atalho para o pedido)
+        const kit = prop && prop.kitId && App.Acesso.podeLer('kits') ? S.get('kits', prop.kitId) : null;
+        if (kit && inst.id) {
+          const ped = S.list('compras').find(function (x) { return x.kitId && x.situacao !== 'cancelado' && (x.instalacaoId === inst.id || x.propostaId === prop.id); });
+          botoes.push(ped ? h('a.btn.pequeno', { href: '#/compra/' + ped.id }, '🛒 Pedido do kit ' + (ped.numero || ''))
+            : h('a.btn.pequeno.btn-pedido-kit', { href: '#/compra/nova?kit=' + kit.id + '&proposta=' + prop.id + '&instalacao=' + inst.id }, '🛒 Gerar pedido do kit'));
+        }
       }
       c.appendChild(App.Materiais.editor(inst.materiais, {
         equipamentos: ctx.equipamentos, modo: 'instalacao', botoes: botoes,

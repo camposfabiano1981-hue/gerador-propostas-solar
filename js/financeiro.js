@@ -323,7 +323,7 @@ window.App = window.App || {};
   function parametrosObras() {
     const S = App.Store;
     const c = S ? (S.config().financeiro || {}) : {};
-    return { aliquota: Math.max(0, num(c.aliquotaImpostos)), instalacoes: S ? S.list('instalacoes') : [] };
+    return { aliquota: Math.max(0, num(c.aliquotaImpostos)), instalacoes: S ? S.list('instalacoes') : [], compras: S ? S.list('compras') : [] };
   }
 
   /**
@@ -364,7 +364,8 @@ window.App = window.App || {};
    * a pagar com a obra; no material CA sem lançamento, o consumo registrado na instalação) e apurado — com a apuração aberta, o
    * maior entre previsto e realizado (custos ainda não lançados ficam pelo previsto); fechada, o realizado. Receita: o preço de
    * venda (aberta, o maior entre ele e o lançado a receber; fechada, o lançado). Resultado = receita − custos apurados.
-   * o: {aliquota, instalacoes}
+   * Kit: sem lançamento na categoria do kit, o realizado é o total dos pedidos de compra do kit da obra (feitos ou recebidos).
+   * o: {aliquota, instalacoes, compras}
    */
   function apuracaoObra(p, lancs, categorias, ctx, o) {
     o = o || {};
@@ -384,6 +385,14 @@ window.App = window.App || {};
     const inst = (o.instalacoes || []).find(function (i) { return i.propostaId === p.id && i.situacao !== 'cancelada'; }) || null;
     const statusInst = inst && App.Instalacao ? App.Instalacao.status(inst) : '';
     const fontes = {};
+    // kit previsto na proposta × comprado nos pedidos de compra do kit da obra
+    const pedidosKit = App.Kit && App.Compra ? App.Kit.comprasDaObra(o.compras, p, inst) : [];
+    const kitComprado = arred(pedidosKit.reduce(function (s, c) { return s + App.Compra.totais(c).total; }, 0));
+    if (pedidosKit.length) {
+      const nums = pedidosKit.map(function (c) { return c.numero || 'sem número'; }).join(', ');
+      if (!(real.kit > 0)) { real.kit = kitComprado; fontes.kit = 'pedido de compra do kit ' + nums; }
+      else fontes.kit = 'pedido de compra do kit ' + nums + ': ' + U.brl(kitComprado);
+    }
     if (!(real.materialCA > 0) && inst && App.Materiais) {
       const usado = App.Materiais.resumo(inst, p).usado;
       if (usado > 0) { real.materialCA = usado; fontes.materialCA = 'consumo registrado na instalação'; }
@@ -412,7 +421,8 @@ window.App = window.App || {};
       custoPrevisto: custoPrevisto, custoRealizado: custoRealizado, custoApurado: custoApurado, custos: custoApurado,
       resultadoPrevisto: resultadoPrevisto, resultado: resultado, variacao: arred(resultado - resultadoPrevisto),
       margem: receita > 0 ? resultado / receita : 0, margemPrevista: vendaPrev > 0 ? resultadoPrevisto / vendaPrev : null,
-      lancamentos: ls, semLancamentos: !ls.some(function (l) { return l.tipo === 'pagar'; }), semCalculo: !!prev.semCalculo
+      lancamentos: ls, semLancamentos: !ls.some(function (l) { return l.tipo === 'pagar'; }), semCalculo: !!prev.semCalculo,
+      kitPedidos: { n: pedidosKit.length, total: kitComprado, previsto: arred(prev.valores.kit), numeros: pedidosKit.map(function (c) { return c.numero; }), ids: pedidosKit.map(function (c) { return c.id; }) }
     };
   }
 
@@ -680,8 +690,9 @@ window.App = window.App || {};
     if (tipo === 'compra') {
       const inst = doc.instalacaoId && App.Store ? App.Store.get('instalacoes', doc.instalacaoId) : null;
       const f = doc.fornecedor || {};
-      return { total: arred(App.Compra.totais(doc).total), base: novoLancamento('pagar', { descricao: 'Pedido ' + doc.numero + ' — ' + (f.nome || 'fornecedor'), categoriaId: 'cat-cus-materiais',
-        pessoa: { tipo: 'fornecedor', id: '', nome: f.nome || '' }, origem: { tipo: 'compra', id: doc.id, numero: doc.numero }, obraId: (inst && inst.propostaId) || '',
+      // pedido do kit (kit salvo): custo do kit da obra; os demais, material
+      return { total: arred(App.Compra.totais(doc).total), base: novoLancamento('pagar', { descricao: 'Pedido ' + doc.numero + ' — ' + (f.nome || 'fornecedor'), categoriaId: doc.kitId ? 'cat-cus-kit' : 'cat-cus-materiais',
+        pessoa: { tipo: 'fornecedor', id: '', nome: f.nome || '' }, origem: { tipo: 'compra', id: doc.id, numero: doc.numero }, obraId: doc.propostaId || (inst && inst.propostaId) || '',
         documento: doc.docFornecedor || '', competencia: String(doc.data || hojeISO()).slice(0, 10) }) };
     }
     throw new Error('Documento sem lançamento no financeiro: ' + tipo);

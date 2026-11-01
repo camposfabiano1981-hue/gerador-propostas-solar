@@ -591,7 +591,7 @@
       const depois = S.list('equipamentos');
       const pa = S.get('propostas', 'pa');
       const rAuto = C.calcular(U.clone(pa), C.contexto());
-      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '14');
+      igual('migração v7: versão da base (atual)', localStorage.getItem('gsp.v'), '15');
       ok('migração v7: inversor usado fica inativo e arquivado', depois.some(function (e) { return e.id === 'inv-sofar-4' && e.ativo === false && e.arquivado; }));
       igual('migração v7: proposta automática fixa o inversor que já usava', pa.inversorId, invAuto.inversor.id);
       ok('migração v7: resultado da proposta automática inalterado', rAuto.nInversores === invAuto.nInversores && Math.abs(rAuto.total - invAuto.total) < 1e-6);
@@ -641,8 +641,8 @@
       const uso = function (id) { return S.get('equipamentos', id).uso; };
       ok('migração v8: uso gravado (avulsa, ambas, solar)', uso('u-tomada') === 'avulsa' && uso('u-disjuntor') === 'ambas' && uso('mat-mc4') === 'solar');
       ok('migração v8: material das avulsas deixa de entrar automaticamente na solar', S.get('equipamentos', 'u-tomada').autoIncluir === false);
-      igual('migração v8 → v14: versão da base (atual), instalações, ordens de serviço, pedidos de compra e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) &&
-        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '14 ok');
+      igual('migração v8 → v15: versão da base (atual), instalações, ordens de serviço, pedidos de compra, kits e financeiro', localStorage.getItem('gsp.v') + (Array.isArray(S.list('instalacoes')) && Array.isArray(S.list('ordens')) && Array.isArray(S.list('compras')) && Array.isArray(S.list('kits')) &&
+        Array.isArray(S.list('lancamentos')) && S.list('contasFin').length === 1 && S.list('categoriasFin').length === D.categoriasFin.length ? ' ok' : ''), '15 ok');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
@@ -1988,10 +1988,93 @@
       const g1 = S.get('instalacoes', 'mi1'), g2 = S.get('instalacoes', 'mi2'), g3 = S.get('instalacoes', 'mi3');
       ok('migração v14: obra antiga com todas as etapas concluídas continua concluída (data da última etapa)', I.status(g1) === 'concluida' && g1.conclusao.data === '2026-09-15' && g1.conclusao.legado && I.dataConclusao(g1) === '2026-09-15', g1.conclusao);
       ok('migração v14: obra em andamento e conclusão pelo botão ficam como estavam', !g2.conclusao && I.status(g2) === 'andamento' && g3.conclusao.data === '2026-10-01' && !g3.conclusao.legado);
-      igual('migração v14: versão da base', localStorage.getItem('gsp.v'), '14');
+      igual('migração v14 → v15: versão da base', localStorage.getItem('gsp.v'), '15');
     } finally {
       chaves.forEach(function (k) { if (guardado[k] == null) localStorage.removeItem('gsp.' + k); else localStorage.setItem('gsp.' + k, guardado[k]); });
     }
+  })();
+
+  // ---------------------------------------------------------------- kits fotovoltaicos (kit fechado)
+  (function () {
+    const K = App.Kit, Cp = App.Compra, F = App.Fin;
+    const ctxK = ctxReferencia();
+    const eqs = ctxK.equipamentos;
+    const kit = function (x) { return Object.assign(K.novo(), { nome: 'Kit teste', fornecedor: 'Dist', valor: 9000, frete: 350, itens: [K.novoItem({ tipo: 'modulo', equipamentoId: 'mod-dmegc-625', qtd: 8 }), K.novoItem({ tipo: 'inversor', equipamentoId: 'inv-sofar-4', qtd: 1 })] }, x || {}); };
+    const k1 = kit();
+    igual('kit: custo = valor fechado + frete', K.custo(k1), 9350);
+    igual('kit: potência pelos módulos do cadastro (8 × 625 Wp)', K.potencia(k1, eqs), 5);
+    igual('kit: potência informada prevalece', K.potencia(kit({ potenciaKwp: 5.5 }), eqs), 5.5);
+    igual('kit: nome sugerido curto (fabricante + potência)', K.nomeSugerido(k1, eqs), 'Kit 5 kWp — 8× DMEGC 625 Wp + 1× Sofar 4 kW');
+    igual('kit: tipo do item pela descrição', ['MODULO FOTOVOLTAICO 625W', 'Microinversor Hoymiles', 'INVERSOR HIBRIDO DEYE 5KW', 'Inversor Sofar 4kW', 'BATERIA LITIO 5,12 KWH', 'ESTRUTURA P/ 4 MODULOS', 'Cabo solar 6mm'].map(K.tipoItem).join(','),
+      'modulo,micro,hibrido,inversor,bateria,estrutura,material');
+    igual('kit: validade (sem, válida, vence, vencida)', [K.validade({}, '2026-11-01').estado, K.validade({ validade: '2026-11-20' }, '2026-11-01').estado, K.validade({ validade: '2026-11-03' }, '2026-11-01').estado,
+      K.validade({ validade: '2026-10-30' }, '2026-11-01').estado].join(','), 'sem,ok,vence,vencida');
+    igual('kit: texto da cotação vencida', K.textoValidade({ validade: '2026-10-30' }, '2026-11-01'), 'cotação vencida há 2 dias (30/10/2026)');
+    // ordem para a proposta: mesmo tipo e potência mais próxima
+    const p = Object.assign(App.Calc.novaProposta(ctxK), { consumoMedio: 650, moduloId: 'mod-dmegc-625' });
+    const r = App.Calc.calcular(U.clone(p), ctxK);
+    const kG = kit({ id: 'kg', nome: 'Grande', itens: [K.novoItem({ tipo: 'modulo', equipamentoId: 'mod-dmegc-625', qtd: 14 })] });
+    const kH = kit({ id: 'kh', nome: 'Híbrido', tipo: 'hibrido' });
+    const kI = kit({ id: 'ki', nome: 'Inativo', ativo: false });
+    const sug = K.sugerir([kG, kH, Object.assign(k1, { id: 'k1' }), kI], p, r, eqs, '2026-11-01');
+    igual('kit: sugestões — mesmo tipo e potência mais próxima primeiro, inativo fora', sug.map(function (x) { return x.kit.nome; }).join(','), 'Kit teste,Grande,Híbrido');
+    ok('kit: potência próxima até 10% da necessária', sug[0].proximo === (Math.abs(5 - r.kwpNecessario) / r.kwpNecessario <= 0.1) && sug[1].proximo === false && sug[0].dif < 0.2, { nec: r.kwpNecessario, s: sug.map(function (x) { return x.dif; }) });
+    // aplicar na proposta
+    const pa = U.clone(p);
+    const ap = K.aplicar(pa, k1, eqs);
+    ok('kit aplicado: módulo, quantidades, inversor, valor do kit e vínculo', pa.moduloId === 'mod-dmegc-625' && pa.nModulos === '8' && pa.inversorId === 'inv-sofar-4' && pa.nInversores === '1' && pa.topologia === 'string' &&
+      pa.kitManual === true && pa.kitValor === 9350 && pa.kitId === 'k1' && pa.kitAplicadoEm && !ap.avisos.length, pa);
+    const ra = App.Calc.calcular(U.clone(pa), ctxK);
+    igual('kit aplicado: kit da proposta = custo do kit', ra.kit, 9350);
+    const pm = U.clone(p);
+    const am = K.aplicar(pm, kit({ tipo: 'micro' }), eqs);
+    ok('kit de micro em proposta string: passa a microinversores e avisa o inversor de outro tipo', pm.topologia === 'micro' && !pm.inversorId && am.avisos.length === 1 && /não é do tipo da proposta/.test(am.avisos[0]), am);
+    const avs = K.conferir(Object.assign(U.clone(p), { tipoSistema: 'ongrid' }), kit({ tipo: 'hibrido', validade: '2026-10-30', itens: [K.novoItem({ tipo: 'modulo', equipamentoId: 'mod-dmegc-625', qtd: 14 }), K.novoItem({ tipo: 'inversor', descricao: 'Inversor X', qtd: 1 })] }), r, eqs, '2026-11-01');
+    ok('kit: avisos de potência, cotação vencida, tipo diferente e item fora do cadastro', avs.length === 4 && /acima da necessária/.test(avs[0].texto) && avs[1].tipo === 'erro' && /vencida/.test(avs[1].texto) && /híbrido/.test(avs[2].texto) && /não está ligado ao cadastro/.test(avs[3].texto),
+      avs.map(function (a) { return a.texto; }));
+    // preço do kit alterado → proposta em aberto acompanha (uma vez)
+    const kp = U.clone(k1);
+    ok('kit: salvar sem mudar o preço não marca mudança', K.registrarPreco(kp, U.clone(kp)) === false);
+    kp.precoAtualizadoEm = '2000-01-01T00:00:00.000Z';
+    igual('kit: proposta aplicada depois da última mudança de preço não muda', K.atualizarNaProposta(U.clone(pa), [kp]), null);
+    kp.valor = 9500;
+    ok('kit: mudança de preço registrada com histórico', K.registrarPreco(kp, k1) && kp.precos.length === 1 && kp.precos[0].valor === 9500 && kp.precoAtualizadoEm > pa.kitAplicadoEm);
+    const pu = U.clone(pa);
+    const up = K.atualizarNaProposta(pu, [kp]);
+    ok('kit: proposta em aberto recebe o preço novo (antes → depois)', up && up.antes === 9350 && up.depois === 9850 && pu.kitValor === 9850 && K.atualizarNaProposta(pu, [kp]) === null, up);
+    igual('kit: sem o kit na lista, nada muda', K.atualizarNaProposta(U.clone(pa), []), null);
+    // salvar como kit (proposta)
+    const kd = K.deProposta(pa, ra, eqs);
+    ok('kit a partir da proposta: composição, tipo e valor', kd.itens.length === 2 && kd.itens[0].equipamentoId === 'mod-dmegc-625' && kd.itens[0].qtd === 8 && kd.itens[1].equipamentoId === 'inv-sofar-4' && kd.tipo === 'ongrid' && kd.valor === 9350 && /^Kit 5 kWp/.test(kd.nome), kd);
+    // orçamento do distribuidor → kit
+    const c = Object.assign(Cp.nova(), { id: 'c1', numero: 'PC-1', data: '2026-11-01', validade: '2026-11-08', fornecedor: { nome: 'Atacado' }, desconto: 100, frete: 300, docFornecedor: 'ORC-1',
+      itens: [Cp.novoItem({ descricao: 'MODULO FOTOVOLTAICO DMEGC 625W', qtd: 10, total: 7000 }), Cp.novoItem({ descricao: 'INVERSOR SOFAR 4KTL 4KW', qtd: 1, total: 3500 }), Cp.novoItem({ descricao: 'ESTRUTURA P/ 4 MODULOS', qtd: 3, total: 780 })] });
+    const kc = K.deCompra(c, eqs);
+    ok('kit a partir do orçamento: tipos, equipamentos sugeridos (só os principais), valor fechado (− desconto), frete e validade',
+      kc.itens.map(function (i) { return i.tipo + ':' + i.equipamentoId; }).join(',') === 'modulo:mod-dmegc-625,inversor:inv-sofar-4,estrutura:' && kc.valor === 11180 && kc.frete === 300 && K.custo(kc) === 11480 &&
+      kc.validade === '2026-11-08' && kc.fornecedor === 'Atacado' && kc.compraId === 'c1' && kc.tipo === 'ongrid' && K.potencia(kc, eqs) === 6.25, kc);
+    // kit → pedido de compra (kit fechado)
+    const pc = K.paraCompra(Object.assign(k1, { cotacao: '2026-11-01' }), eqs, { propostaId: 'p1', instalacaoId: 'i1', numeroProposta: 'GE-1' });
+    ok('pedido do kit: kit fechado numa linha, frete, total e composição', pc.itens.length === 1 && /^Kit fotovoltaico — Kit teste \(kit fechado\)$/.test(pc.itens[0].descricao) && Cp.totais(pc).total === 9350 && pc.frete === 350 &&
+      pc.kitId === 'k1' && pc.kitFechado && pc.propostaId === 'p1' && pc.instalacaoId === 'i1' && pc.situacao === 'pedido' && /Composição do kit: 8× DMEGC .*\+ 1× Sofar/.test(pc.observacoes) && /Proposta GE-1/.test(pc.observacoes), pc);
+    const base = F.baseDe('compra', Object.assign({}, pc, { numero: 'PC-2' }), ctxK);
+    ok('lançamento a pagar do pedido do kit: custo do kit da obra', base.base.categoriaId === 'cat-cus-kit' && base.base.obraId === 'p1' && base.total === 9350, base.base);
+    igual('lançamento de pedido comum continua como material', F.baseDe('compra', c, ctxK).base.categoriaId, 'cat-cus-materiais');
+    // resultado por obra: kit previsto × comprado
+    const pAprov = Object.assign(U.clone(pa), { id: 'p1', status: 'aprovada' });
+    const compras = [Object.assign(U.clone(pc), { id: 'pc1', numero: 'PC-9' }), Object.assign(U.clone(pc), { id: 'pc2', numero: 'PC-8', situacao: 'cotacao' }), Object.assign(U.clone(pc), { id: 'pc3', propostaId: 'outra', instalacaoId: '' })];
+    const A = App.Acesso;
+    ok('kits: administrador e vendedor (custos); técnico não vê', A.podeLer('kits', 'admin') && A.podeGravar('kits', 'vendedor') && A.rota('/kits', 'vendedor') && !A.podeLer('kits', 'tecnico') && !A.rota('/kits', 'tecnico') &&
+      App.Nuvem.regras('x@y.com').indexOf("'kits'") < 0);
+    igual('pedidos do kit da obra: só os feitos/recebidos da proposta ou da obra', K.comprasDaObra(compras, pAprov, null).map(function (x) { return x.id; }).join(), 'pc1');
+    const cats = U.clone(D.categoriasFin);
+    const a1 = F.apuracaoObra(pAprov, [], cats, ctxK, { aliquota: 0, instalacoes: [], compras: compras });
+    const l1 = a1.linhas.find(function (x) { return x.id === 'kit'; });
+    ok('resultado por obra: sem lançamento do kit, o realizado é o pedido de compra do kit', l1.previsto === 9350 && l1.realizado === 9350 && /pedido de compra do kit PC-9/.test(l1.nota) && a1.kitPedidos.n === 1 && a1.kitPedidos.total === 9350, l1);
+    const lanc = Object.assign(F.novoLancamento('pagar', { valor: 9400, categoriaId: 'cat-cus-kit', obraId: 'p1', descricao: 'Kit' }), { id: 'l1' });
+    const a2 = F.apuracaoObra(pAprov, [lanc], cats, ctxK, { aliquota: 0, instalacoes: [], compras: compras });
+    const l2 = a2.linhas.find(function (x) { return x.id === 'kit'; });
+    ok('resultado por obra: com o lançamento do kit, vale o lançado e o pedido aparece na nota (sem somar duas vezes)', l2.realizado === 9400 && /PC-9: R\$\s?9\.350,00/.test(l2.nota), l2);
   })();
 
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };

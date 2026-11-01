@@ -57,7 +57,7 @@ window.App = window.App || {};
   function nova() {
     return {
       numero: '', data: U.todayISO(), situacao: 'cotacao', fornecedor: { nome: '', cnpj: '', telefone: '', cidade: '' },
-      docFornecedor: '', vendedor: '', condicao: '', prazoEntrega: '', instalacaoId: '', itens: [],
+      docFornecedor: '', vendedor: '', condicao: '', prazoEntrega: '', validade: '', instalacaoId: '', propostaId: '', kitId: '', itens: [],
       desconto: '', frete: '', outras: '', totalDocumento: '', observacoes: '', anexos: [], cadastradoEm: ''
     };
   }

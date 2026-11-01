@@ -7,10 +7,10 @@ window.App = window.App || {};
   const U = App.U;
   const D = App.DEFAULTS;
   const PREFIX = 'gsp.';
-  const VERSAO = 14;
+  const VERSAO = 15;
   // equipamentos cadastrados a partir do datasheet (sem catálogo de fábrica desde a versão 7)
   const TIPOS_DATASHEET = ['modulo', 'inversor', 'micro', 'hibrido', 'bateria'];
-  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens', 'compras', 'lancamentos', 'contasFin', 'categoriasFin'];
+  const COLECOES = ['clientes', 'equipamentos', 'concessionarias', 'localidades', 'pagamentos', 'propostas', 'servicos', 'avulsas', 'contratos', 'projetos', 'instalacoes', 'ordens', 'compras', 'kits', 'lancamentos', 'contasFin', 'categoriasFin'];
 
   const mem = {}; // fallback quando o localStorage não estiver disponível
 
@@ -149,6 +149,8 @@ window.App = window.App || {};
         if (mudou) gravar('col.instalacoes', insts);
       }
     }
+    // kits fotovoltaicos salvos (cotações dos distribuidores puxadas pelas propostas)
+    if (v < 15 && ler('col.kits', null) == null) gravar('col.kits', []);
     gravar('v', VERSAO);
   };
 
@@ -250,6 +252,7 @@ window.App = window.App || {};
     gravar('col.instalacoes', []);
     gravar('col.ordens', []);
     gravar('col.compras', []);
+    gravar('col.kits', []);
     gravar('col.lancamentos', []);
     gravar('col.contasFin', U.clone(D.contasFin));
     gravar('col.categoriasFin', U.clone(D.categoriasFin));
