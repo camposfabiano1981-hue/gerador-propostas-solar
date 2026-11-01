@@ -395,7 +395,7 @@ window.App = window.App || {};
     [['uc', maiusc(h.uc)], ['classe', maiusc(h.classe)], ['cpf', doc], ['titular', maiusc(h.titular)], ['logradouro', maiusc(h.logradouro)], ['numero', h.numero],
       ['bairro', maiusc(h.bairro)], ['cidade', maiusc(h.cidade)], ['email', h.email], ['uf', h.uf], ['cep', cepF], ['telefone', digitos(h.telefone)], ['celular', digitos(h.celular)],
       ['nFases', c.nFases], ['ramal', h.ramal], ['tipoPadrao', h.conexao], ['tensao', h.tensao], ['disjGeral', pd.disjGeral], ['fatorPot', pd.fatorPot],
-      ['dpsCa', pr.dpsCa], ['disjCa', pr.disjCa], ['dpsCc', pr.dpsCc], ['disjCc', pr.disjCc], ['modalidade', pd.modalidade], ['hastes', pd.hastes],
+      ['dpsCa', pr.dpsCa], ['disjCa', pr.disjCa], ['dpsCc', pr.dpsCc], ['disjCc', pr.disjCc], ['modalidade', pd.modalidade], ['potTrafo', pd.potTrafo], ['hastes', pd.hastes],
       ['fuso', utm.fuso], ['utmX', utm.x], ['utmY', utm.y], ['tipoTensao', h.tipoTensao], ['cabos', h.cabos], ['potGeracao', dec2(c.potGeracao)],
       ['bitFase', b.fase], ['bitNeutro', b.neutro], ['bitTerra', b.terra], ['gdInstalado', h.gdInstalado], ['mes', h.previsao && h.previsao.mes], ['ano', h.previsao && h.previsao.ano],
       ['zona', h.zona], ['observacoes', observacoes(h, L)], ['modAreaTot', geral(c.modArea) + 'm²'], ['modPotTot', geral(c.modTot)], ['invPotTot', geral(c.invTot)]]
@@ -432,6 +432,18 @@ window.App = window.App || {};
       ['dDisjCc', ' '.repeat(13) + (pr.disjCc || '') + 'A'], ['dDpsCc', (pr.dpsCc || '') + 'kA'], ['dInvPot', geral(c.invTot) + ' kW'], ['dModPot', geral(c.modTot) + ' kWp'],
       ['dTensao', (h.tensao || '') + 'V']].forEach(function (x) { put('diagrama.' + x[0], x[1]); });
     return v;
+  }
+
+  /**
+   * Células com a formatação condicional da planilha "vazia → hachura vermelha" (campos obrigatórios) que ficam vazias nas páginas
+   * do memorial: [{pagina, campo, r: [x0, y0, x1, y1]}]. Preenchida, a célula fica branca, como no Excel.
+   */
+  function vermelhas(vals, mapa, pags) {
+    const idx = {};
+    (pags || mapa.paginas).forEach(function (k) { idx[mapa.paginas.indexOf(k)] = k; });
+    return (mapa.condicionais || []).filter(function (c) {
+      return idx[c.p] !== undefined && !String(vals[c.campo] == null ? '' : vals[c.campo]).trim();
+    }).map(function (c) { return { pagina: idx[c.p], campo: c.campo, r: c.r }; });
   }
 
   /** Campos obrigatórios da planilha que faltam (mesma lista da validação da aba SAIDA) e regras das UCs beneficiárias. */
@@ -485,7 +497,7 @@ window.App = window.App || {};
     TIPOS_GERACAO: TIPOS_GERACAO, MESES: MESES, ITENS: ITENS, LIMITES: LIMITES, OUTROS: OUTROS, OUTRO: OUTRO,
     listas: listas, mapa: mapa, modelo: modelo, fonte: fonte, ARQ_FONTES: ARQ_FONTES, textoPdf: textoPdf, distribuidora: distribuidora, contatos: contatos, tensoes: tensoes, listaDe: listaDe, casar: casar, situacao: situacao,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, calcular: calcular, observacoes: observacoes, paginas: paginas, valores: valores,
-    pendencias: pendencias, nomeArquivo: nomeArquivo, novaLinhaEquip: novaLinhaEquip, checklistPadrao: checklistPadrao,
+    pendencias: pendencias, vermelhas: vermelhas, nomeArquivo: nomeArquivo, novaLinhaEquip: novaLinhaEquip, checklistPadrao: checklistPadrao,
     fmt: { geral: geral, dec2: dec2, telefone: telefone, documento: documento, cep: cep, digitos: digitos }
   };
 })(window.App);

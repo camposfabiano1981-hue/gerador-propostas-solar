@@ -2151,6 +2151,18 @@
     igual('pendências: coordenada, proteções, relação de carga e item 3.1', H.pendencias(h4).join(' | '), 'Coordenada X (UTM) | Relação de carga (carga instalada) | Proteções (DPS e disjuntores CA e CC) | Item 3.1 do formulário (vistoria)');
     const h5 = base(); h5.beneficiarias = [{ uc: '1234567890', nome: 'A', cpf: '', endereco: '', pct: '70' }, { uc: '555', nome: 'B', cpf: '', endereco: '', pct: '40' }];
     igual('pendências: UCs beneficiárias (soma > 100% e UC igual à geradora)', H.pendencias(h5).join(' | '), 'UCs beneficiárias: a soma dos percentuais passa de 100% | UCs beneficiárias: a UC beneficiária deve ser diferente da geradora');
+    // formatação condicional da planilha: célula obrigatória vazia = hachura vermelha; preenchida = branca
+    const mapaF = { paginas: ['solicitacao', 'carga', 'checklist', 'gd', 'memorial', 'memorial2', 'beneficiarias', 'diagrama'], condicionais: [
+      { campo: 'solicitacao.celular', p: 0, r: [1, 1, 2, 2] }, { campo: 'memorial.potTrafo', p: 4, r: [1, 1, 2, 2] }, { campo: 'memorial.demandaKw', p: 4, r: [1, 1, 2, 2] },
+      { campo: 'gd.mod1_qtd', p: 3, r: [1, 1, 2, 2] }].concat([1, 2, 3, 4].map(function (n) { return { campo: 'beneficiarias.l' + n + '_cpf', p: 6, r: [1, 1, 2, 2] }; })) };
+    const h6 = base(); h6.padrao.potTrafo = '75'; h6.beneficiarias = [{ uc: '9876543210', nome: 'A', cpf: '12345678909', endereco: '', pct: '50' }, { uc: '9876543211', nome: 'B', cpf: '11144477735', endereco: '', pct: '30' },
+      { uc: '9876543212', nome: 'C', cpf: '', endereco: '', pct: '20' }];
+    const v6 = H.valores(h6, L);
+    igual('memorial: Potência Trafo escolhida sai na célula da planilha', v6['memorial.potTrafo'], '75');
+    igual('vermelho só nas células obrigatórias vazias das páginas do PDF (CPF preenchido fica branco; GD fora do PDF não conta)',
+      H.vermelhas(v6, mapaF, H.paginas(h6)).map(function (x) { return x.campo; }).join(), 'memorial.demandaKw,beneficiarias.l3_cpf,beneficiarias.l4_cpf');
+    const v7 = H.valores(Object.assign(base(), { celular: '', telefone: '6733985057' }), L);
+    ok('vermelho: celular vazio (só telefone fixo) e Potência Trafo não escolhida', H.vermelhas(v7, mapaF).map(function (x) { return x.campo; }).join() === 'solicitacao.celular,memorial.potTrafo,memorial.demandaKw,gd.mod1_qtd,beneficiarias.l1_cpf,beneficiarias.l2_cpf,beneficiarias.l3_cpf,beneficiarias.l4_cpf');
     igual('arquivo: TITULAR_UC_código.pdf como a planilha', H.nomeArquivo({ titular: 'João da Silva & Cia.', uc: '123-4' }), 'JOAO_DA_SILVA_CIA_UC_1234.pdf');
     igual('PDF: texto nas fontes do memorial (Latin-1; aspas e travessão mantidos; acento fora do Latin-1 cai; emoji sai)', H.textoPdf('“Olá” – Ação\tő ☀️\nfim'), '“Olá” – Ação o  fim');
     igual('PDF: áreas mantêm as quebras de linha', H.textoPdf('linha 1\r\nlinha 2', true), 'linha 1\nlinha 2');

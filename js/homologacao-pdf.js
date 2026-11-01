@@ -89,6 +89,33 @@ window.App = window.App || {};
   }
 
   /**
+   * Hachura vermelha da formatação condicional da planilha (célula obrigatória vazia): o mesmo ladrilho 8×8 que o Excel exporta
+   * (diagonal "lightUp", FF4F4F), como padrão de preenchimento da página, desenhado na caixa interna da célula (sem cobrir as bordas).
+   */
+  function criarHachura(doc, hc) {
+    const P = window.PDFLib, ctx = doc.context;
+    const bin = atob(hc.rgb), px = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) px[i] = bin.charCodeAt(i);
+    const img = ctx.register(ctx.flateStream(px, { Type: 'XObject', Subtype: 'Image', Width: hc.w, Height: hc.h, ColorSpace: 'DeviceRGB', BitsPerComponent: 8 }));
+    const passo = hc.passo;
+    const pat = ctx.register(ctx.flateStream('q ' + passo + ' 0 0 ' + passo + ' 0 0 cm /I0 Do Q', {
+      Type: 'Pattern', PatternType: 1, PaintType: 1, TilingType: 1, BBox: [0, 0, passo, passo], XStep: passo, YStep: passo,
+      Matrix: hc.matriz, Resources: { XObject: { I0: img } }
+    }));
+    return function pintar(pg, caixas) {
+      if (!caixas.length) return;
+      const res = pg.node.normalizedEntries().Resources;
+      let pats = res.lookup(P.PDFName.of('Pattern'));
+      if (!(pats instanceof P.PDFDict)) { pats = ctx.obj({}); res.set(P.PDFName.of('Pattern'), pats); }
+      pats.set(P.PDFName.of('CRMHachura'), pat);
+      caixas.forEach(function (c) {
+        pg.pushOperators(P.pushGraphicsState(), P.PDFOperator.of('cs', [P.PDFName.of('Pattern')]), P.PDFOperator.of('scn', [P.PDFName.of('CRMHachura')]),
+          P.rectangle(c.r[0], c.r[1], c.r[2] - c.r[0], c.r[3] - c.r[1]), P.fill(), P.popGraphicsState());
+      });
+    };
+  }
+
+  /**
    * Gera o memorial: {blob, nome, paginas}. o: {semAssinatura} — com a assinatura guardada do responsável técnico
    * (Configurações › Empresa) e h.assinarProjetista, ela entra nas linhas "Assinatura do Projetista".
    */
@@ -106,6 +133,8 @@ window.App = window.App || {};
     const pags = H.paginas(h);
     const copias = await doc.copyPages(src, pags.map(function (k) { return mapa.paginas.indexOf(k); }));
     const vals = H.valores(h, L);
+    const vermelhas = H.vermelhas(vals, mapa, pags);
+    const hachura = mapa.hachura ? criarHachura(doc, mapa.hachura) : null;
     let assinatura = null;
     if (h.assinarProjetista && !o.semAssinatura && App.Assinatura && App.Assinatura.guardada) {
       const g = App.Assinatura.guardada();
@@ -117,6 +146,7 @@ window.App = window.App || {};
     copias.forEach(function (pg, n) {
       doc.addPage(pg);
       const chave = pags[n];
+      if (hachura) hachura(pg, vermelhas.filter(function (c) { return c.pagina === chave; }));
       Object.keys(vals).forEach(function (cid) {
         if (cid.indexOf(chave + '.') !== 0) return;
         const reg = mapa.campos[cid];
@@ -135,7 +165,7 @@ window.App = window.App || {};
     doc.setProducer('CRM Solar');
     doc.setCreator('CRM Solar — memorial Energisa V6');
     const bytes = await doc.save();
-    return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: H.nomeArquivo(h), paginas: pags, assinado: !!assinatura };
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: H.nomeArquivo(h), paginas: pags, assinado: !!assinatura, vermelhas: vermelhas };
   }
 
   App.HomologacaoPdf = { gerar: gerar, LIBS: LIBS };
