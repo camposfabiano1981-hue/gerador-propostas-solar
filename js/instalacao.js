@@ -42,8 +42,36 @@ window.App = window.App || {};
   function placasVazias() {
     return {
       modulo: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [], legendas: {} },
-      inversor: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [], legendas: {} }
+      inversor: { equipamentoId: '', marca: '', modelo: '', potencia: '', quantidade: '', serie: '', fotos: [], legendas: {} },
+      inversoresExtras: [] // obra com mais de um inversor: "Inversor 2", "Inversor 3"…
     };
+  }
+
+  /** Inversor adicional (obra com mais de um inversor, inclusive de modelos diferentes): mesmos campos e fotos do inversor. */
+  function novoInversor() { return Object.assign(placasVazias().inversor, { quantidade: 1 }); }
+  /** Garante a lista de inversores adicionais (instalações gravadas antes dela ou ainda não salvas). */
+  function extrasDe(inst) {
+    inst.placas = inst.placas || placasVazias();
+    if (!Array.isArray(inst.placas.inversoresExtras)) inst.placas.inversoresExtras = [];
+    return inst.placas.inversoresExtras;
+  }
+
+  /**
+   * Placas na ordem de exibição: módulos, inversor e os inversores adicionais ("Inversor 2", "Inversor 3"…).
+   * [{chave, tipo, rotulo, placa, un}] — chave única (fotos do relatório), tipo do cadastro ('modulo' | 'inversor').
+   */
+  function listaPlacas(inst) {
+    const pl = (inst && inst.placas) || {};
+    const extras = Array.isArray(pl.inversoresExtras) ? pl.inversoresExtras.filter(Boolean) : [];
+    const lista = [{ chave: 'modulo', tipo: 'modulo', rotulo: 'Módulos', placa: pl.modulo, un: 'Wp' },
+      { chave: 'inversor', tipo: 'inversor', rotulo: extras.length ? 'Inversor 1' : 'Inversor', placa: pl.inversor, un: 'kW' }]
+      .concat(extras.map(function (x, i) { return { chave: 'inversor' + (i + 2), tipo: 'inversor', rotulo: 'Inversor ' + (i + 2), placa: x, un: 'kW' }; }));
+    return lista.filter(function (x) { return x.placa; });
+  }
+
+  /** Inversores instalados com marca ou modelo (o principal e os adicionais). */
+  function inversoresInstalados(inst) {
+    return listaPlacas(inst).filter(function (x) { return x.tipo === 'inversor' && (x.placa.marca || x.placa.modelo); }).map(function (x) { return x.placa; });
   }
 
   // tipos do cadastro de equipamentos aceitos em cada placa
@@ -370,7 +398,7 @@ window.App = window.App || {};
       titulo: (inst.segmento === 'residencial' ? 'Residência' : App.DEFAULTS.SEGMENTOS.find(function (s) { return s.id === inst.segmento; }).label) + (local ? ' — ' + local : ''),
       segmento: inst.segmento || 'residencial', tipoSistema: inst.tipoSistema || 'ongrid', cidade: inst.cidade || '', uf: inst.uf || '',
       conclusao: fim ? fim.slice(5, 7) + '/' + fim.slice(0, 4) : '', potenciaKwp: inst.kwp || '',
-      modulos: desc(pl.modulo, 'Wp') || eq.modulos || '', inversor: desc(pl.inversor, 'kW') || eq.inversor || '', armazenamento: eq.armazenamento || '', estrutura: eq.estrutura || '',
+      modulos: desc(pl.modulo, 'Wp') || eq.modulos || '', inversor: inversoresInstalados(inst).map(function (x) { return desc(x, 'kW'); }).filter(Boolean).join(' + ') || eq.inversor || '', armazenamento: eq.armazenamento || '', estrutura: eq.estrutura || '',
       geracaoMes: inst.geracaoMes || '', economiaMes: inst.economiaMes || '', reducaoPct: inst.reducaoPct || '',
       descricao: '', foto1: null, foto2: null, exibir: true, instalacaoId: inst.id || ''
     };
@@ -378,7 +406,7 @@ window.App = window.App || {};
 
   App.Instalacao = {
     SITUACOES: SITUACOES, STATUS_ETAPA: STATUS_ETAPA, STATUS: STATUS, GRUPOS: GRUPOS,
-    checklistPadrao: checklistPadrao, placasVazias: placasVazias, progressoChecklist: progressoChecklist, marcarItem: marcarItem,
+    checklistPadrao: checklistPadrao, placasVazias: placasVazias, novoInversor: novoInversor, extrasDe: extrasDe, listaPlacas: listaPlacas, inversoresInstalados: inversoresInstalados, progressoChecklist: progressoChecklist, marcarItem: marcarItem,
     opcoesCadastro: opcoesCadastro, placaDoCadastro: placaDoCadastro, vincularCadastro: vincularCadastro, placasDaProposta: placasDaProposta,
     prazoDias: prazoDias, somarDias: somarDias, preverDatas: preverDatas, novaEtapa: novaEtapa, etapasPadrao: etapasPadrao,
     nova: nova, deProposta: deProposta, registrar: registrar, mudarEtapa: mudarEtapa,

@@ -226,6 +226,24 @@ window.App = window.App || {};
     return { qtd: qtd > 0 ? String(qtd) : '', fab: c.fab, modelo: c.modelo, pot: potW > 0 ? geral(potW) : '', tensao: tensao, crm: crm, equipamentoId: eq ? eq.id : '' };
   }
 
+  /**
+   * Inversores da obra para o memorial: o principal (instalação ou proposta) e os adicionais da instalação, agrupados por modelo
+   * (dois inversores iguais = uma linha com quantidade 2, como na planilha). Inversor adicional sem quantidade conta 1.
+   */
+  function inversoresDaObra(eqInv, pi, qInv, extras, porId) {
+    const grupos = [];
+    const add = function (eq, placa, qtd) {
+      const k = eq ? 'id:' + eq.id : 'm:' + chave([placa.marca, placa.modelo].join(' '));
+      const g = grupos.find(function (x) { return x.k === k; });
+      if (g) g.qtd += qtd; else grupos.push({ k: k, eq: eq, placa: placa, qtd: qtd });
+    };
+    if (eqInv || (pi && pi.modelo)) add(eqInv, pi || {}, qInv);
+    (Array.isArray(extras) ? extras : []).forEach(function (x) {
+      if (x && (x.equipamentoId || x.modelo)) add(porId(x.equipamentoId), x, num(x.quantidade) || 1);
+    });
+    return grupos;
+  }
+
   function checklistPadrao(docCliente) {
     const pj = digitos(docCliente).length === 14;
     const o = { '1': 'X', '1.4': 'X', '2.1': 'X', '2.3': 'X', '2.4': 'X', '3.1': 'NÃO', '3.4': 'X' };
@@ -277,7 +295,7 @@ window.App = window.App || {};
       previsao: { mes: dPrev ? MESES[dPrev.getMonth()] : '', ano: dPrev ? String(dPrev.getFullYear()) : '' },
       zona: classe === 'RURAL' ? 'RURAL' : (pad.zona || 'URBANO'),
       modulos: eqMod || pm.modelo ? [linhaEquip('mod', eqMod, pm, qMod, lista.modulos, dist)] : [],
-      inversores: eqInv || pi.modelo ? [linhaEquip('inv', eqInv, pi, qInv, lista.inversores, dist)] : [],
+      inversores: inversoresDaObra(eqInv, pi, qInv, pl.inversoresExtras, porId).map(function (g) { return linhaEquip('inv', g.eq, g.placa, g.qtd, lista.inversores, dist); }).slice(0, LIMITES.inversores),
       gd: { modulos: [], inversores: [] }, beneficiarias: [], observacoes: '', assinarProjetista: true,
       atualizadoEm: new Date().toISOString()
     };
@@ -294,6 +312,17 @@ window.App = window.App || {};
       .forEach(function (k) { if (n[k] !== '' && n[k] != null) h[k] = n[k]; });
     if (!h.modulos.length) h.modulos = n.modulos;
     if (!h.inversores.length) h.inversores = n.inversores;
+    else {
+      // inversor incluído depois na instalação (ex.: 2º inversor): entra no memorial sem mexer nas linhas já conferidas
+      // e a quantidade acompanha a da instalação (ex.: 2º inversor igual ao 1º)
+      const chaveEq = function (x) { return x.equipamentoId || chave(x.crm || [x.fab, x.modelo].join(' ')); };
+      const tem = h.inversores.map(chaveEq);
+      n.inversores.forEach(function (x) {
+        const i = tem.indexOf(chaveEq(x));
+        if (i >= 0) { if (x.qtd && x.qtd !== h.inversores[i].qtd) h.inversores[i].qtd = x.qtd; }
+        else if (h.inversores.length < LIMITES.inversores) { h.inversores.push(x); tem.push(chaveEq(x)); }
+      });
+    }
     if (tensoes(h.distribuidora).indexOf(h.tensao) < 0) h.tensao = n.tensao;
     return h;
   }
@@ -497,7 +526,7 @@ window.App = window.App || {};
     TIPOS_GERACAO: TIPOS_GERACAO, MESES: MESES, ITENS: ITENS, LIMITES: LIMITES, OUTROS: OUTROS, OUTRO: OUTRO,
     listas: listas, mapa: mapa, modelo: modelo, fonte: fonte, ARQ_FONTES: ARQ_FONTES, textoPdf: textoPdf, distribuidora: distribuidora, contatos: contatos, tensoes: tensoes, listaDe: listaDe, casar: casar, situacao: situacao,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, calcular: calcular, observacoes: observacoes, paginas: paginas, valores: valores,
-    pendencias: pendencias, vermelhas: vermelhas, nomeArquivo: nomeArquivo, novaLinhaEquip: novaLinhaEquip, checklistPadrao: checklistPadrao,
+    pendencias: pendencias, vermelhas: vermelhas, nomeArquivo: nomeArquivo, novaLinhaEquip: novaLinhaEquip, inversoresDaObra: inversoresDaObra, checklistPadrao: checklistPadrao,
     fmt: { geral: geral, dec2: dec2, telefone: telefone, documento: documento, cep: cep, digitos: digitos }
   };
 })(window.App);

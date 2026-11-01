@@ -193,7 +193,7 @@ window.App = window.App || {};
       ['Cliente', os.clienteNome], ['Telefone / WhatsApp', os.telefone],
       ['Endereço', os.endereco], ['Cidade / UF', [os.cidade, os.uf].filter(Boolean).join(' / ')],
       inst ? ['Instalação', inst.titulo] : null,
-      inst ? ['Sistema', [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh' : '', (inst.placas && inst.placas.inversor && inst.placas.inversor.modelo) ? 'inversor ' + [inst.placas.inversor.marca, inst.placas.inversor.modelo].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ')] : null
+      inst ? ['Sistema', [inst.kwp > 0 ? U.kwp(inst.kwp) + ' kWp' : '', inst.kwh > 0 ? U.fmtSmart(inst.kwh, 2) + ' kWh' : '', (function () { const iv = App.Instalacao.inversoresInstalados(inst).filter(function (x) { return x.modelo; }); return iv.length ? (iv.length > 1 ? 'inversores ' : 'inversor ') + iv.map(function (x) { return [x.marca, x.modelo].filter(Boolean).join(' '); }).join(' + ') : ''; })()].filter(Boolean).join(' · ')] : null
     ]));
     b.push(secao('Atendimento'));
     b.push(pares([
@@ -261,7 +261,7 @@ window.App = window.App || {};
       return [{ t: rot, b: true }, [x.marca, x.modelo].filter(Boolean).join(' '), U.num(x.potencia) > 0 ? U.fmtSmart(U.num(x.potencia), 2) + ' ' + un : '—',
         U.num(x.quantidade) > 0 ? U.fmtSmart(U.num(x.quantidade), 0) : '—', x.serie || '—'];
     };
-    const eqLin = [linhaEq('Módulos', pl.modulo, 'Wp'), linhaEq('Inversor', pl.inversor, 'kW')].filter(Boolean);
+    const eqLin = I.listaPlacas(inst).map(function (x) { return linhaEq(x.rotulo, x.placa, x.un); }).filter(Boolean);
     const eq = inst.equipamentos || {};
     if (eq.armazenamento) eqLin.push([{ t: 'Baterias', b: true }, eq.armazenamento, '—', '—', '—']);
     b.push(secao('Sistema instalado'));
@@ -333,14 +333,14 @@ window.App = window.App || {};
     const as = inst.assinaturas || {};
     const refs = { assCliente: as.cliente && as.cliente.fotoId, assTecnico: as.tecnico && as.tecnico.fotoId };
     const legendas = {};
-    const pl = inst.placas || {};
-    [['modulo', 'Módulos'], ['inversor', 'Inversor']].forEach(function (x) {
-      const leg = (pl[x[0]] && pl[x[0]].legendas) || {};
-      ((pl[x[0]] && pl[x[0]].fotos) || []).forEach(function (id, i, l) {
-        const ref = 'foto' + x[0] + i;
+    // módulos, inversor e inversores adicionais, na ordem da tela
+    App.Instalacao.listaPlacas(inst).forEach(function (x) {
+      const leg = x.placa.legendas || {};
+      (x.placa.fotos || []).forEach(function (id, i, l) {
+        const ref = 'foto' + x.chave + '_' + i;
         refs[ref] = id;
         // legenda digitada na instalação ou a padrão
-        legendas[ref] = String(leg[id] || '').trim() || x[1] + (l.length > 1 ? ' — foto ' + (i + 1) : '');
+        legendas[ref] = String(leg[id] || '').trim() || x.rotulo + (l.length > 1 ? ' — foto ' + (i + 1) : '');
       });
     });
     const rec = await carregar(ctx, refs);

@@ -121,11 +121,10 @@ window.App = window.App || {};
 
   /** Fotos dos equipamentos para a página: miniaturas de até 720 px com a legenda digitada (ou a padrão). */
   async function fotosPublicas(inst) {
-    const pl = inst.placas || {};
     const lista = [];
-    [['modulo', 'Módulos'], ['inversor', 'Inversor']].forEach(function (x) {
-      const p = pl[x[0]] || {}, leg = p.legendas || {};
-      (p.fotos || []).forEach(function (id, i, l) { lista.push({ id: id, legenda: String(leg[id] || '').trim() || x[1] + (l.length > 1 ? ' — foto ' + (i + 1) : '') }); });
+    App.Instalacao.listaPlacas(inst).forEach(function (x) {
+      const p = x.placa, leg = p.legendas || {};
+      (p.fotos || []).forEach(function (id, i, l) { lista.push({ id: id, legenda: String(leg[id] || '').trim() || x.rotulo + (l.length > 1 ? ' — foto ' + (i + 1) : '') }); });
     });
     const out = [];
     for (const f of lista.slice(0, MAX_FOTOS)) {

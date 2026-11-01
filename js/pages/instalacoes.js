@@ -214,10 +214,14 @@
     const pv = I.placasVazias();
     inst.placas.modulo = Object.assign(pv.modulo, inst.placas.modulo || {});
     inst.placas.inversor = Object.assign(pv.inversor, inst.placas.inversor || {});
-    ['modulo', 'inversor'].forEach(function (k) {
-      if (!Array.isArray(inst.placas[k].fotos)) inst.placas[k].fotos = [];
-      if (!inst.placas[k].legendas || typeof inst.placas[k].legendas !== 'object' || Array.isArray(inst.placas[k].legendas)) inst.placas[k].legendas = {};
-      I.vincularCadastro(inst.placas[k], ctx.equipamentos, k);
+    // inversores adicionais (obra com mais de um inversor): mesmos campos e fotos do inversor
+    inst.placas.inversoresExtras = (Array.isArray(inst.placas.inversoresExtras) ? inst.placas.inversoresExtras : []).filter(Boolean)
+      .map(function (x) { return Object.assign(I.novoInversor(), x); });
+    I.listaPlacas(inst).forEach(function (x) {
+      const pl = x.placa;
+      if (!Array.isArray(pl.fotos)) pl.fotos = [];
+      if (!pl.legendas || typeof pl.legendas !== 'object' || Array.isArray(pl.legendas)) pl.legendas = {};
+      I.vincularCadastro(pl, ctx.equipamentos, x.tipo);
     });
     // sem marca e modelo: puxa da proposta de origem
     if (!inst.placas.modulo.modelo && !inst.placas.inversor.modelo && inst.propostaId) {
@@ -620,8 +624,7 @@
           }
         }, '↻ Puxar da proposta') : null));
       const fotoMudou = function () { mudou(); if (inst.id) salvar(false); };
-      const bloco = function (qual, titulo, un, rotFotos, padraoFotos) {
-        const pl = inst.placas[qual];
+      const bloco = function (pl, qual, titulo, un, rotFotos, padraoFotos, remover) {
         const lista = I.opcoesCadastro(ctx.equipamentos, qual);
         const doCadastro = !!(pl.equipamentoId && lista.some(function (e) { return e.id === pl.equipamentoId; }));
         if (!doCadastro) pl.equipamentoId = '';
@@ -643,10 +646,28 @@
           { k: 'serie', label: qual === 'modulo' ? 'Nº de série / lote' : 'Nº de série', cls: qual === 'modulo' ? 'span-all' : 'span2',
             placeholder: qual === 'modulo' ? 'Um ou mais, separados por vírgula' : '' }
         ];
-        return h('div.equip-instalado', h('h3', titulo), UI.grade(defs, pl, mudou, 4), campoFotos(rotFotos, pl.fotos, pl.legendas, padraoFotos, fotoMudou, mudou));
+        return h('div.equip-instalado' + (remover ? '.equip-extra' : ''),
+          h('div.equip-topo', h('h3', titulo), remover ? h('button.btn.pequeno.perigo.btn-remover-inversor', { type: 'button', onclick: remover }, '✕ Remover') : null),
+          UI.grade(defs, pl, mudou, 4), campoFotos(rotFotos, pl.fotos, pl.legendas, padraoFotos, fotoMudou, mudou));
       };
-      c.appendChild(bloco('modulo', '☀️ Módulos fotovoltaicos', 'Wp', 'Fotos dos módulos (etiqueta e instalação)', 'Módulos'));
-      c.appendChild(bloco('inversor', '🔌 Inversor (ou microinversores)', 'kW', 'Fotos do inversor (etiqueta e instalação)', 'Inversor'));
+      const extras = I.extrasDe(inst);
+      c.appendChild(bloco(inst.placas.modulo, 'modulo', '☀️ Módulos fotovoltaicos', 'Wp', 'Fotos dos módulos (etiqueta e instalação)', 'Módulos'));
+      c.appendChild(bloco(inst.placas.inversor, 'inversor', extras.length ? '🔌 Inversor 1' : '🔌 Inversor (ou microinversores)', 'kW',
+        'Fotos do inversor' + (extras.length ? ' 1' : '') + ' (etiqueta e instalação)', extras.length ? 'Inversor 1' : 'Inversor'));
+      extras.forEach(function (pl, i) {
+        const n = i + 2;
+        c.appendChild(bloco(pl, 'inversor', '🔌 Inversor ' + n, 'kW', 'Fotos do inversor ' + n + ' (etiqueta e instalação)', 'Inversor ' + n, async function () {
+          const nf = (pl.fotos || []).length;
+          if (!(await UI.confirmar('Remover o inversor ' + n + (pl.modelo ? ' (' + [pl.marca, pl.modelo].filter(Boolean).join(' ') + ')' : '') + (nf ? ' e ' + (nf === 1 ? 'a foto dele' : 'as ' + nf + ' fotos dele') : '') + '?', 'Remover', true))) return;
+          for (const fid of (pl.fotos || [])) { try { await App.Fotos.remover(fid); } catch (e) { console.error(e); } }
+          extras.splice(i, 1);
+          I.registrar(inst, 'Inversor ' + n + ' removido dos equipamentos instalados.', 'sistema');
+          mudou(); if (inst.id) salvar(false); desenhar('equipamentos'); desenhar('historico');
+        }));
+      });
+      c.appendChild(h('div.linha-botoes', h('button.btn.pequeno.btn-add-inversor', {
+        type: 'button', onclick: function () { extras.push(I.novoInversor()); mudou(); desenhar('equipamentos'); }
+      }, '+ Adicionar outro inversor'), h('span.ajuda', 'Para obras com mais de um inversor (iguais ou de modelos diferentes), cada um com o nº de série e as fotos.')));
     });
 
     /* ---------- materiais consumidos (infraestrutura CA) */

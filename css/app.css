@@ -402,6 +402,10 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 /* ---------- equipamentos instalados, fotos das etiquetas e checklist */
 .equip-instalado { border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .equip-instalado h3 { margin: 0; font-size: 15px; color: var(--azul); }
+.equip-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.equip-extra { border-style: dashed; }
+.linha-botoes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.linha-botoes .ajuda { color: var(--muted); font-size: 12px; }
 .fotos-grade { display: flex; flex-wrap: wrap; gap: 10px; }
 .foto-card { width: 176px; display: flex; flex-direction: column; gap: 4px; }
 .foto-mini { position: relative; width: 176px; height: 132px; border-radius: 8px; border: 1px solid var(--borda); background: #F8FAFC; display: flex; align-items: center; justify-content: center; overflow: hidden; }

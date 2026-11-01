@@ -2180,5 +2180,36 @@
     igual('dados automáticos: escolha guardada no cadastro do equipamento prevalece', H.sugerir(inst, ctxH2, L, {}).inversores[0].modelo, '98 - 4KTLM-G2');
   })();
 
+  // ---------------------------------------------------------------- instalação com mais de um inversor
+  (function () {
+    const I = App.Instalacao, H = App.Homologacao;
+    const ctxI = ctxReferencia();
+    const inst = Object.assign(I.nova(ctxI), { id: 'i-2inv', uc: '123', clienteNome: 'Cliente Teste', concessionaria: 'Energisa Mato Grosso do Sul' });
+    inst.placas.modulo = Object.assign(inst.placas.modulo, { equipamentoId: 'mod-dmegc-625', marca: 'DMEGC', modelo: 'DM625G12RT-B66HBW-P', potencia: 625, quantidade: 16 });
+    inst.placas.inversor = Object.assign(inst.placas.inversor, { equipamentoId: 'inv-sofar-4', marca: 'Sofar', modelo: '4KTL2-G3', potencia: 4, quantidade: 1, fotos: ['f1'] });
+    igual('inversor adicional: mesmos campos do inversor, com quantidade 1 e fotos próprias', JSON.stringify(Object.keys(I.novoInversor()).sort()) + I.novoInversor().quantidade, JSON.stringify(Object.keys(I.placasVazias().inversor).sort()) + '1');
+    igual('placas: sem adicional, só "Inversor"', I.listaPlacas(inst).map(function (x) { return x.chave + ':' + x.rotulo; }).join(), 'modulo:Módulos,inversor:Inversor');
+    inst.placas.inversoresExtras = [Object.assign(I.novoInversor(), { marca: 'SOLPLANET', modelo: 'ASW10000-S', potencia: 10, fotos: ['f2', 'f3'] })];
+    igual('placas: com adicional, "Inversor 1" e "Inversor 2" (chaves únicas para as fotos)', I.listaPlacas(inst).map(function (x) { return x.chave + ':' + x.rotulo; }).join(), 'modulo:Módulos,inversor:Inversor 1,inversor2:Inversor 2');
+    igual('inversores instalados (principal + adicionais)', I.inversoresInstalados(inst).map(function (x) { return x.modelo; }).join(), '4KTL2-G3,ASW10000-S');
+    igual('projetos realizados: todos os inversores', I.paraProjeto(inst).inversor, 'Sofar 4KTL2-G3 (4 kW) + SOLPLANET ASW10000-S (10 kW)');
+    const L = { versao: 'V6', distribuidoras: { EMS: { modulos: {}, inversores: { '27 - SOFAR': ['98 - 4KTLM-G2'] } } } };
+    const s1 = H.sugerir(inst, ctxI, L, {});
+    ok('memorial: um inversor de cada modelo, cada um casado com a lista oficial', s1.inversores.length === 2 && s1.inversores[0].fab === '27 - SOFAR' && s1.inversores[0].qtd === '1' &&
+      s1.inversores[1].fab === 'OUTROS' && s1.inversores[1].qtd === '1' && s1.inversores[1].pot === '10' && s1.inversores[1].crm === 'SOLPLANET ASW10000-S' && H.calcular(s1).invTot === 14, s1.inversores);
+    const inst2 = U.clone(inst);
+    inst2.placas.inversoresExtras = [Object.assign(I.novoInversor(), { equipamentoId: 'inv-sofar-4', marca: 'Sofar', modelo: '4KTL2-G3', potencia: 4, quantidade: '' })];
+    const s2 = H.sugerir(inst2, ctxI, L, {});
+    ok('memorial: dois inversores iguais = uma linha com quantidade 2 (adicional sem quantidade conta 1)', s2.inversores.length === 1 && s2.inversores[0].qtd === '2' && H.calcular(s2).invTot === 8, s2.inversores);
+    // memorial já preparado com um inversor: ↻ Puxar dados do CRM traz o inversor incluído depois e acompanha a quantidade
+    const inst3 = U.clone(inst); inst3.placas.inversoresExtras = [];
+    const hm = H.sugerir(inst3, ctxI, L, {});
+    hm.inversores[0].tensao = '220'; hm.protecoes.dpsCa = '45';
+    H.puxarCrm(hm, inst, ctxI, L, {});
+    ok('puxar do CRM: inversor novo entra sem mexer nas linhas conferidas', hm.inversores.length === 2 && hm.inversores[1].crm === 'SOLPLANET ASW10000-S' && hm.protecoes.dpsCa === '45', hm.inversores);
+    H.puxarCrm(hm, inst2, ctxI, L, {});
+    ok('puxar do CRM: quantidade do inversor igual ao da instalação', hm.inversores[0].qtd === '2' && hm.inversores.length === 2, hm.inversores);
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();
