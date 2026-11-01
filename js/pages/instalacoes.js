@@ -738,6 +738,14 @@
       }));
     });
 
+    /* ---------- homologação na Energisa (memorial V6 da planilha oficial) */
+    secao('homologacao', 'Homologação (memorial Energisa)', function (c) {
+      App.HomologacaoTela.secao(c, {
+        inst: inst, ctx: ctx, mudou: mudou,
+        registrar: function (txt) { I.registrar(inst, txt, 'nota'); desenhar('historico'); if (inst.id) salvar(false); }
+      });
+    });
+
     /* ---------- dados da obra */
     secao('dados', 'Dados da obra', function (c) {
       c.appendChild(UI.grade([

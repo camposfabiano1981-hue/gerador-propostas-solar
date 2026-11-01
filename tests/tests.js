@@ -2077,5 +2077,96 @@
     ok('resultado por obra: com o lançamento do kit, vale o lançado e o pedido aparece na nota (sem somar duas vezes)', l2.realizado === 9400 && /PC-9: R\$\s?9\.350,00/.test(l2.nota), l2);
   })();
 
+  // ---------------------------------------------------------------- homologação (memorial Energisa V6)
+  (function () {
+    const H = App.Homologacao, f = H.fmt;
+    const L = { versao: 'V6', distribuidoras: { EMS: {
+      modulos: { '10 - JINKO SOLAR': ['556 - JKM440M-6TL4-V', '557 - JKM550M-72HL4-V'], '30 - CANADIAN SOLAR': ['1 - CS3W-450MS'] },
+      inversores: { '27 - SOFAR': ['96 - 3KTLM-G2', '98 - 4KTLM-G2'], '5 - GROWATT': ['10 - MIN 5000TL-X'] } } } };
+    const lista = H.listaDe(L, 'EMS');
+    igual('homologação: formato Geral da planilha (vírgula, sem zeros à direita, 10 algarismos)', [f.geral(0.4), f.geral(4.5), f.geral('0,59'), f.geral(1 / 3), f.geral(''), f.geral(220)].join('|'), '0,4|4,5|0,59|0,3333333333||220');
+    igual('homologação: duas casas (0.00)', [f.dec2(4.5), f.dec2(0.236), f.dec2('')].join('|'), '4,50|0,24|');
+    igual('homologação: máscaras de telefone, CPF/CNPJ e CEP', [f.telefone('67999990000'), f.telefone('6733985057'), f.documento('12345678909'), f.documento('12345678000190'), f.cep('79300000')].join('|'),
+      '(67) 9 9999-0000|(67) 3398-5057|123.456.789-09|12.345.678/0001-90|79300-000');
+    igual('homologação: distribuidora pelo nome da concessionária', ['Energisa Mato Grosso do Sul', 'Energisa Mato Grosso', 'Energisa Tocantins', 'Energisa Paraíba', 'Energisa Sul Sudeste', ''].map(H.distribuidora).join(','), 'EMS,EMT,ETO,EPB,ESS,EMS');
+    ok('homologação: contatos e tensões da EMS como na planilha', H.contatos('EMS').email === 'projetosparticulares.ems@energisa.com.br' && H.contatos('EMS').area === 'DCMD/SPRO' && H.tensoes('EMS').join() === '127,220,254,13.8kV,34.5kV');
+    // lista oficial: casamento do equipamento do CRM
+    const c1 = H.casar(lista.modulos, 'Jinko', 'JKM440M-6TL4-V', 440), c2 = H.casar(lista.modulos, 'Jinko Solar', 'Tiger Neo 580', 580), c3 = H.casar(lista.modulos, 'DMEGC', 'DM625G12RT-B66HBW-P', 625);
+    const c4 = H.casar(lista.inversores, 'Sofar', '4KTLM-G2', 4000), c5 = H.casar(lista.inversores, 'Sofar', '4KTL2-G3', 4000);
+    ok('lista oficial: na lista, fabricante sem o modelo (OUTRO) e fora da lista (OUTROS/OUTRO)',
+      c1.fab === '10 - JINKO SOLAR' && c1.modelo === '556 - JKM440M-6TL4-V' && c1.situacao === 'lista' && c2.fab === '10 - JINKO SOLAR' && c2.modelo === 'OUTRO' && c2.situacao === 'modelo' &&
+      c3.fab === 'OUTROS' && c3.modelo === 'OUTRO' && c3.situacao === 'fora' && c4.modelo === '98 - 4KTLM-G2' && c5.situacao === 'modelo', [c1, c2, c3, c4, c5]);
+    igual('lista oficial: situação da escolha', [H.situacao(lista.inversores, '27 - SOFAR', '98 - 4KTLM-G2'), H.situacao(lista.inversores, '27 - SOFAR', 'OUTRO'), H.situacao(lista.inversores, 'OUTROS', 'OUTRO'),
+      H.situacao(lista.inversores, '27 - SOFAR', '10 - MIN 5000TL-X')].join(), 'lista,modelo,fora,modelo');
+    ok('checklist padrão: pessoa física (1.2) ou jurídica (1.1); vistoria após a instalação = NÃO', H.checklistPadrao('12345678909')['1.2'] === 'X' && !H.checklistPadrao('12345678909')['1.1'] &&
+      H.checklistPadrao('12345678000190')['1.1'] === 'X' && H.checklistPadrao('')['3.1'] === 'NÃO');
+    // memorial completo (projetista) para as fórmulas, observações, páginas e pendências
+    const base = function () {
+      return { versao: 'V6', distribuidora: 'EMS', uc: '1234567890', classe: 'RESIDENCIAL', titular: 'João Exemplo da Silva', logradouro: 'Rua das Palmeiras', numero: '100', bairro: 'Centro',
+        cidade: 'Corumbá', uf: 'MS', cep: '79300000', email: 'cliente@exemplo.com.br', telefone: '', celular: '67999990000', documento: '12345678909', tensao: '220', conexao: 'BIFÁSICO', ramal: 'AÉREO',
+        potInstalada: '', fonte: H.FONTES[0], tipoGeracao: H.TIPOS_GERACAO[1], resp: { nome: '', telefone: '', email: '' },
+        cargas: [{ qtd: '10', equip: 'Iluminação', w: '40', fator: '0,59' }, { qtd: '1', equip: 'Chuveiro', w: '4500', fator: '1' }],
+        checklist: H.checklistPadrao('12345678909'), padrao: { disjGeral: '40', fatorPot: '0,92', modalidade: H.MODALIDADES[0], potTrafo: '', hastes: '1' },
+        protecoes: { dpsCa: '45', disjCa: '25', dpsCc: '40', disjCc: '16' }, utm: { fuso: '21K', x: '437512', y: '7895230' }, tipoTensao: 'BAIXA', cabos: '1',
+        bitolas: { fase: '10', neutro: '10', terra: '10' }, gdInstalado: 'NÃO', previsao: { mes: 'FEVEREIRO', ano: '2027' }, zona: 'URBANO',
+        modulos: [{ qtd: '8', fab: 'OUTROS', modelo: 'OUTRO', area: '22,4', pot: '0,625', crm: 'DMEGC DM625G12RT-B66HBW-P' }],
+        inversores: [{ qtd: '1', fab: '27 - SOFAR', modelo: '98 - 4KTLM-G2', pot: '4', tensao: '220', crm: 'Sofar 4KTLM-G2' }],
+        gd: { modulos: [], inversores: [] }, beneficiarias: [], observacoes: '', assinarProjetista: true };
+    };
+    const h1 = base();
+    const k1 = H.calcular(h1);
+    ok('fórmulas: potência total = qtd × W / 1000; demanda = fator × potência; totais', k1.cargas[0].kw === 0.4 && Math.abs(k1.cargas[0].dem - 0.236) < 1e-9 && k1.cargas[1].dem === 4.5 &&
+      Math.abs(k1.totKw - 4.9) < 1e-9 && Math.abs(k1.totDem - 4.736) < 1e-9, k1.cargas);
+    ok('fórmulas: potência instalada em branco = demanda da relação de carga; digitada prevalece', Math.abs(k1.potInstalada - 4.736) < 1e-9 && H.calcular(Object.assign(base(), { potInstalada: '7,5' })).potInstalada === 7.5);
+    ok('fórmulas: potência de geração = MIN(módulos; inversores) + MIN(GD existente)', k1.modTot === 5 && k1.invTot === 4 && k1.potGeracao === 4 && k1.nFases === 2 && !k1.temGd);
+    const h2 = base();
+    h2.gd.modulos = [{ qtd: '6', fab: '10 - JINKO SOLAR', modelo: '556 - JKM440M-6TL4-V', area: '', pot: '0,44', crm: '' }];
+    h2.gd.inversores = [{ qtd: '1', fab: '27 - SOFAR', modelo: '96 - 3KTLM-G2', pot: '3', tensao: '220', crm: '' }];
+    h2.beneficiarias = [{ uc: '9876543210', nome: 'João Exemplo da Silva', cpf: '12345678909', endereco: 'Rua das Acácias, 50', pct: '60' }, { uc: '', nome: 'linha vazia', cpf: '', endereco: '', pct: '10' }];
+    const k2 = H.calcular(h2);
+    ok('fórmulas: com GD existente soma MIN(2,64; 3) = 6,64 kW; UC beneficiária só com código', Math.abs(k2.potGeracao - 6.64) < 1e-9 && k2.temGd && k2.beneficiarias.length === 1, k2);
+    igual('páginas: sem condicionais (6, na ordem da planilha)', H.paginas(h1).join(), 'solicitacao,carga,checklist,memorial,memorial2,diagrama');
+    igual('páginas: GD existente e UCs beneficiárias entram nos lugares da planilha (8)', H.paginas(h2).join(), 'solicitacao,carga,checklist,gd,memorial,memorial2,beneficiarias,diagrama');
+    igual('observações: modelo fora da lista entra automático (em maiúsculas); inversor da lista não', H.observacoes(h1, L), 'MODELO MODULO: DMEGC DM625G12RT-B66HBW-P');
+    const h3 = base(); h3.inversores[0].modelo = 'OUTRO'; h3.inversores[0].crm = 'Sofar 4KTL2-G3'; h3.observacoes = 'Telhado cerâmico.'; h3.beneficiarias = h2.beneficiarias;
+    igual('observações: aviso da UC beneficiária + módulo e inversor fora da lista + texto do projetista', H.observacoes(h3, L),
+      '>>>POSSUI UC BENEFICIÁRIA<<<\nMODELO MODULO: DMEGC DM625G12RT-B66HBW-P - MODELO INVERSOR: SOFAR 4KTL2-G3\nTelhado cerâmico.');
+    const v1 = H.valores(h1, L), v2 = H.valores(h2, L);
+    ok('valores: cliente nos formatos da planilha (solicitação × memorial em maiúsculas)', v1['solicitacao.cpf'] === '123.456.789-09' && v1['solicitacao.celular'] === '(67) 9 9999-0000' && v1['solicitacao.cep'] === '79300-000' &&
+      v1['solicitacao.titular'] === 'João Exemplo da Silva' && v1['memorial.titular'] === 'JOÃO EXEMPLO DA SILVA' && v1['memorial.celular'] === '67999990000' && !('solicitacao.telefone' in v1), v1);
+    ok('valores: contatos da distribuidora e responsável (o titular quando não há procurador)', v1['solicitacao.distEmpresa'] === 'Energisa Mato Grosso do Sul' && v1['solicitacao.distTelefone'] === '(67) 3398-5057' &&
+      v1['solicitacao.respNome'] === 'João Exemplo da Silva' && v1['solicitacao.respTelefone'] === '(67) 9 9999-0000');
+    ok('valores: relação de carga e potências', v1['carga.l1_equip'] === 'ILUMINAÇÃO' && v1['carga.l1_kw'] === '0,4' && v1['carga.l1_dem'] === '0,24' && v1['carga.totKw'] === '4,9' && v1['carga.totDem'] === '4,74' &&
+      v1['solicitacao.potInstalada'] === '4,74' && v1['solicitacao.potGeracao'] === '4,00' && v1['memorial.modAreaTot'] === '22,4m²' && v1['memorial.mod1_sub'] === '5', v1);
+    ok('valores: proteções digitadas no memorial e no diagrama (com os espaços das fórmulas da planilha)', v1['memorial.dpsCa'] === '45' && v1['memorial.disjCc'] === '16' &&
+      v1['diagrama.dDisjCa'] === ' '.repeat(17) + '25A' && v1['diagrama.dDpsCa'] === '  45kA' && v1['diagrama.dDisjCc'] === ' '.repeat(13) + '16A' && v1['diagrama.dDpsCc'] === '40kA' && v1['diagrama.dTensao'] === '220V' &&
+      v1['diagrama.modPot'] === '5 kWp' && v1['diagrama.invPot'] === '4 kW' && v1['diagrama.logradouro'] === 'RUA DAS PALMEIRAS, 100', v1);
+    ok('valores: potência máxima disponibilizada fica em branco (como a planilha da EMS)', !Object.keys(v1).some(function (k) { return /disponibiliz|potDisp/i.test(k); }));
+    ok('valores: páginas condicionais (GD existente e UCs beneficiárias)', !Object.keys(v1).some(function (k) { return /^beneficiarias\.|^gd\.mod1/.test(k); }) && v2['gd.mod1_sub'] === '2,64' && v2['gd.potTot'] === '2,64' &&
+      v2['beneficiarias.l1_cpf'] === '123.456.789-09' && v2['beneficiarias.l1_nome'] === 'JOÃO EXEMPLO DA SILVA' && v2['beneficiarias.pctTotal'] === '60' && !('beneficiarias.l2_uc' in v2) &&
+      /^>>>POSSUI UC BENEFICIÁRIA<<</.test(v2['memorial.observacoes']), v2);
+    // pendências (campos obrigatórios da planilha)
+    igual('pendências: memorial completo não tem pendência', H.pendencias(h1).join(' | '), '');
+    const h4 = base(); h4.utm.x = ''; h4.protecoes.disjCa = ''; h4.cargas = []; h4.checklist['3.1'] = '';
+    igual('pendências: coordenada, proteções, relação de carga e item 3.1', H.pendencias(h4).join(' | '), 'Coordenada X (UTM) | Relação de carga (carga instalada) | Proteções (DPS e disjuntores CA e CC) | Item 3.1 do formulário (vistoria)');
+    const h5 = base(); h5.beneficiarias = [{ uc: '1234567890', nome: 'A', cpf: '', endereco: '', pct: '70' }, { uc: '555', nome: 'B', cpf: '', endereco: '', pct: '40' }];
+    igual('pendências: UCs beneficiárias (soma > 100% e UC igual à geradora)', H.pendencias(h5).join(' | '), 'UCs beneficiárias: a soma dos percentuais passa de 100% | UCs beneficiárias: a UC beneficiária deve ser diferente da geradora');
+    igual('arquivo: TITULAR_UC_código.pdf como a planilha', H.nomeArquivo({ titular: 'João da Silva & Cia.', uc: '123-4' }), 'JOAO_DA_SILVA_CIA_UC_1234.pdf');
+    igual('PDF: texto nas fontes do memorial (Latin-1; aspas e travessão mantidos; acento fora do Latin-1 cai; emoji sai)', H.textoPdf('“Olá” – Ação\tő ☀️\nfim'), '“Olá” – Ação o  fim');
+    igual('PDF: áreas mantêm as quebras de linha', H.textoPdf('linha 1\r\nlinha 2', true), 'linha 1\nlinha 2');
+    // dados automáticos do CRM: equipamentos da instalação já casados com a lista (e a escolha lembrada no cadastro)
+    const ctxH2 = ctxReferencia();
+    const inst = { id: 'i-h', uc: '1234567890', clienteNome: 'Cliente Teste', concessionaria: 'Energisa Mato Grosso do Sul',
+      placas: { modulo: { equipamentoId: 'mod-dmegc-625', quantidade: 8 }, inversor: { equipamentoId: 'inv-sofar-4', quantidade: 1 } } };
+    const s1 = H.sugerir(inst, ctxH2, L, { dpsCa: '45', fuso: '22K' });
+    ok('dados automáticos: UC, titular, equipamentos casados (DMEGC → OUTROS/OUTRO; Sofar 4KTL2-G3 → modelo OUTRO), padrões do projetista',
+      s1.distribuidora === 'EMS' && s1.uc === '1234567890' && s1.titular === 'Cliente Teste' && s1.modulos[0].fab === 'OUTROS' && s1.modulos[0].qtd === '8' && s1.modulos[0].pot === '0,625' &&
+      s1.modulos[0].crm === 'DMEGC DM625G12RT-B66HBW-P' && s1.inversores[0].fab === '27 - SOFAR' && s1.inversores[0].modelo === 'OUTRO' && s1.inversores[0].pot === '4' && s1.inversores[0].tensao === '220' &&
+      s1.protecoes.dpsCa === '45' && s1.protecoes.disjCa === '' && s1.utm.fuso === '22K' && s1.utm.x === '' && s1.padrao.disjGeral === '', s1);
+    const inv = ctxH2.equipamentos.find(function (e) { return e.id === 'inv-sofar-4'; });
+    inv.energisa = { EMS: { fab: '27 - SOFAR', modelo: '98 - 4KTLM-G2' } };
+    igual('dados automáticos: escolha guardada no cadastro do equipamento prevalece', H.sugerir(inst, ctxH2, L, {}).inversores[0].modelo, '98 - 4KTLM-G2');
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

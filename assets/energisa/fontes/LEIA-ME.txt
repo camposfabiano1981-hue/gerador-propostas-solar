@@ -1,0 +1,13 @@
+Fontes usadas no memorial Energisa (PDF gerado pelo CRM Solar)
+
+Arimo-Regular.ttf / Arimo-Bold.ttf
+  Subconjunto Latin-1 da fonte Arimo (Copyright 2020 The Arimo Project Authors,
+  https://github.com/googlefonts/arimo), com a mesma métrica da Arial.
+  Arquivos MODIFICADOS: recortados para os caracteres Latin-1 (fontTools subset),
+  sem hinting e sem tabelas de layout. Licença: LICENSE-Arimo.txt.
+
+MemorialC-Regular.ttf / MemorialC-Bold.ttf
+  Subconjunto Latin-1 da fonte Carlito (Copyright 2013 The Carlito Project Authors,
+  https://github.com/googlefonts/carlito), com a mesma métrica da Calibri.
+  Versão MODIFICADA e renomeada para "Memorial C", porque a licença reserva o
+  nome "Carlito" (Reserved Font Name). Licença: OFL-Carlito.txt (SIL OFL 1.1).

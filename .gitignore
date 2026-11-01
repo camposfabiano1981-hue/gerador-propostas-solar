@@ -5,6 +5,8 @@
 # propostas e backups gerados localmente (contêm dados de clientes)
 *.docx
 *.pdf
+# exceção: modelo EM BRANCO do memorial Energisa (sem dados de clientes), usado pelo gerador do memorial
+!assets/energisa/memorial-gd-v6.pdf
 backup-propostas-solar-*.json
 
 # sistema operacional
