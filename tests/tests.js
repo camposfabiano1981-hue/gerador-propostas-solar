@@ -2237,6 +2237,8 @@
       'O sistema é composto por 14 módulos de 620 Wp. A instalação elétrica da casa existente / com ramal de entrada bifásico de 16 mm2, disjuntor de 50 A e ramal de saída bifásico de / 16 mm2, disjuntor de 50 A.');
     igual('prancha: carimbo com empresa e RT de Configurações (registro CFT com dígito, telefone sem DDD)', [vA.emp_endereco, vA.emp_contato, vA.rt_nome_mai, vA.rt_registro, vA.rt_tel, vA.cli_doc, vA.data, vA.uc_carimbo].join('|'),
       'Rua da Empresa, 1, Bairro Centro, Corumbá - MS|Fone: 67 3232-0000 / 67 90000-0000 - contato@exemplo.com|FULANO DE TAL|CFT-BR nº 1234567890-1|TEL. 90000-0000|CPF/CNPJ:123.456.789-09|15/07/2026|UC:123');
+    const v10 = P.valores(Object.assign(U.clone(pr), { ca: Object.assign({}, pr.ca, { bit: '10' }), terraBit: '10' }), 'A', ctxP);
+    igual('prancha A: fiação do quadro ao inversor com a bitola do cabo CA e a do terra (não fica o #6 do desenho)', [v10.bit_ca_lig, v10.bit_terra_lig, v10.bit_ca_marca, vA.bit_ca_lig, vA.bit_terra_lig].join('|'), '#10|#10|10|#6|#6');
     igual('prancha: fiação automática pelas strings e bitolas', [vA.fia_placas, vA.fia_placas_vem, vA.fia_inversor].join('|'), '4#6(T#6)|Vem das placas 4#6(T#6)|2#6(T#6)');
     const vB = P.valores(Object.assign({}, pr, { estilo: 'B' }), 'B', ctxP);
     igual('prancha B: textos no formato do estilo B', [vB.mod_qtd_txt, vB.mod_total_txt, vB.mod_qtd_curto, vB.inv_pot_txt, vB.inv_rotulo, vB.disj_geral_2p, vB.bit_cc_marca, vB.cabo_ramal_lig_multiplex, vB.inclinacao, vB.selo_x].join('|'),

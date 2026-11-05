@@ -398,7 +398,9 @@ window.App = window.App || {};
         cabo_cc: str(pr.cc.bit) ? (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : str(pr.cc.bit)) + 'mm2/' + str(pr.cc.tipo) : '',
         disj_geral_a: dg ? dg + 'A' : '', disj_ca_a: dca ? dca + 'A' : '',
         campo_fv: [0, 1, 0, 1].map(function (k) { const s = c.strings[k] || c.strings[0]; return s && w ? s.n + 'x' + w + 'W' : ''; }),
-        bit_ca_marca: str(pr.ca.bit), bit_cc_marca: str(pr.cc.bit)
+        bit_ca_marca: str(pr.ca.bit), bit_cc_marca: str(pr.cc.bit),
+        // fiação do quadro ao inversor no desenho das strings: condutores (cabo CA do inversor) e terra
+        bit_ca_lig: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '', bit_terra_lig: str(pr.terraBit) ? '#' + str(pr.terraBit) : ''
       });
       return v;
     }
@@ -480,7 +482,8 @@ window.App = window.App || {};
       const ax = R.ancora[0], ay = R.p0[1] + (ax - R.p0[0]) / (ent[0] - R.p0[0]) * (ent[1] - R.p0[1]);
       forma('CRMRam', ax, R.ancora[1], ax, ay, sg);
       texto(um('_ram_str'), rot, ax, R.ancora[1], ax, ay, sg);
-      (campos._ram_bit || []).forEach(function (oc) { texto(oc, bit ? '#' + bit : '', ax, R.ancora[1], ax, ay, sg); });
+      // rótulos sob os condutores + − (cabo CC) e sob o T (terra)
+      (campos._ram_bit || []).forEach(function (oc, i) { const b = i === 0 ? bit : str(pr.terraBit); texto(oc, b ? '#' + b : '', ax, R.ancora[1], ax, ay, sg); });
     });
     // ---- tabela de strings: uma linha por string, centradas no corpo da tabela
     const T = G.tabela, rotTab = um('_tab_str');
