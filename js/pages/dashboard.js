@@ -268,12 +268,10 @@
         tot ? h('div.bi-sit-barra', partes.filter(function (p) { return p[1]; }).map(function (p) { return h('i', { style: { flex: String(p[1]), background: p[2] }, title: p[0] + ': ' + p[1] }); })) : h('div.bi-sit-barra.vazia'),
         h('div.dash-legenda', partes.map(function (p) { return h('span', h('i', { style: { background: p[2] } }), p[0] + ' ', h('b', String(p[1]))); })));
     };
-    const sem = App.aprovadasSemInstalacao ? App.aprovadasSemInstalacao().length : 0;
     return h('section.card.dash-card.bi-card',
       h('div.dash-card-topo', h('div', h('h3', 'Obras e ordens de serviço'), h('p.dash-sub', 'Situação agora'))),
       ob ? grupo('Obras', [['✓ Em dia', ob.emDia, COR.bom], ['⏳ Etapa atrasada', ob.atrasadas, COR.alerta], ['○ A iniciar', ob.iniciar, COR.neutro]], '#/instalacoes') : null,
-      os ? grupo('Ordens de serviço', [['✓ No prazo', Math.max(0, os.abertas - os.atrasadas - os.urgentesNoPrazo), COR.bom], ['⚠ Atrasada', os.atrasadas, COR.critico], ['! Urgente', os.urgentesNoPrazo, COR.serio]], '#/ordens') : null,
-      sem ? h('p.dash-sub.bi-nota', sem + (sem === 1 ? ' proposta aprovada ainda sem instalação → ' : ' propostas aprovadas ainda sem instalação → '), h('a', { href: '#/instalacoes' }, 'iniciar')) : null);
+      os ? grupo('Ordens de serviço', [['✓ No prazo', Math.max(0, os.abertas - os.atrasadas - os.urgentesNoPrazo), COR.bom], ['⚠ Atrasada', os.atrasadas, COR.critico], ['! Urgente', os.urgentesNoPrazo, COR.serio]], '#/ordens') : null);
   }
 
   /** Matriz do resumo mensal (12 meses, o mais recente primeiro) com barras de dados; clicar num mês filtra o painel por ele. */
@@ -458,6 +456,8 @@
     // avisos de configuração e do dia a dia
     const props0 = S.list('propostas');
     const avisos = [];
+    const semInstalacao = App.aprovadasSemInstalacao ? App.aprovadasSemInstalacao() : [];
+    if (semInstalacao.length) avisos.push(h('li', semInstalacao.length === 1 ? '1 proposta aprovada ainda sem instalação. ' : semInstalacao.length + ' propostas aprovadas ainda sem instalação. ', h('a', { href: '#/instalacoes' }, 'Iniciar em Instalações'), '.'));
     const semPreco = S.list('equipamentos').filter(function (e) { return e.ativo !== false && ['modulo', 'inversor', 'hibrido', 'bateria'].indexOf(e.tipo) >= 0 && !(U.num(e.preco) > 0); }).length;
     if (semPreco) avisos.push(h('li', semPreco + ' equipamento(s) principal(is) sem preço. ', h('a', { href: '#/equipamentos' }, 'Cadastrar preços'), ' para o kit ser somado automaticamente.'));
     if (props0.length && !(App.Nuvem && App.Nuvem.usuario)) avisos.push(h('li', 'Os dados ficam neste navegador — ', h('a', { href: '#/dados' }, 'faça backup'), ' ou ligue a ', h('a', { href: '#/nuvem' }, 'sincronização'), '.'));
