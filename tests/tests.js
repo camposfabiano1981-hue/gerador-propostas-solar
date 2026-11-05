@@ -1368,6 +1368,29 @@
     igual('CRM: últimos 3 meses começam no 1º dia de 2 meses atrás', K.intervalo('3m', '2026-10-30').ini, '2026-08-01');
     igual('CRM: este ano', K.intervalo('ano', '2026-10-30').ini, '2026-01-01');
     ok('CRM: "tudo" sem período anterior', K.intervalo('tudo', '2026-10-30').iniAnt === null);
+    igual('painel: "este mês" compara com os mesmos dias do mês anterior (e fevereiro curto)', [K.intervalo('mes', '2026-11-05').iniAnt + '~' + K.intervalo('mes', '2026-11-05').fimAnt, K.intervalo('mes', '2026-03-31').fimAnt].join('|'), '2026-10-01~2026-10-05|2026-02-28');
+    igual('painel: "este ano" compara com o mesmo período do ano anterior', K.intervalo('ano', '2026-11-05').iniAnt + '~' + K.intervalo('ano', '2026-11-05').fimAnt, '2025-01-01~2025-11-05');
+    igual('painel: mês escolhido na matriz (o anterior é o mês de antes; o mês atual vai até hoje)', [JSON.stringify(K.intervalo('m:2026-08', '2026-11-05')), K.intervalo('m:2026-11', '2026-11-05').fim, K.rotuloMes('2026-08')].join('|'),
+      '{"ini":"2026-08-01","fim":"2026-08-31","iniAnt":"2026-07-01","fimAnt":"2026-07-31","mes":"2026-08"}|2026-11-05|ago/26');
+    (function () {
+      const pp = [
+        { id: 'a', status: 'aprovada', data: '2026-10-02', aprovadaEm: '2026-10-05', tipoSistema: 'ongrid', cidade: 'Corumbá', vendedor: { nome: 'Ana' }, resumo: { total: 30000, kwp: 10 } },
+        { id: 'b', status: 'aprovada', data: '2026-11-01', aprovadaEm: '2026-11-03', tipoSistema: 'hibrido', cidade: 'Ladário', vendedor: { nome: 'Bruno' }, resumo: { total: 50000, kwp: 8 } },
+        { id: 'c', status: 'recusada', data: '2026-10-03', recusadaEm: '2026-10-09', tipoSistema: 'ongrid', cidade: 'Corumbá', vendedor: { nome: 'Ana' }, resumo: { total: 20000 } },
+        { id: 'd', status: 'negociacao', data: '2026-11-02', tipoSistema: 'ongrid', cidade: 'Miranda', vendedor: { email: 'c@x' }, resumo: { total: 15000 } },
+        { id: 'e', status: 'rascunho', data: '2026-11-04', tipoSistema: 'bess', cidade: 'Corumbá', resumo: { total: 90000 } }];
+      igual('painel: segmentações por vendedor, tipo e cidade', [K.filtrar(pp, { vendedor: 'Ana' }).length, K.filtrar(pp, { tipo: 'ongrid' }).length, K.filtrar(pp, { cidade: 'Corumbá' }, function (p) { return p.cidade; }).length,
+        K.filtrar(pp, { vendedor: 'c@x', tipo: 'ongrid' }).length, K.vendedorDe(pp[4])].join('|'), '2|3|3|1|');
+      const di = K.indicadores({ propostas: pp, cidadeDe: function (p) { return p.cidade; } }, 'mes', '2026-11-05');
+      igual('painel: funil acumulado (aprovada passou por enviada e negociação; recusada, por enviada)', di.funilAcum.map(function (e) { return e.label + ':' + e.n; }).join(','), 'Emitidas:3,Enviadas:2,Em negociação:2,Aprovadas:1');
+      igual('painel: comparativos com o mesmo período do mês anterior (emitidas, vendido, ticket)', [di.emitidas, di.emitidasAnt, di.vendido, di.vendidoAnt, di.ticket, di.ticketAnt].join('|'), '3|2|50000|30000|50000|30000');
+      const m = di.porMes.slice(-2);
+      igual('painel: matriz por mês (emitidas, vendas, recusas e conversão)', m.map(function (x) { return x.rot + ':' + x.emitidas + '/' + x.n + '/' + x.recusas + '/' + (x.conversao == null ? '-' : x.conversao); }).join(' '), 'out/26:2/1/1/0.5 nov/26:3/1/0/1');
+      igual('painel: 12 meses por cidade e por tipo; vendedores no período', [di.porCidade12.map(function (c) { return c.label + '=' + c.valor; }).join(','), di.porTipo12.map(function (t) { return t.id + '=' + t.valor; }).join(','), di.porVendedor.map(function (v) { return v.label; }).join(',')].join(' | '),
+        'Ladário=50000,Corumbá=30000 | ongrid=30000,hibrido=50000,bess=0 | Bruno');
+      const ag = K.agrupar([1, 2, 3, 4, 5, 6, 7].map(function (i) { return { cidade: 'C' + i, resumo: { total: i * 1000 } }; }), function (p) { return p.cidade; }, 5, 'Outras');
+      igual('painel: ranking com "Outras" além dos 5 maiores', ag.map(function (x) { return x.label + '=' + x.valor; }).join(','), 'C7=7000,C6=6000,C5=5000,C4=4000,Outras=6000');
+    })();
     const pp = { status: 'enviada', data: '2026-10-01' };
     K.mudarStatus(pp, 'aprovada', '2026-10-20');
     ok('CRM: aprovar registra a data da aprovação e da mudança', pp.status === 'aprovada' && pp.aprovadaEm === '2026-10-20' && pp.statusEm === '2026-10-20');
