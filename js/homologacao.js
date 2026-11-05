@@ -300,6 +300,8 @@ window.App = window.App || {};
       atualizadoEm: new Date().toISOString()
     };
     if (concluida) h.checklist['3.1'] = 'SIM';
+    // campos que a prancha do projeto elétrico já tem (disjuntores, DPS CA, bitolas, ligação, UTM)
+    if (inst.pranchas && App.Pranchas) App.Pranchas.gravarCompartilhados(inst.pranchas, h);
     // tensão nominal do inversor: a do cadastro ou, sem ela, a de atendimento da UC
     h.inversores.forEach(function (x) { if (!x.tensao) x.tensao = /^\d+$/.test(h.tensao) && num(h.tensao) >= 200 ? h.tensao : '220'; });
     return h;

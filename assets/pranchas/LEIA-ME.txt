@@ -1,0 +1,24 @@
+Pranchas do projeto elétrico (estilos A e B) — arquivos usados pelo CRM Solar
+
+prancha-a.pdf / prancha-b.pdf
+  Modelos EM BRANCO das pranchas A1 do projetista, exportadas do AutoCAD. Foram retirados todos os
+  textos que mudam a cada obra (cliente, endereço, UC, coordenadas, equipamentos, proteções, cabos,
+  responsável técnico, contatos), a assinatura, as anotações "AutoCAD SHX Text", os marcadores e os
+  metadados do arquivo. O conteúdo do desenho fica entre q/Q para o que o CRM desenha por cima não
+  herdar a escala do AutoCAD.
+
+mapa-pranchas.json
+  Para cada campo, as ocorrências na página: tipo do texto ("tt" = Arial/TrueType; "txt" e "rom" =
+  textos SHX desenhados em traços), posição da linha de base (pt), tamanho, fator de largura, ângulo,
+  cor, alinhamento e largura máxima até a borda da célula. Não contém nenhum texto das obras.
+
+fonte-txt.json
+  Fonte TXT (traços), com os glifos colhidos dos próprios desenhos do projetista (letras desenhadas
+  pelo AutoCAD nas pranchas), normalizados para a altura das maiúsculas = 1, com largura e folgas.
+
+fonte-romans.json
+  Fonte ROMANS em traços: só a parte latina básica das fontes Hershey (domínio público), lida do
+  arquivo romans.lff do LibreCAD; as letras acentuadas e o símbolo de grau foram compostos aqui com
+  traços simples (a parte acentuada do arquivo do LibreCAD, sob GPL, não foi usada).
+
+O texto Arial usa a Arimo (assets/energisa/fontes, mesma métrica da Arial; licença em LICENSE-Arimo.txt).

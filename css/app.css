@@ -785,5 +785,11 @@ td.num.saida { color: var(--vermelho); }
 .homolog-item .cod { font-weight: 700; min-width: 34px; color: var(--azul); }
 .homolog-item select { margin-left: auto; max-width: 90px; }
 .homolog-obs { white-space: pre-wrap; background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; padding: 8px 10px; font: 13px/1.4 var(--fonte); margin: 0 0 8px; }
+.prancha-conferencias { background: #F1F5F9; border-radius: 8px; padding: 6px 10px; color: var(--texto-2); }
+.prancha-conferencias.tem-erro { background: #FEF2F2; color: #7F1D1D; }
+.prancha-conferencias summary { cursor: pointer; font-weight: 700; }
+.prancha-conferencias ul { margin: 6px 0 0 4px; padding: 0; list-style: none; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.prancha-conferencias li.erro { color: #B91C1C; font-weight: 600; }
+.prancha-conferencias li.aviso { color: #92400E; }
 .ok-txt { color: var(--verde); }
 @media (max-width: 700px) { .homolog-tab { min-width: 640px; } }

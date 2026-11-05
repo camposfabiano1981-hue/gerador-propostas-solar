@@ -2211,5 +2211,67 @@
     ok('puxar do CRM: quantidade do inversor igual ao da instalação', hm.inversores[0].qtd === '2' && hm.inversores.length === 2, hm.inversores);
   })();
 
+  // ---------------------------------------------------------------- pranchas do projeto elétrico (estilos A e B)
+  (function () {
+    const P = App.Pranchas;
+    // obra igual à prancha A de referência: 14 × 620 W em 2 strings, inversor de 6 kW em 220 V, CC 24,66 m e CA 5 m
+    const pr = {
+      estilo: 'A', data: '2026-07-15', cliente: { nome: 'Cliente Teste', documento: '12345678909', endereco: 'Rua A, 10, Centro, Cep: 79300-000 - Corumbá - MS.' }, uc: '123', art: '77',
+      ruas: { uc: 'Rua A', r2: '', r3: '', r4: '' }, utm: { fuso: '21K', x: '435000', y: '7897000' }, emp: { endereco: '', contato: '' }, rt: { nome: '', registro: '', tel: '' },
+      mod: { fab: 'Marca Módulo', modelo: 'MM-620', w: '620', vmp: '40.98', imp: '15.13', voc: '49.1', isc: '16', celulas: '132', qtd: '14' },
+      inv: { fab: 'Marca Inv', modelo: 'INV6', kw: '6', qtd: '1', fases: 'mono', tensao: '220', vmaxCC: '600', mppts: '2' },
+      nStrings: '2', porString: '', ligacao: 'bi',
+      cc: { bit: '6', tipo: 'EPR SOLAR 1.8 KV', un: '0,6', dist1: '24,66', dist2: '' }, ca: { bit: '6', mat: 'PVC', iso: '450/750V - 70°C', un: '0,49', dist: 5 },
+      entrada: { bit: '16', mat: 'PVC', iso: '450/750V - 70°C' }, saida: { bit: '16', mat: 'PVC', iso: '450/750V - 70°C' }, ramal: { cond: '2', bit: '25', neutro: '25', tipo: 'XLPE- MULTIPLEX', iso: '0,6/1KV - 90°C' },
+      terraBit: '6', disjGeral: 50, disjCa: 40, disjCaKa: '3', dpsCa: { classe: 'II', uc: '275', in: '10', imax: '20', up: '1,2' }, dpsCcUcpv: '', sbCc: '4E/2S',
+      fia: { placas: '', inversor: '', sb: '', qgbt: '3#10(10)10', ramal: '2#10(10)10' }, elet: { placas: 'GALVANIZADO 1"', inversor: 'GALVANIZADO 3/4"', ramal: 'PVC 32 mm' },
+      haste: '5/8 x 2,40 m', cxPassagem: 'Cx passagem 25 X 25', cxInspecao: '30 X 30 X 40 cm', telhado: 'Fibrocimento', inclinacao: '15', efic: '100', fp: '1', limiteCC: '3', limiteCA: '4'
+    };
+    const ctxP = { empresa: { endereco: 'Rua da Empresa, 1', bairro: 'Centro', cidade: 'Corumbá', uf: 'MS', telefone: '67 3232-0000 / 67 90000-0000', email: 'contato@exemplo.com', responsavel: 'Fulano de Tal', registroTipo: 'CFT-BR', registro: '12345678901' } };
+    const vA = P.valores(pr, 'A', ctxP);
+    igual('prancha A: tabela de strings como a do projetista (potência, tensão, corrente, queda)', ['t1_n', 't1_p', 't1_v', 't1_i', 't1_un', 't1_dist', 't1_dv', 't1_pct', 't2_dist'].map(function (k) { return vA[k]; }).join('|'), '7|4.34|286.9|15.13|0.6|24.66|0.22|0.08|24.66');
+    igual('prancha A: tabela do inversor (corrente P/V, queda CA) e totais', ['ti_nstr', 'ti_nmod', 'ti_efic', 'ti_kw', 'ti_v', 'ti_i', 'ti_dv', 'ti_pct', 'total_kwp', 'inv_strings', 'n_inv'].map(function (k) { return vA[k]; }).join('|'), '2|14|100%|6|220|27.27|0.07|0.03|8.68|2|1');
+    igual('prancha A: textos do unifilar (proteções, cabos, campo FV)', [vA.disj_ca, vA.disj_ca_ka, vA.dps_ca_in, vA.dps_ca_imax, vA.dps_ca_uc, vA.dps_ca_up, vA.cabo_cc, vA.cabo_entrada, vA.disj_geral_a, vA.campo_fv.join(','), vA.inv_kw_cad, vA.leg_inv_kw].join('|'),
+      '40A|3kA|In=10kA|In_max=20kA|Uc=275V|Up<1,2KV|6.0mm2/EPR SOLAR 1.8 KV|16mm2 - PVC|50A|7x620W,7x620W,7x620W,7x620W|6KW|6.0 KW');
+    igual('prancha: descritivo com módulos, ligação, bitolas e disjuntor', vA.descritivo.join(' / '),
+      'O sistema é composto por 14 módulos de 620 Wp. A instalação elétrica da casa existente / com ramal de entrada bifásico de 16 mm2, disjuntor de 50 A e ramal de saída bifásico de / 16 mm2, disjuntor de 50 A.');
+    igual('prancha: carimbo com empresa e RT de Configurações (registro CFT com dígito, telefone sem DDD)', [vA.emp_endereco, vA.emp_contato, vA.rt_nome_mai, vA.rt_registro, vA.rt_tel, vA.cli_doc, vA.data, vA.uc_carimbo].join('|'),
+      'Rua da Empresa, 1, Bairro Centro, Corumbá - MS|Fone: 67 3232-0000 / 67 90000-0000 - contato@exemplo.com|FULANO DE TAL|CFT-BR nº 1234567890-1|TEL. 90000-0000|CPF/CNPJ:123.456.789-09|15/07/2026|UC:123');
+    igual('prancha: fiação automática pelas strings e bitolas', [vA.fia_placas, vA.fia_placas_vem, vA.fia_inversor].join('|'), '4#6(T#6)|Vem das placas 4#6(T#6)|2#6(T#6)');
+    const vB = P.valores(Object.assign({}, pr, { estilo: 'B' }), 'B', ctxP);
+    igual('prancha B: textos no formato do estilo B', [vB.mod_qtd_txt, vB.mod_total_txt, vB.mod_qtd_curto, vB.inv_pot_txt, vB.inv_rotulo, vB.disj_geral_2p, vB.bit_cc_marca, vB.cabo_ramal_lig_multiplex, vB.inclinacao, vB.selo_x].join('|'),
+      'QTDE MODULOS:  14|POTENCIA TOTAL:  8,68 KWp|14 Módulos|POTENCIA: 6.0 KW|MARCA INV | INV6|2P-50|#6|2#25(25) mm2|i = 15º|X: 435000');
+    igual('prancha: módulos por string (divisão não exata: as primeiras levam um a mais)', [P.tamanhos(15, 2).join('+'), P.tamanhos(14, 2).join('+'), P.tamanhos(14, 2, 8).join('+'), P.tamanhos(0, 2).length].join('|'), '8+7|7+7|8+8|0');
+    igual('prancha: disjuntor comercial e capacidade do cabo (NBR 5410 B1)', [P.proxDisjuntor(1.25 * 27.27), P.proxDisjuntor(1.25 * 18.18), P.izCabo(6, 'bi'), P.izCabo(10, 'tri')].join('|'), '40|25|41|50');
+    ok('prancha: queda unitária de referência 2ρ/S (6 mm² ≈ 6,87 V/A·km)', Math.abs(P.quedaRef(6, false) - 6.867) < 0.01 && Math.abs(P.quedaRef(6, true) - 5.947) < 0.01);
+    ok('prancha: sem pendências com os campos preenchidos', P.pendencias(pr, ctxP).length === 0, P.pendencias(pr, ctxP));
+    const c0 = P.conferir(pr);
+    ok('prancha: obra igual ao desenho do estilo A só avisa da queda unitária (sem erro)', c0.length === 2 && c0.every(function (x) { return x.nivel === 'info' && /Queda unitária/.test(x.texto); }), c0);
+    const pr2 = U.clone(pr); pr2.disjCa = 20; pr2.inv.vmaxCC = '300'; pr2.nStrings = '1'; pr2.dpsCcUcpv = '500'; pr2.cc.bit = '4'; pr2.ca.dist = 700;
+    const c2 = P.conferir(pr2).map(function (x) { return x.nivel + ':' + x.texto.slice(0, 40); }).join(' || ');
+    ok('prancha: conferências (disjuntor < corrente, Voc no frio > inversor, DPS CC, desenho diferente, #6 fixo, queda CA)', /erro:Disjuntor CA de 20 A abaixo/.test(c2) && /erro:Voc da string no frio/.test(c2) && /aviso:DPS CC com Ucpv de 500 V/.test(c2) &&
+      /info:Estilo A: o desenho das strings/.test(c2) && /info:Estilo A: as marcas "#6"/.test(c2) && /aviso:Queda de tensão no circuito CA/.test(c2), c2);
+    const pend = P.pendencias(Object.assign(U.clone(pr), { utm: { fuso: '21K', x: '12', y: '' }, disjGeral: '' }), ctxP);
+    ok('prancha: pendências (UTM com 6 e 7 dígitos, disjuntor geral)', pend.indexOf('Coordenada UTM X (6 dígitos)') >= 0 && pend.indexOf('Coordenada UTM Y (7 dígitos)') >= 0 && pend.indexOf('Disjuntor geral (A)') >= 0, pend);
+    // compartilhados com a Homologação
+    const hm = { utm: { fuso: '21K', x: '', y: '' }, padrao: { disjGeral: '' }, protecoes: { dpsCa: '', disjCa: '' }, bitolas: { fase: '', terra: '' }, conexao: 'MONOFÁSICO' };
+    P.gravarCompartilhados(pr, hm);
+    ok('prancha → Homologação: disjuntores, DPS CA, bitolas, ligação e UTM', hm.padrao.disjGeral === 50 && hm.protecoes.disjCa === 40 && hm.protecoes.dpsCa === '10' && hm.bitolas.fase === '16' && hm.bitolas.terra === '6' && hm.conexao === 'BIFÁSICO' && hm.utm.x === '435000', hm);
+    const pr3 = U.clone(pr); hm.padrao.disjGeral = 63; hm.conexao = 'TRIFÁSICO';
+    P.lerCompartilhados(pr3, hm);
+    ok('Homologação → prancha', pr3.disjGeral === '63' && pr3.ligacao === 'tri', { d: pr3.disjGeral, l: pr3.ligacao });
+    const pad = P.padroesDe(pr);
+    ok('prancha: padrões do projetista (cabos, quedas, DPS, fiação) sem dados da obra', pad.cc.un === '0,6' && pad.dpsCa.imax === '20' && pad.fia.qgbt === '3#10(10)10' && !pad.cliente && !pad.utm && !pad.disjGeral, pad);
+    igual('prancha: nome do arquivo', P.nomeArquivo(Object.assign({}, pr, { estilo: 'AB', cliente: { nome: 'José da Silva' } })), 'Prancha FV - A e B - Jose da Silva - UC 123.pdf');
+    // texto em traços: fonte de teste com dois glifos e as regras da fonte TXT (espaço só depois do 1º glifo, folgas l/r, fator de largura)
+    const F = { espaco: 0.9, subst: { 'º': '°' }, glifos: { '-': { g: [[[0, 0.5], [0.5, 0.5]]], w: 0.5, l: 0.1, r: 0.1 }, 'A': { g: [[[0, 0], [0.4, 1], [0.8, 0]]], w: 0.8, l: 0.15, r: 0.15 } } };
+    const d = P.txtDispor(F, ' A A?');
+    ok('traços TXT: disposição (espaço, folgas, glifo ausente vira "-")', Math.abs(d.w - (0.8 + 0.9 + 0.3 + 0.8 + 0.15 + 0.1 + 0.5)) < 1e-9 && d.itens.map(function (i) { return i.k; }).join('') === 'AA-', d);
+    const pl = P.tracos(F, { t: 'txt', x: 100, y: 50, s: 10, fl: 1, ang: 90, al: 'l' }, 'A');
+    ok('traços TXT: girado 90° a partir da linha de base', Math.abs(pl[0][1][0] - 90) < 1e-9 && Math.abs(pl[0][1][1] - 54) < 1e-9 && Math.abs(pl[0][2][1] - 58) < 1e-9, pl);
+    const aj = P.caber(function (tam, fl) { return 100 * tam / 10 * fl; }, { s: 10, fl: 1, w: 50 }, 'x');
+    ok('ajuste à célula: estreita até 70% e depois diminui a altura', Math.abs(aj.fl - 0.7) < 1e-9 && Math.abs(aj.tam - 50 / 70 * 10) < 1e-9, aj);
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

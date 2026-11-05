@@ -767,6 +767,14 @@
       });
     });
 
+    /* ---------- pranchas do projeto elétrico (estilos A e B do projetista) */
+    secao('pranchas', 'Pranchas do projeto elétrico', function (c) {
+      App.PranchasTela.secao(c, {
+        inst: inst, ctx: ctx, mudou: mudou,
+        registrar: function (txt) { I.registrar(inst, txt, 'nota'); desenhar('historico'); if (inst.id) salvar(false); }
+      });
+    });
+
     /* ---------- dados da obra */
     secao('dados', 'Dados da obra', function (c) {
       c.appendChild(UI.grade([

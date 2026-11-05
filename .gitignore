@@ -7,6 +7,9 @@
 *.pdf
 # exceção: modelo EM BRANCO do memorial Energisa (sem dados de clientes), usado pelo gerador do memorial
 !assets/energisa/memorial-gd-v6.pdf
+# exceção: modelos EM BRANCO das pranchas fotovoltaicas (estilos A e B, sem dados de clientes nem assinatura)
+!assets/pranchas/prancha-a.pdf
+!assets/pranchas/prancha-b.pdf
 backup-propostas-solar-*.json
 
 # sistema operacional
