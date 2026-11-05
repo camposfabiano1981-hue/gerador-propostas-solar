@@ -51,11 +51,12 @@ window.App = window.App || {};
     fia: { qgbt: '3#10(10)10', ramal: '2#10(10)10' },
     elet: { placas: 'GALVANIZADO 1"', inversor: 'GALVANIZADO 3/4"', ramal: 'PVC 32 mm' },
     haste: '5/8 x 2,40 m', cxPassagem: 'Cx passagem 25 X 25', cxInspecao: '30 X 30 X 40 cm',
-    inclinacao: '15', efic: '100', fp: '1', limiteCC: '3', limiteCA: '4', maxStr: '10'
+    inclinacao: '15', efic: '100', fp: '1', limiteCC: '3', limiteCA: '4', maxStr: '10',
+    condCA: 'FFT', terraMod: '6'
   };
   const CHAVES_PADRAO = ['estilo', 'cc.bit', 'cc.tipo', 'cc.un', 'ca.bit', 'ca.mat', 'ca.iso', 'ca.un', 'entrada.bit', 'entrada.mat', 'entrada.iso', 'saida.bit', 'saida.mat', 'saida.iso',
     'ramal.cond', 'ramal.bit', 'ramal.neutro', 'ramal.tipo', 'ramal.iso', 'terraBit', 'disjCaKa', 'dpsCa.classe', 'dpsCa.uc', 'dpsCa.in', 'dpsCa.imax', 'dpsCa.up', 'dpsCcUcpv',
-    'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA', 'maxStr'];
+    'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA', 'maxStr', 'condCA', 'terraMod'];
 
   // ------------------------------------------------------------ carregamento sob demanda
   const cache = {};
@@ -221,7 +222,7 @@ window.App = window.App || {};
       disjGeral: '', disjCa: '', disjCaKa: pad.disjCaKa, dpsCa: U.clone(pad.dpsCa), dpsCcUcpv: pad.dpsCcUcpv, sbCc: pad.sbCc,
       fia: { placas: '', inversor: '', sb: '', qgbt: pad.fia.qgbt, ramal: pad.fia.ramal }, elet: U.clone(pad.elet),
       haste: pad.haste, cxPassagem: pad.cxPassagem, cxInspecao: pad.cxInspecao,
-      telhado: '', inclinacao: pad.inclinacao, efic: pad.efic, fp: pad.fp, limiteCC: pad.limiteCC, limiteCA: pad.limiteCA, maxStr: pad.maxStr,
+      telhado: '', inclinacao: pad.inclinacao, efic: pad.efic, fp: pad.fp, limiteCC: pad.limiteCC, limiteCA: pad.limiteCA, maxStr: pad.maxStr, condCA: pad.condCA, terraMod: pad.terraMod,
       assinarRt: true, atualizadoEm: new Date().toISOString()
     };
     puxarCrm(pr, inst, ctx);
@@ -302,6 +303,15 @@ window.App = window.App || {};
     };
   }
 
+  /** Condutores do circuito CA do inversor ao quadro, escolhidos pelo projetista (padrão FFT). */
+  const CONDUTORES_CA = [{ v: 'FFT', t: 'F + F + T (2 fases e terra)' }, { v: 'FNT', t: 'F + N + T (fase, neutro e terra)' },
+    { v: 'FFFT', t: 'F + F + F + T (3 fases e terra)' }, { v: 'FFFNT', t: 'F + F + F + N + T (3 fases, neutro e terra)' }];
+  function condCA(pr) { const c = str(pr && pr.condCA).toUpperCase(); return /^[FN]+T$/.test(c) ? c : PADROES.condCA; }
+  /** Condutores carregados do circuito CA (sem o terra), do terra para fora no desenho: fases e depois o neutro. */
+  function letrasCA(pr) { const c = condCA(pr); return c.replace(/[^F]/g, '').split('').concat(c.indexOf('N') >= 0 ? ['N'] : []); }
+  /** Bitola do aterramento dos módulos (campo do projetista; padrão 6 mm²). */
+  function terraMod(pr) { return str(pr && pr.terraMod) || PADROES.terraMod; }
+
   // ------------------------------------------------------------ textos automáticos (carimbo, fiação)
   function automaticos(pr, ctx) {
     const emp = (ctx && ctx.empresa) || (App.Store && App.Store.config ? (App.Store.config().empresa || {}) : {}) || {};
@@ -313,12 +323,12 @@ window.App = window.App || {};
     const regFmt = /^\d{3,}$/.test(reg) && /cft/i.test(emp.registroTipo || '') ? reg.slice(0, -1) + '-' + reg.slice(-1) : reg;
     const telRt = tel.split('/').map(str).filter(Boolean).pop() || '';
     const c = calcular(pr);
-    const cond = pr.ligacao === 'tri' ? 3 : 2;
+    const cond = letrasCA(pr).length, tm = terraMod(pr);
     return {
       empEndereco: endEmp, empContato: contato, rtNome: str(emp.responsavel),
       rtRegistro: reg ? [str(emp.registroTipo) || 'CFT-BR', 'nº', regFmt].join(' ') : '', rtTel: telRt ? 'TEL. ' + telRt.replace(/^\(?\d{2}\)?\s+(?=9?\d{4})/, '') : '',
-      fiaPlacas: c.nStr > 0 ? (2 * c.nStr) + '#' + str(pr.cc.bit) + '(T#' + str(pr.terraBit) + ')' : '',
-      fiaSb: (2 * Math.max(1, Math.min(c.nStr || 1, num(pr.inv && pr.inv.mppts) || 1))) + '#' + str(pr.cc.bit) + '(T#' + str(pr.terraBit) + ')',
+      fiaPlacas: c.nStr > 0 ? (2 * c.nStr) + '#' + str(pr.cc.bit) + '(T#' + tm + ')' : '',
+      fiaSb: (2 * Math.max(1, Math.min(c.nStr || 1, num(pr.inv && pr.inv.mppts) || 1))) + '#' + str(pr.cc.bit) + '(T#' + tm + ')',
       fiaInversor: cond + '#' + str(pr.ca.bit) + '(T#' + str(pr.terraBit) + ')'
     };
   }
@@ -420,7 +430,7 @@ window.App = window.App || {};
       cabo_saida_xlpe: str(pr.saida.bit) ? str(pr.saida.bit) + ' mm2/' + str(pr.saida.mat) : '', cabo_entrada_xlpe: str(pr.entrada.bit) ? str(pr.entrada.bit) + ' mm2/' + str(pr.entrada.mat) : '',
       disj_geral_a_esp: dg ? dg + ' A' : '', disj_geral_2p: dg ? (POLOS[pr.ligacao] || '2P') + '-' + dg : '',
       bit_cc_marca: str(pr.cc.bit) ? '#' + str(pr.cc.bit) : '', bit_ca_marca: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '',
-      bit_terra_ca_marca: str(pr.terraBit) ? '#' + str(pr.terraBit) : '', bit_terra_cc_marca: str(pr.terraBit) ? '#' + str(pr.terraBit) : '',
+      bit_terra_ca_marca: str(pr.terraBit) ? '#' + str(pr.terraBit) : '', bit_terra_cc_marca: '#' + terraMod(pr),
       disj_ca_a: dca ? dca + 'A' : '', dps_ca_classe_mai: str(d.classe) ? 'DPS CA CLASSE ' + maiusc(d.classe) : '', dps_ca_uc_v: str(d.uc) ? str(d.uc) + ' V' : '',
       dps_ca_in_esp: str(d.in) ? 'In = ' + str(d.in) + ' kA' : '', dps_ca_imax_esp: str(d.imax) ? 'In Max = ' + str(d.imax) + ' kA' : '',
       sb_cc: str(pr.sbCc), cabo_ramal_lig_multiplex: str(pr.ramal.bit) ? str(pr.ramal.cond) + '#' + str(pr.ramal.bit) + '(' + (str(pr.ramal.neutro) || str(pr.ramal.bit)) + ') mm2' : ''
@@ -483,7 +493,7 @@ window.App = window.App || {};
       forma('CRMRam', ax, R.ancora[1], ax, ay, sg);
       texto(um('_ram_str'), rot, ax, R.ancora[1], ax, ay, sg);
       // rótulos sob os condutores + − (cabo CC) e sob o T (terra)
-      (campos._ram_bit || []).forEach(function (oc, i) { const b = i === 0 ? bit : str(pr.terraBit); texto(oc, b ? '#' + b : '', ax, R.ancora[1], ax, ay, sg); });
+      (campos._ram_bit || []).forEach(function (oc, i) { const b = i === 0 ? bit : terraMod(pr); texto(oc, b ? '#' + b : '', ax, R.ancora[1], ax, ay, sg); });
     });
     // ---- tabela de strings: uma linha por string, centradas no corpo da tabela
     const T = G.tabela, rotTab = um('_tab_str');
@@ -541,6 +551,18 @@ window.App = window.App || {};
       linha([[V.xInv, V.yBus], [V.xInv, V.yInv]]);
       const cz = V.caixa, x0 = Math.min(cz[0], xsU[0] - (V.xs[0] - (uc[0] ? uc[0].x - uc[0].s : V.xs[0] - 23.1)) * sv - 4);
       linha([[x0, cz[1]], [cz[2], cz[1]], [cz[2], cz[3]], [x0, cz[3]], [x0, cz[1]]], [0.498, 0, 1], [12.6, 6.3]);
+    }
+    // condutores do circuito CA (FFT, FNT…): traços na fiação quadro–inversor e nos dois pontos do unifilar simplificado
+    const K = G.condutores;
+    if (K) {
+      letrasCA(pr).forEach(function (l, i) {
+        const x = K.h.xF - i * K.h.passo;
+        if (l === 'N') forma('CRMTickN', K.h.xN, 0, x, 0, 1); else forma('CRMTickF', K.h.xF, 0, x, 0, 1);
+        K.v.forEach(function (pv) {
+          const y = pv.y - i * pv.passo;
+          if (l === 'N') forma('CRMTickNh', 0, K.yN, 0, y, 1); else forma('CRMTickFh', 0, K.yF, 0, y, 1);
+        });
+      });
     }
     // marca do cabo CC cruzando os condutores e o texto do cabo logo depois dela
     const x1 = xsU[0] - 1.3, xn = xsU[xsU.length - 1], mk = V.marca;
@@ -721,6 +743,7 @@ window.App = window.App || {};
     mapa: mapa, modelo: modelo, fonteTxt: fonteTxt, fonteRomans: fonteRomans, fonteArial: fonteArial,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
+    CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, terraMod: terraMod,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

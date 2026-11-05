@@ -44,6 +44,9 @@ window.App = window.App || {};
       return;
     }
     const pr = inst.pranchas;
+    // campos que entraram depois (pranchas preparadas antes): o padrão do projetista
+    if (pr.condCA == null) pr.condCA = padroes().condCA || P.PADROES.condCA;
+    if (pr.terraMod == null) pr.terraMod = padroes().terraMod || P.PADROES.terraMod;
     const mudou = function (redesenho) { pr.atualizadoEm = new Date().toISOString(); o.mudou(); pintarResumo(); pintarCalc(); if (redesenho) desenhar(box, o); };
     // campo compartilhado com a Homologação: grava lá também
     const comp = function () { if (inst.homologacao) P.gravarCompartilhados(pr, inst.homologacao); };
@@ -170,6 +173,7 @@ window.App = window.App || {};
       UI.grade([
         { k: 'cc.bit', label: 'Cabo CC (mm²)', type: 'number' }, { k: 'cc.tipo', label: 'Tipo do cabo CC', placeholder: 'EPR SOLAR 1.8 KV' },
         { k: 'cc.un', label: 'Queda unitária (V/A·km)', help: ref(refCc, pr.cc.bit) },
+        { k: 'terraMod', label: 'Aterramento dos módulos (mm²)', type: 'number', help: 'Vai no T dos ramais e na fiação das placas.' },
         { k: 'cc.dist1', label: 'Distância string 1 (m)', type: 'number' }, { k: 'cc.dist2', label: 'Distância demais strings (m)', type: 'number', placeholder: 'Igual à 1' },
         { k: 'limiteCC', label: 'Limite de queda CC (%)', type: 'number' }
       ], pr, function (k) { mudou(k === 'cc.bit'); }, 3),
@@ -177,6 +181,7 @@ window.App = window.App || {};
       UI.grade([
         { k: 'ca.bit', label: 'Cabo CA (mm²)', type: 'number' }, { k: 'ca.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'ca.iso', label: 'Classe / temperatura', placeholder: '450/750V - 70°C' },
         { k: 'ca.un', label: 'Queda unitária (V/A·km)', help: ref(refCa, pr.ca.bit) },
+        { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: P.CONDUTORES_CA, help: 'Marcas da fiação no desenho e na fiação do inversor.' },
         { k: 'ca.dist', label: 'Distância (m)', type: 'number' }, { k: 'limiteCA', label: 'Limite de queda CA (%)', type: 'number' }
       ], pr, function (k) { mudou(k === 'ca.bit'); }, 3),
       h('p.ajuda-sec', 'ΔV = queda unitária × corrente × distância ÷ 1000; % sobre a tensão da string (CC) ou do inversor (CA). Valores calculados:'), calc));
@@ -213,7 +218,7 @@ window.App = window.App || {};
         pr, function (k) { if (k === 'entrada.bit') comp(); mudou(); }, 3),
       h('h4.secao-form', 'Ramal de saída (medidor → QGBT)'),
       UI.grade([{ k: 'saida.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'saida.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'saida.iso', label: 'Classe / temperatura' }], pr, function () { mudou(); }, 3),
-      UI.grade([{ k: 'terraBit', label: 'Condutor de proteção (terra) (mm²)', type: 'number' }], pr, function () { comp(); mudou(); }, 3)));
+      UI.grade([{ k: 'terraBit', label: 'Terra do circuito CA (mm²)', type: 'number', help: 'O dos módulos fica em Circuito CC.' }], pr, function () { comp(); mudou(); }, 3)));
 
     // ---------- 6. detalhe da instalação
     grupo('6. Detalhe da instalação (fiação, eletrodutos e aterramento)', false, h('div',

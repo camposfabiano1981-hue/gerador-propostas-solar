@@ -2249,6 +2249,7 @@
     const GA = { fileira: { x0: 843.8, y0: 693.7, passo: 132.53, larg: 109.0, alt: 55.3, passoY: 63.0, topo: 812.0, base: 626.0, xmax: 1848.0, ultimo: 6, ret: [865.2, 744.1, 1669.3], entrada: [847.7, 739.8] },
       ramal: { p0: [565.0, 771.2], ancora: [794.6, 745.7] }, tabela: { centro: 503.4, passo: 14.8, topo: 529.4, fundo: 484.8 },
       uniS: { x: 866.9, yBus: 998.4, xInv: 922.65, passo: 111.5, min: 826.0, max: 1080.0, larg: 40.0 },
+      condutores: { h: { xF: 478.1, xN: 475.3, passo: 2.8 }, v: [{ y: 1308.7, passo: 2.9 }, { y: 1135.9, passo: 2.7 }], yF: 1308.7, yN: 1305.8 },
       uniU: { xs: [1148.0, 1171.3], yForma: 926.2, yInv: 982.7, xInv: 1159.65, yBus: 970.0, passo: 32.0, max: 1195.0, min: 1095.0, marca: [945.5, 947.8], caixa: [1116.6, 855.2, 1208.5, 929.0], cabo: 1184.28 } };
     const ocT = function (x, y, s, ang) { return { t: 'txt', x: x, y: y, s: s, fl: 1, ang: ang || 0, cor: [0, 0, 1], al: 'l' }; };
     const campA = { _tab_str: [ocT(199.92, 510.8, 7.48)], t1_n: [ocT(307.55, 510.8, 7.45)], _elo_str: [ocT(929.4, 733.9, 6.02)], _elo_bit: [ocT(935, 706.6, 7.52)],
@@ -2273,6 +2274,13 @@
       conta(d25, 'CRMMod') === 25 && conta(d25, 'CRMRamS') === 3 && conta(d25, 'CRMRamU') === 3 && conta(d25, 'CRMPont') === 0 &&
       d25.filter(function (c) { return c.t === 'texto' && /^STR\d$/.test(c.txt) && Math.abs(c.oc.x - 199.92) < 0.01; }).length === 3 &&
       fv25.join() === '9x620W,8x620W,8x620W,9x620W,8x620W,8x620W' && d25.some(function (c) { return c.t === 'linha' && c.traco; }), fv25);
+    ok('condutores CA pelo projetista: FFT (padrão) desenha só fases; FNT, fase e neutro (na fiação quadro–inversor e nos 2 pontos do unifilar)',
+      conta(d2, 'CRMTickF') + conta(d2, 'CRMTickFh') === 6 && conta(d2, 'CRMTickN') + conta(d2, 'CRMTickNh') === 0 &&
+      (function (d) { return conta(d, 'CRMTickN') === 1 && conta(d, 'CRMTickNh') === 2 && conta(d, 'CRMTickF') === 1 && conta(d, 'CRMTickFh') === 2; })(P.desenhoStringsA(Object.assign(U.clone(pr), { condCA: 'FNT' }), campA, GA)) &&
+      [P.letrasCA({}).join(''), P.letrasCA({ condCA: 'FNT' }).join(''), P.letrasCA({ condCA: 'FFFNT' }).join(''), P.letrasCA({ condCA: 'xx' }).join('')].join('|') === 'FF|FN|FFFN|FF');
+    const auto3 = P.automaticos(Object.assign(U.clone(pr), { condCA: 'FFFNT', terraMod: '4', terraBit: '10' }), ctxP);
+    igual('fiação do inversor pelos condutores escolhidos e aterramento dos módulos separado do terra CA', [auto3.fiaInversor, auto3.fiaPlacas, P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_cc_marca,
+      P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_ca_marca].join('|'), '4#6(T#10)|4#6(T#4)|#4|#10');
     const d1 = P.desenhoStringsA(Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '8' }), nStrings: '1' }), campA, GA);
     const rS = d1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMRamS'; })[0];
     ok('strings A (1 string): um ramo direto sob o inversor no unifilar simplificado, sem barramento', conta(d1, 'CRMMod') === 8 && conta(d1, 'CRMRamS') === 1 && Math.abs(rS.m[4] - (922.65 - 866.9)) < 0.01, rS);
