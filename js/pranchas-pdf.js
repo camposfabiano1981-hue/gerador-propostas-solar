@@ -75,6 +75,34 @@ window.App = window.App || {};
     pg.pushOperators.apply(pg, ops);
   }
 
+  /** Linha (polilinha) com a espessura mínima do AutoCAD; traco = padrão de tracejado. */
+  function desenharLinha(pg, pts, cor, traco, P) {
+    if (!pts || pts.length < 2) return;
+    const Op = P.PDFOperator, n = P.PDFNumber;
+    const ops = [Op.of('q'), Op.of('RG', [n.of(cor[0]), n.of(cor[1]), n.of(cor[2])]), Op.of('w', [n.of(0)]), Op.of('J', [n.of(1)]), Op.of('j', [n.of(1)])];
+    if (traco) ops.push(Op.of('d', [arr(pg, traco, P), n.of(0)]));
+    ops.push(Op.of('m', [n.of(r2(pts[0][0])), n.of(r2(pts[0][1]))]));
+    for (let i = 1; i < pts.length; i++) ops.push(Op.of('l', [n.of(r2(pts[i][0])), n.of(r2(pts[i][1]))]));
+    ops.push(Op.of('S'), Op.of('Q'));
+    pg.pushOperators.apply(pg, ops);
+  }
+  function arr(pg, vals, P) {
+    const a = P.PDFArray.withContext(pg.doc.context);
+    vals.forEach(function (v) { a.push(P.PDFNumber.of(v)); });
+    return a;
+  }
+
+  /** Executa o desenho das strings do estilo A (blocos do desenho original, linhas e textos em traços). */
+  function desenharStringsA(pg, cmds, FT, P) {
+    const Op = P.PDFOperator, n = P.PDFNumber;
+    cmds.forEach(function (c) {
+      if (c.t === 'forma') {
+        pg.pushOperators(Op.of('q'), Op.of('cm', c.m.map(function (v) { return n.of(Math.round(v * 10000) / 10000); })), Op.of('Do', [P.PDFName.of(c.nome)]), Op.of('Q'));
+      } else if (c.t === 'linha') desenharLinha(pg, c.pts, c.cor, c.traco, P);
+      else if (c.t === 'texto') desenharTracos(pg, c.oc, c.txt, FT, P);
+    });
+  }
+
   async function assinaturaRt(doc) {
     if (!App.Assinatura || !App.Assinatura.guardada) return null;
     const g = App.Assinatura.guardada();
@@ -107,7 +135,14 @@ window.App = window.App || {};
       doc.addPage(pg);
       const vals = Pr.valores(pr, e, o.ctx);
       const campos = mapa[e] || {};
+      // estilo A: strings, tabela e unifilares com a quantidade real da obra
+      const pular = {};
+      if (e === 'A' && mapa.stringsA) {
+        Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
+        desenharStringsA(pg, Pr.desenhoStringsA(pr, campos, mapa.stringsA), FT, P);
+      }
       Object.keys(campos).forEach(function (cid) {
+        if (pular[cid]) return;
         const v = vals[cid];
         if (v == null) return;
         campos[cid].forEach(function (oc, k) {

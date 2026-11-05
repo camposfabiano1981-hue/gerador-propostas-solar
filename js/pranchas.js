@@ -32,7 +32,7 @@ window.App = window.App || {};
   const RHO = 0.0206; // resistividade do cobre a 70 °C (Ω·mm²/m) — referência da queda unitária
   // posição da assinatura do responsável técnico no carimbo (onde ficava a dele, acima do nome)
   const ASSINATURA = { A: [1864, 150, 2100, 184], B: [1868, 150, 2104, 184] };
-  // desenho fixo de cada modelo (o que não muda com a obra)
+  // desenho fixo do estilo B (o estilo A desenha as strings com a quantidade da obra)
   const DESENHO = { A: { strings: 2, porString: 7, inversores: 1, bitCC: 6 }, B: { modulos: 8, inversores: 1 } };
 
   // padrões iniciais = os valores das pranchas do projetista
@@ -51,11 +51,11 @@ window.App = window.App || {};
     fia: { qgbt: '3#10(10)10', ramal: '2#10(10)10' },
     elet: { placas: 'GALVANIZADO 1"', inversor: 'GALVANIZADO 3/4"', ramal: 'PVC 32 mm' },
     haste: '5/8 x 2,40 m', cxPassagem: 'Cx passagem 25 X 25', cxInspecao: '30 X 30 X 40 cm',
-    inclinacao: '15', efic: '100', fp: '1', limiteCC: '3', limiteCA: '4'
+    inclinacao: '15', efic: '100', fp: '1', limiteCC: '3', limiteCA: '4', maxStr: '10'
   };
   const CHAVES_PADRAO = ['estilo', 'cc.bit', 'cc.tipo', 'cc.un', 'ca.bit', 'ca.mat', 'ca.iso', 'ca.un', 'entrada.bit', 'entrada.mat', 'entrada.iso', 'saida.bit', 'saida.mat', 'saida.iso',
     'ramal.cond', 'ramal.bit', 'ramal.neutro', 'ramal.tipo', 'ramal.iso', 'terraBit', 'disjCaKa', 'dpsCa.classe', 'dpsCa.uc', 'dpsCa.in', 'dpsCa.imax', 'dpsCa.up', 'dpsCcUcpv',
-    'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA'];
+    'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA', 'maxStr'];
 
   // ------------------------------------------------------------ carregamento sob demanda
   const cache = {};
@@ -221,7 +221,7 @@ window.App = window.App || {};
       disjGeral: '', disjCa: '', disjCaKa: pad.disjCaKa, dpsCa: U.clone(pad.dpsCa), dpsCcUcpv: pad.dpsCcUcpv, sbCc: pad.sbCc,
       fia: { placas: '', inversor: '', sb: '', qgbt: pad.fia.qgbt, ramal: pad.fia.ramal }, elet: U.clone(pad.elet),
       haste: pad.haste, cxPassagem: pad.cxPassagem, cxInspecao: pad.cxInspecao,
-      telhado: '', inclinacao: pad.inclinacao, efic: pad.efic, fp: pad.fp, limiteCC: pad.limiteCC, limiteCA: pad.limiteCA,
+      telhado: '', inclinacao: pad.inclinacao, efic: pad.efic, fp: pad.fp, limiteCC: pad.limiteCC, limiteCA: pad.limiteCA, maxStr: pad.maxStr,
       assinarRt: true, atualizadoEm: new Date().toISOString()
     };
     puxarCrm(pr, inst, ctx);
@@ -240,7 +240,10 @@ window.App = window.App || {};
     if (!str(pr.ruas.uc)) pr.ruas.uc = rua(cli.endereco);
     pr.mod = e.mod; pr.inv = e.inv;
     pr.modelosDiferentes = e.modelosDiferentes;
-    if (e.nStrings) pr.nStrings = e.nStrings;
+    // strings: as do dimensionamento, respeitando o máximo de módulos por string do projetista (padrão 10)
+    const maxS = num(pr.maxStr) || 10, nMod = num(e.mod.qtd);
+    const nMin = nMod > 0 ? Math.ceil(nMod / maxS) : 0;
+    if (e.nStrings || nMin) pr.nStrings = String(Math.max(num(e.nStrings), nMin));
     pr.porString = '';
     if (LIGACOES[e.ligacao]) pr.ligacao = e.ligacao;
     if (e.telhado) pr.telhado = e.telhado;
@@ -257,10 +260,15 @@ window.App = window.App || {};
   }
 
   // ------------------------------------------------------------ cálculos
-  /** Módulos por string: as primeiras strings levam um módulo a mais quando a divisão não é exata. */
+  /**
+   * Módulos de cada string. porString: em branco = divide os módulos pelas strings (as primeiras levam um a mais quando a divisão
+   * não é exata); um número = todas com esse número; uma lista ("10+10+5") = uma string por item, nessa ordem.
+   */
   function tamanhos(nMod, nStr, porString) {
+    const lista = String(porString == null ? '' : porString).split(/[+;\s]+/).map(function (x) { return Math.round(num(x)); }).filter(function (x) { return x > 0; });
+    if (lista.length > 1) return lista;
     if (!(nStr > 0) || !(nMod > 0)) return [];
-    if (porString > 0) return Array.from({ length: nStr }, function () { return porString; });
+    if (lista.length === 1) return Array.from({ length: nStr }, function () { return lista[0]; });
     const base = Math.floor(nMod / nStr), extra = nMod % nStr;
     return Array.from({ length: nStr }, function (_, i) { return base + (i < extra ? 1 : 0); });
   }
@@ -269,7 +277,7 @@ window.App = window.App || {};
     const m = pr.mod || {}, iv = pr.inv || {};
     const nMod = num(m.qtd), nStr = num(pr.nStrings), nInv = Math.max(num(iv.qtd), iv.kw || iv.modelo ? 1 : 0);
     const w = num(m.w), vmp = num(m.vmp), imp = num(m.imp) || (vmp > 0 && w > 0 ? w / vmp : 0);
-    const tam = tamanhos(nMod, nStr, num(pr.porString));
+    const tam = tamanhos(nMod, nStr, pr.porString);
     const strings = tam.map(function (n, i) {
       const v = n * vmp, p = n * w / 1000;
       const dist = num(i === 0 || !tem(pr.cc.dist2) ? pr.cc.dist1 : pr.cc.dist2); // string 2 em diante: a distância 2 ou, em branco, a 1
@@ -363,11 +371,8 @@ window.App = window.App || {};
     if (estilo === 'A') {
       const s1 = c.strings[0], s2 = c.strings[1];
       const linha = function (p, s) {
-        const o = {};
-        ['n', 'p', 'v', 'i', 'cabo', 'un', 'dist', 'dv', 'pct'].forEach(function (k) { o[p + '_' + k] = ''; });
-        if (!s) return o;
-        o[p + '_n'] = String(s.n); o[p + '_p'] = pt(s.p, 2); o[p + '_v'] = pt(s.v, 1); o[p + '_i'] = pt(s.i, 2); o[p + '_cabo'] = str(pr.cc.bit);
-        o[p + '_un'] = dig(pr.cc.un); o[p + '_dist'] = s.dist > 0 ? pt(s.dist, 2) : ''; o[p + '_dv'] = s.dist > 0 ? pt(s.dv, 2) : ''; o[p + '_pct'] = s.dist > 0 ? pt(s.pct, 2) : '';
+        const o = {}, l = linhaTabela(pr, s);
+        COLUNAS.forEach(function (k) { o[p + '_' + k] = l[k]; });
         return o;
       };
       const smax = c.strings.reduce(function (a, s) { return !a || s.n > a.n ? s : a; }, null);
@@ -421,6 +426,129 @@ window.App = window.App || {};
     return v;
   }
 
+  const COLUNAS = ['n', 'p', 'v', 'i', 'cabo', 'un', 'dist', 'dv', 'pct'];
+  /** Valores de uma linha da tabela de strings do estilo A (vazios sem a string). */
+  function linhaTabela(pr, s) {
+    const o = {};
+    COLUNAS.forEach(function (k) { o[k] = ''; });
+    if (!s) return o;
+    o.n = String(s.n); o.p = pt(s.p, 2); o.v = pt(s.v, 1); o.i = pt(s.i, 2); o.cabo = str(pr.cc.bit);
+    o.un = dig(pr.cc.un); o.dist = s.dist > 0 ? pt(s.dist, 2) : ''; o.dv = s.dist > 0 ? pt(s.dv, 2) : ''; o.pct = s.dist > 0 ? pt(s.pct, 2) : '';
+    return o;
+  }
+
+  /**
+   * Desenho das strings do estilo A com a quantidade real da obra: uma fileira por string com os módulos dela (as placas diminuem
+   * só quando não cabem), o ramal de cada string até o inversor, a tabela com uma linha por string e um "Campo Fotov." por string
+   * nos dois unifilares. Devolve comandos para o gerador do PDF: {t: 'forma', nome, m} (bloco do desenho original com a matriz),
+   * {t: 'linha', pts, cor, traco} e {t: 'texto', oc, txt} (texto em traços na posição/tamanho do original).
+   * campos: mapa do estilo A; G: mapa.stringsA.
+   */
+  function desenhoStringsA(pr, campos, G) {
+    const c = calcular(pr), cmds = [], tam = c.tam, N = tam.length;
+    if (!N || !G) return cmds;
+    const w = c.w > 0 ? pt(c.w, 1) : '', bit = str(pr.cc.bit), preto = [0, 0, 0];
+    const forma = function (nome, ox, oy, nx, ny, s) { cmds.push({ t: 'forma', nome: nome, m: [s, 0, 0, s, nx - s * ox, ny - s * oy] }); };
+    const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
+    const texto = function (oc, txt, ox, oy, nx, ny, s) {
+      if (!oc || !txt) return;
+      cmds.push({ t: 'texto', txt: txt, oc: Object.assign({}, oc, { x: nx + s * (oc.x - ox), y: ny + s * (oc.y - oy), s: oc.s * s, w: oc.w ? oc.w * s : oc.w }) });
+    };
+    const um = function (k) { return campos[k] && campos[k][0]; };
+    // ---- fileiras e ramais
+    const F = G.fileira, R = G.ramal;
+    const nmax = Math.max.apply(null, tam);
+    const s = Math.min(1, (F.xmax - F.x0) / ((nmax - 1) * F.passo + F.larg), (F.topo - F.base) / (N * F.alt + (N - 1) * (F.passoY - F.alt)));
+    const xu = F.x0 + F.ultimo * F.passo; // 1º módulo da última posição no desenho original
+    const sg = Math.min(1, 1.5 * s);     // grupo + − T do ramal
+    tam.forEach(function (n, k) {
+      const oy = F.topo - F.alt * s - (N - 1 - k) * F.passoY * s, rot = 'STR' + (k + 1);
+      for (let j = 0; j < n; j++) forma('CRMMod', F.x0, F.y0, F.x0 + j * F.passo * s, oy, s);
+      forma('CRMDps', F.x0, F.y0, F.x0, oy, s);
+      for (let j = 0; j < n - 1; j++) {
+        const nx = F.x0 + j * F.passo * s;
+        forma('CRMElo', F.x0, F.y0, nx, oy, s);
+        texto(um('_elo_str'), rot, F.x0, F.y0, nx, oy, s);
+        texto(um('_elo_bit'), bit ? '#' + bit : '', F.x0, F.y0, nx, oy, s);
+      }
+      const xf = F.x0 + (n - 1) * F.passo * s;
+      forma('CRMFim', xu, F.y0, xf, oy, s);
+      const yr = oy + s * (F.ret[1] - F.y0);
+      linha([[F.x0 + s * (F.ret[0] - F.x0), yr], [xf + s * (F.ret[2] - xu), yr]]);
+      const ent = [F.x0 + s * (F.entrada[0] - F.x0), oy + s * (F.entrada[1] - F.y0)];
+      linha([R.p0, ent]);
+      const ax = R.ancora[0], ay = R.p0[1] + (ax - R.p0[0]) / (ent[0] - R.p0[0]) * (ent[1] - R.p0[1]);
+      forma('CRMRam', ax, R.ancora[1], ax, ay, sg);
+      texto(um('_ram_str'), rot, ax, R.ancora[1], ax, ay, sg);
+      (campos._ram_bit || []).forEach(function (oc) { texto(oc, bit ? '#' + bit : '', ax, R.ancora[1], ax, ay, sg); });
+    });
+    // ---- tabela de strings: uma linha por string, centradas no corpo da tabela
+    const T = G.tabela, rotTab = um('_tab_str');
+    // passo entre linhas e altura das letras: até 3 strings como no desenho (14,8); com mais, as linhas se aproximam e as letras
+    // diminuem na mesma proporção, o bloco sempre centrado no corpo da tabela
+    const H0 = 7.48, livre = T.topo - T.fundo - 4;
+    const sp = Math.min(T.passo, livre / (N - 1 + 1 / 1.4));
+    const st = Math.min(1, sp / 1.4 / H0), alt = (N - 1) * sp + H0 * st;
+    const baseFundo = (T.topo + T.fundo) / 2 - alt / 2;
+    c.strings.forEach(function (sx, i) {
+      const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(pr, sx);
+      if (rotTab) cmds.push({ t: 'texto', txt: 'STR' + (i + 1), oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
+      COLUNAS.forEach(function (k) { const oc = um('t1_' + k); if (oc && l[k]) cmds.push({ t: 'texto', txt: l[k], oc: Object.assign({}, oc, { y: y, s: oc.s * st }) }); });
+    });
+    // ---- unifilar simplificado: um ramo por string sob o inversor, ligados pelo barramento
+    const S = G.uniS, cfS = campos.campo_fv && campos.campo_fv[2];
+    let xsS = [S.xInv], su = 1;
+    if (N > 1) {
+      const p = Math.min(S.passo, 2 * Math.min(S.xInv - S.min, S.max - S.xInv) / (N - 1));
+      su = Math.min(1, p / S.larg);
+      xsS = tam.map(function (_, k) { return S.xInv + (k - (N - 1) / 2) * p; });
+      linha([[xsS[0], S.yBus], [xsS[N - 1], S.yBus]]);
+    }
+    xsS.forEach(function (x, k) {
+      forma('CRMRamS', S.x, S.yBus, x, S.yBus, su);
+      texto(um('_uS_campo'), 'Campo Fotov.', S.x, S.yBus, x, S.yBus, su);
+      texto(cfS, w ? tam[k] + 'x' + w + 'W' : '', S.x, S.yBus, x, S.yBus, su);
+      texto(um('_uS_str'), 'STR' + (k + 1), S.x, S.yBus, x, S.yBus, su);
+      texto(um('_uS_bit'), bit ? '#' + bit : '', S.x, S.yBus, x, S.yBus, su);
+    });
+    // ---- unifilar principal: até 2 strings como no desenho; 3 ou mais pelo barramento sob o inversor
+    const V = G.uniU, cf = campos.campo_fv || [], uc = campos._uU_campo || [];
+    let xsU;
+    if (N <= 2) {
+      xsU = V.xs.slice(0, N);
+      xsU.forEach(function (x, k) {
+        forma('CRMRamU', V.xs[0], V.yForma, x, V.yForma, 1);
+        linha([[x, V.yForma], [x, V.yInv]]);
+        // STR1 com o texto à esquerda do módulo, STR2 à direita (como no desenho)
+        texto(uc[k], 'Campo Fotov.', 0, 0, 0, 0, 1);
+        texto(cf[k === 0 ? 1 : 0], w ? tam[k] + 'x' + w + 'W' : '', 0, 0, 0, 0, 1);
+      });
+      forma('CRMPont', 0, 0, 0, 0, 1);
+    } else {
+      const p = Math.min(V.passo, (V.max - V.min) / (N - 1)), sv = Math.min(1, p / V.passo);
+      const cx = Math.min(V.xInv, V.max - (N - 1) * p / 2);
+      xsU = tam.map(function (_, k) { return cx + (k - (N - 1) / 2) * p; });
+      xsU.forEach(function (x, k) {
+        forma('CRMRamU', V.xs[0], V.yForma, x, V.yForma, sv);
+        linha([[x, V.yForma], [x, V.yBus]]);
+        texto(uc[0], 'Campo Fotov.', V.xs[0], V.yForma, x, V.yForma, sv);
+        texto(cf[1], w ? tam[k] + 'x' + w + 'W' : '', V.xs[0], V.yForma, x, V.yForma, sv);
+      });
+      linha([[Math.min(xsU[0], V.xInv), V.yBus], [Math.max(xsU[N - 1], V.xInv), V.yBus]]);
+      linha([[V.xInv, V.yBus], [V.xInv, V.yInv]]);
+      const cz = V.caixa, x0 = Math.min(cz[0], xsU[0] - (V.xs[0] - (uc[0] ? uc[0].x - uc[0].s : V.xs[0] - 23.1)) * sv - 4);
+      linha([[x0, cz[1]], [cz[2], cz[1]], [cz[2], cz[3]], [x0, cz[3]], [x0, cz[1]]], [0.498, 0, 1], [12.6, 6.3]);
+    }
+    // marca do cabo CC cruzando os condutores e o texto do cabo logo depois dela
+    const x1 = xsU[0] - 1.3, xn = xsU[xsU.length - 1], mk = V.marca;
+    linha([[xn + 1.9, mk[1]], [xn + 1.9, mk[0]], [x1, mk[0]], [x1, mk[1]], [xn + 10.6, mk[1]]]);
+    const occ = um('cabo_cc');
+    if (occ && str(pr.cc.bit)) cmds.push({ t: 'texto', txt: (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : str(pr.cc.bit)) + 'mm2/' + str(pr.cc.tipo), oc: Object.assign({}, occ, { x: occ.x + (xn - V.xs[1]) }) });
+    return cmds;
+  }
+  /** Campos do estilo A que o desenho das strings escreve (o laço geral do PDF não os desenha). */
+  const CAMPOS_STRINGS_A = ['campo_fv', 'cabo_cc', 'bit_cc_marca'].concat(COLUNAS.map(function (k) { return 't1_' + k; }), COLUNAS.map(function (k) { return 't2_' + k; }));
+
   // ------------------------------------------------------------ conferências e pendências
   /** Conferências do projeto (avisos, não bloqueiam): [{nivel: 'erro' | 'aviso' | 'info', texto}]. */
   function conferir(pr, estilos) {
@@ -429,16 +557,13 @@ window.App = window.App || {};
     const f2 = function (v) { return U.fmtSmart ? U.fmtSmart(v, 2) : String(U.round(v, 2)); };
     const es = estilos || (pr.estilo === 'AB' ? ['A', 'B'] : [pr.estilo || 'A']);
     // desenho fixo de cada modelo
-    if (es.indexOf('A') >= 0) {
-      const D = DESENHO.A;
-      const difStr = c.nStr && (c.nStr !== D.strings || c.tam.some(function (n) { return n !== D.porString; }));
-      if (difStr || (c.nInv && c.nInv !== D.inversores)) {
-        add('info', 'Estilo A: o desenho das strings e do unifilar é o do modelo (' + D.strings + ' strings de ' + D.porString + ' módulos e ' + D.inversores + ' inversor); esta obra tem ' +
-          c.nStr + ' string(s) (' + c.tam.join(' + ') + ' módulos) e ' + c.nInv + ' inversor(es). Tabelas, textos e cotas saem com os valores da obra.');
-      }
-      if (c.nStr > 2) add('aviso', 'Estilo A: a tabela de strings tem 2 linhas — as strings 3 em diante não aparecem nela (os totais consideram todas).');
-      if (tem(pr.cc.bit) && num(pr.cc.bit) !== D.bitCC) add('info', 'Estilo A: as marcas "#6" do desenho das strings são fixas; o cabo CC desta obra é de ' + pr.cc.bit + ' mm² (tabela e unifilar saem com ' + pr.cc.bit + ').');
-    }
+    // strings: máximo de módulos por string do projetista e a soma da divisão manual
+    const maxS = num(pr.maxStr) || 10;
+    const acima = c.tam.map(function (n, i) { return n > maxS ? 'STR' + (i + 1) + ' (' + n + ')' : ''; }).filter(Boolean);
+    if (acima.length) add('aviso', 'String com mais de ' + maxS + ' módulos (máximo adotado): ' + acima.join(', ') + '. Aumente o número de strings.');
+    const soma = c.tam.reduce(function (a, n) { return a + n; }, 0);
+    if (c.nStr && c.nMod && soma !== c.nMod) add('aviso', 'As strings somam ' + soma + ' módulos, mas a obra tem ' + c.nMod + '. Confira o número de strings e os módulos por string.');
+    if (es.indexOf('A') >= 0 && c.nInv > 1) add('info', 'Estilo A: o desenho mostra 1 inversor (INV1); esta obra tem ' + c.nInv + '. As strings, a tabela e os totais saem com os valores da obra.');
     if (es.indexOf('B') >= 0) {
       const D = DESENHO.B;
       if ((c.nMod && c.nMod !== D.modulos) || (c.nInv && c.nInv !== D.inversores)) {
@@ -593,7 +718,7 @@ window.App = window.App || {};
     mapa: mapa, modelo: modelo, fonteTxt: fonteTxt, fonteRomans: fonteRomans, fonteArial: fonteArial,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
-    estilosDe: estilosDe, nomeArquivo: nomeArquivo, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
+    estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }
   };

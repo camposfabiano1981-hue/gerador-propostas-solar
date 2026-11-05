@@ -138,12 +138,17 @@ window.App = window.App || {};
       ], pr, function () { mudou(); }, 4),
       h('h4.secao-form', 'Arranjo e ligação'),
       UI.grade([
-        { k: 'nStrings', label: 'Nº de strings', type: 'int' },
-        { k: 'porString', label: 'Módulos por string', type: 'int', placeholder: c0.tam.length ? 'Auto: ' + c0.tam.join(' + ') : '', help: 'Em branco = divide os módulos pelas strings.' },
+        { k: 'nStrings', label: 'Nº de strings', type: 'int', help: 'Sugerido pelo máximo de módulos por string.' },
+        { k: 'porString', label: 'Módulos por string', placeholder: c0.tam.length ? 'Auto: ' + c0.tam.join(' + ') : '', help: 'Em branco = divide igual. Ou digite a divisão: 10+10+5.' },
+        { k: 'maxStr', label: 'Máx. de módulos por string', type: 'int', help: 'Seu limite (padrão 10): o CRM divide e avisa por ele.' },
         { k: 'ligacao', label: 'Ligação da UC', type: 'select', options: [{ v: 'mono', t: 'Monofásica' }, { v: 'bi', t: 'Bifásica' }, { v: 'tri', t: 'Trifásica' }] },
         { k: 'telhado', label: 'Telhado (estilo B)', placeholder: 'Ex.: Fibrocimento' },
         { k: 'inclinacao', label: 'Inclinação (°) (estilo B)', type: 'number' }
-      ], pr, function (k) { if (k === 'ligacao') comp(); mudou(); }, 3)));
+      ], pr, function (k) {
+        if (k === 'ligacao') comp();
+        if (k === 'maxStr' || k === 'mod.qtd') { const nm = U.numOr(pr.mod.qtd, 0), mx = U.numOr(pr.maxStr, 10) || 10; if (nm > 0) pr.nStrings = Math.max(U.numOr(pr.nStrings, 0), Math.ceil(nm / mx)); }
+        mudou(k === 'maxStr');
+      }, 3)));
 
     // ---------- 3. circuitos e quedas de tensão
     const calc = h('div.tabela-rolagem');

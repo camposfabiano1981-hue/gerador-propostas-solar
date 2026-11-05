@@ -2241,7 +2241,39 @@
     const vB = P.valores(Object.assign({}, pr, { estilo: 'B' }), 'B', ctxP);
     igual('prancha B: textos no formato do estilo B', [vB.mod_qtd_txt, vB.mod_total_txt, vB.mod_qtd_curto, vB.inv_pot_txt, vB.inv_rotulo, vB.disj_geral_2p, vB.bit_cc_marca, vB.cabo_ramal_lig_multiplex, vB.inclinacao, vB.selo_x].join('|'),
       'QTDE MODULOS:  14|POTENCIA TOTAL:  8,68 KWp|14 Módulos|POTENCIA: 6.0 KW|MARCA INV | INV6|2P-50|#6|2#25(25) mm2|i = 15º|X: 435000');
-    igual('prancha: módulos por string (divisão não exata: as primeiras levam um a mais)', [P.tamanhos(15, 2).join('+'), P.tamanhos(14, 2).join('+'), P.tamanhos(14, 2, 8).join('+'), P.tamanhos(0, 2).length].join('|'), '8+7|7+7|8+8|0');
+    igual('prancha: módulos por string (divisão não exata: as primeiras levam um a mais; número fixo; lista digitada)', [P.tamanhos(15, 2).join('+'), P.tamanhos(14, 2).join('+'), P.tamanhos(14, 2, 8).join('+'), P.tamanhos(0, 2).length,
+      P.tamanhos(25, 2, '10+10+5').join('+'), P.tamanhos(25, 3, '').join('+'), P.tamanhos(20, 2, '10').join('+')].join('|'), '8+7|7+7|8+8|0|10+10+5|9+8+8|10+10');
+    // desenho das strings do estilo A com a quantidade real (mapa e geometria do modelo, como em assets/pranchas/mapa-pranchas.json)
+    const GA = { fileira: { x0: 843.8, y0: 693.7, passo: 132.53, larg: 109.0, alt: 55.3, passoY: 63.0, topo: 812.0, base: 626.0, xmax: 1848.0, ultimo: 6, ret: [865.2, 744.1, 1669.3], entrada: [847.7, 739.8] },
+      ramal: { p0: [565.0, 771.2], ancora: [794.6, 745.7] }, tabela: { centro: 503.4, passo: 14.8, topo: 529.4, fundo: 484.8 },
+      uniS: { x: 866.9, yBus: 998.4, xInv: 922.65, passo: 111.5, min: 826.0, max: 1080.0, larg: 40.0 },
+      uniU: { xs: [1148.0, 1171.3], yForma: 926.2, yInv: 982.7, xInv: 1159.65, yBus: 970.0, passo: 32.0, max: 1195.0, min: 1095.0, marca: [945.5, 947.8], caixa: [1116.6, 855.2, 1208.5, 929.0], cabo: 1184.28 } };
+    const ocT = function (x, y, s, ang) { return { t: 'txt', x: x, y: y, s: s, fl: 1, ang: ang || 0, cor: [0, 0, 1], al: 'l' }; };
+    const campA = { _tab_str: [ocT(199.92, 510.8, 7.48)], t1_n: [ocT(307.55, 510.8, 7.45)], _elo_str: [ocT(929.4, 733.9, 6.02)], _elo_bit: [ocT(935, 706.6, 7.52)],
+      _uS_campo: [ocT(846.1, 869.52, 5.5, 90)], _uU_campo: [ocT(1129.6, 864.6, 4.72, 90), ocT(1188.0, 861.6, 4.56, 90)], cabo_cc: [ocT(1184.28, 945.1, 4.7)],
+      campo_fv: [ocT(1196.2, 872.4, 4.72, 90), ocT(1137.7, 875.4, 4.66, 90), ocT(855.8, 882.6, 5.48, 90), ocT(967.2, 882.6, 5.52, 90)] };
+    const conta = function (cmds, nome) { return cmds.filter(function (c) { return c.t === 'forma' && c.nome === nome; }).length; };
+    const d2 = P.desenhoStringsA(pr, campA, GA);
+    const tab2 = d2.filter(function (c) { return c.t === 'texto' && /^STR\d$/.test(c.txt) && Math.abs(c.oc.x - 199.92) < 0.01; });
+    ok('strings A (14 módulos, 2 × 7): fileiras na escala do desenho, 14 módulos, 12 ligações, 2 ramais e a tabela nas posições originais',
+      conta(d2, 'CRMMod') === 14 && conta(d2, 'CRMElo') === 12 && conta(d2, 'CRMRam') === 2 && conta(d2, 'CRMPont') === 1 &&
+      (function (m) { return m[0] === 1 && Math.abs(m[4]) < 1e-6 && Math.abs(m[5]) < 1e-6; })(d2.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMMod'; })[0].m) &&
+      tab2.map(function (c) { return c.txt + '@' + c.oc.y.toFixed(2); }).join() === 'STR1@510.76,STR2@495.96', tab2.map(function (c) { return c.txt + '@' + c.oc.y; }));
+    const pr20 = Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '20' }), nStrings: '2' });
+    const d20 = P.desenhoStringsA(pr20, campA, GA), m20 = d20.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMMod'; });
+    const ult = m20[m20.length - 1].m, s20 = ult[0];
+    ok('strings A (20 módulos, 2 × 10): 20 módulos, placas reduzidas para caber até a coluna da direita', m20.length === 20 && Math.abs(s20 - 0.771) < 0.002 && ult[4] + s20 * (843.8 + 109) <= 1848.01 &&
+      d20.some(function (c) { return c.t === 'texto' && c.txt === '10x620W'; }), { n: m20.length, s: s20, fim: ult[4] + s20 * 952.8 });
+    const pr25 = Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '25' }), nStrings: '3' });
+    const d25 = P.desenhoStringsA(pr25, campA, GA);
+    const fv25 = d25.filter(function (c) { return c.t === 'texto' && /x620W$/.test(c.txt); }).map(function (c) { return c.txt; });
+    ok('strings A (25 módulos, 3 strings 9+8+8): 3 fileiras, 3 linhas na tabela, 3 ramos em cada unifilar (barramento) e a caixa tracejada redesenhada',
+      conta(d25, 'CRMMod') === 25 && conta(d25, 'CRMRamS') === 3 && conta(d25, 'CRMRamU') === 3 && conta(d25, 'CRMPont') === 0 &&
+      d25.filter(function (c) { return c.t === 'texto' && /^STR\d$/.test(c.txt) && Math.abs(c.oc.x - 199.92) < 0.01; }).length === 3 &&
+      fv25.join() === '9x620W,8x620W,8x620W,9x620W,8x620W,8x620W' && d25.some(function (c) { return c.t === 'linha' && c.traco; }), fv25);
+    const d1 = P.desenhoStringsA(Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '8' }), nStrings: '1' }), campA, GA);
+    const rS = d1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMRamS'; })[0];
+    ok('strings A (1 string): um ramo direto sob o inversor no unifilar simplificado, sem barramento', conta(d1, 'CRMMod') === 8 && conta(d1, 'CRMRamS') === 1 && Math.abs(rS.m[4] - (922.65 - 866.9)) < 0.01, rS);
     igual('prancha: disjuntor comercial e capacidade do cabo (NBR 5410 B1)', [P.proxDisjuntor(1.25 * 27.27), P.proxDisjuntor(1.25 * 18.18), P.izCabo(6, 'bi'), P.izCabo(10, 'tri')].join('|'), '40|25|41|50');
     ok('prancha: queda unitária de referência 2ρ/S (6 mm² ≈ 6,87 V/A·km)', Math.abs(P.quedaRef(6, false) - 6.867) < 0.01 && Math.abs(P.quedaRef(6, true) - 5.947) < 0.01);
     ok('prancha: sem pendências com os campos preenchidos', P.pendencias(pr, ctxP).length === 0, P.pendencias(pr, ctxP));
@@ -2249,8 +2281,10 @@
     ok('prancha: obra igual ao desenho do estilo A só avisa da queda unitária (sem erro)', c0.length === 2 && c0.every(function (x) { return x.nivel === 'info' && /Queda unitária/.test(x.texto); }), c0);
     const pr2 = U.clone(pr); pr2.disjCa = 20; pr2.inv.vmaxCC = '300'; pr2.nStrings = '1'; pr2.dpsCcUcpv = '500'; pr2.cc.bit = '4'; pr2.ca.dist = 700;
     const c2 = P.conferir(pr2).map(function (x) { return x.nivel + ':' + x.texto.slice(0, 40); }).join(' || ');
-    ok('prancha: conferências (disjuntor < corrente, Voc no frio > inversor, DPS CC, desenho diferente, #6 fixo, queda CA)', /erro:Disjuntor CA de 20 A abaixo/.test(c2) && /erro:Voc da string no frio/.test(c2) && /aviso:DPS CC com Ucpv de 500 V/.test(c2) &&
-      /info:Estilo A: o desenho das strings/.test(c2) && /info:Estilo A: as marcas "#6"/.test(c2) && /aviso:Queda de tensão no circuito CA/.test(c2), c2);
+    ok('prancha: conferências (disjuntor < corrente, Voc no frio > inversor, DPS CC, string acima de 10 módulos, queda CA)', /erro:Disjuntor CA de 20 A abaixo/.test(c2) && /erro:Voc da string no frio/.test(c2) && /aviso:DPS CC com Ucpv de 500 V/.test(c2) &&
+      /aviso:String com mais de 10 módulos/.test(c2) && !/marcas "#6"/.test(c2) && /aviso:Queda de tensão no circuito CA/.test(c2), c2);
+    const c3 = P.conferir(Object.assign(U.clone(pr), { porString: '10+3' })).map(function (x) { return x.texto; }).join(' | ');
+    ok('prancha: divisão manual que não soma os módulos da obra gera aviso', /As strings somam 13 módulos, mas a obra tem 14/.test(c3), c3);
     const pend = P.pendencias(Object.assign(U.clone(pr), { utm: { fuso: '21K', x: '12', y: '' }, disjGeral: '' }), ctxP);
     ok('prancha: pendências (UTM com 6 e 7 dígitos, disjuntor geral)', pend.indexOf('Coordenada UTM X (6 dígitos)') >= 0 && pend.indexOf('Coordenada UTM Y (7 dígitos)') >= 0 && pend.indexOf('Disjuntor geral (A)') >= 0, pend);
     // compartilhados com a Homologação

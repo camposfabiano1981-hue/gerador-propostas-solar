@@ -7,10 +7,15 @@ prancha-a.pdf / prancha-b.pdf
   metadados do arquivo. O conteúdo do desenho fica entre q/Q para o que o CRM desenha por cima não
   herdar a escala do AutoCAD.
 
+Blocos do estilo A (Form XObjects /CRMMod, /CRMElo, /CRMDps, /CRMFim, /CRMRam, /CRMRamS, /CRMRamU, /CRMPont em
+  prancha-a.pdf): a placa, a ligação entre placas, o CX.DPS, o fim da fileira, o grupo + − T do ramal e os ramos dos dois
+  unifilares, copiados do desenho original. O CRM repete esses blocos com a quantidade real de strings e de módulos da obra.
+
 mapa-pranchas.json
   Para cada campo, as ocorrências na página: tipo do texto ("tt" = Arial/TrueType; "txt" e "rom" =
   textos SHX desenhados em traços), posição da linha de base (pt), tamanho, fator de largura, ângulo,
-  cor, alinhamento e largura máxima até a borda da célula. Não contém nenhum texto das obras.
+  cor, alinhamento e largura máxima até a borda da célula; em stringsA, a geometria das fileiras, dos ramais, da tabela
+  e dos unifilares do estilo A. Não contém nenhum texto das obras.
 
 fonte-txt.json
   Fonte TXT (traços), com os glifos colhidos dos próprios desenhos do projetista (letras desenhadas
