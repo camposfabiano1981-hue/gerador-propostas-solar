@@ -137,12 +137,11 @@ window.App = window.App || {};
       const campos = mapa[e] || {};
       // estilo A: strings, tabela e unifilares com a quantidade real da obra
       const pular = {};
-      let pularOc = {}, desloc = null;
+      let desloc = null;
       if (e === 'A' && mapa.stringsA) {
         Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
         const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA);
-        (d.pular || []).forEach(function (k) { pular[k] = true; });
-        pularOc = d.pularOc || {}; desloc = d.desloc || null;
+        desloc = d.desloc || null;
         desenharStringsA(pg, d, FT, P);
       }
       Object.keys(campos).forEach(function (cid) {
@@ -152,7 +151,6 @@ window.App = window.App || {};
         campos[cid].forEach(function (oc, k) {
           const s = Array.isArray(v) ? v[k] : v;
           if (s == null || String(s).trim() === '') return;
-          if (pularOc[cid] && pularOc[cid].indexOf(k) >= 0) return;
           // a tabela de strings cresceu: o que está abaixo dela na coluna de textos desce junto
           if (desloc && oc.x < desloc.x && oc.y < desloc.y) oc = Object.assign({}, oc, { y: oc.y + desloc.dy });
           if (oc.t === 'tt') desenharArial(pg, oc, s, fonte, P);
