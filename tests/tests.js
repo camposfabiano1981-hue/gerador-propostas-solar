@@ -2399,7 +2399,7 @@
     const txF1 = f1.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; }), txF2 = f2.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
     const mod2 = f2.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMMod'; });
     ok('2 folhas: folha 1 com tabelas, diagramas e croqui (sem fileiras nem o detalhe de instalação); folha 2 com as 59 placas ampliadas, o diagrama de blocos, o detalhe do aterramento e o de instalação',
-      [P.folhasA(prM2), P.folhasA(Object.assign(U.clone(prM2), { folhasA: '1' })), P.folhasA(pr)].join() === '2,1,1' &&
+      [P.folhasA(prM2), P.folhasA(Object.assign(U.clone(prM2), { folhasA: '1' })), P.folhasA(pr)].join() === '2,1,2' &&
       conta(f1, 'CRMMod') === 0 && txF1.indexOf('LAYOUT DAS STRINGS, DIAGRAMA DE BLOCOS E DETALHES: VER PRANCHA 2/2') >= 0 && f1.pularRegiao && f2.manterRegiao &&
       ['DIAGRAMA DE BLOCOS', 'DETALHE DO ATERRAMENTO DO SISTEMA', 'STRING BOX CA', 'MEDIDOR BIDIRECIONAL', 'BEP', 'INVERSOR INV2'].every(function (t) { return txF2.indexOf(t) >= 0; }) && txF1.indexOf('1/2') >= 0 && f1.pular.indexOf('inv_logo') >= 0 && conta(f1, 'CRMSec2') === 1 &&
       mod2.length === 59 && mod2[0].m[0] > 0.6 && f2.soCarimbo === true && txF2.indexOf('LAYOUT DAS STRINGS') >= 0 && txF2.indexOf('2/2') >= 0 && conta(f2, 'CRMSec2') === 0 &&
@@ -2413,7 +2413,16 @@
         destC[0] > 1050 && destC[2] < 1870 && destC[1] > 100 && destC[3] < 700 &&
         Math.abs(mv.k * mv.r[0] + mv.tx - destC[0]) < 0.01 && Math.abs(mv.k * mv.r[1] + mv.ty - destC[1]) < 0.01 && !f2.moverRegiao),
       { mv: mv, destC: destC });
-    const cfM =P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
+    // 2 folhas também com um inversor (o padrão): a folha 1 sem as fileiras e com o croqui ao lado das tabelas, a tabela com STR1,
+    // STR2… (sem o prefixo do inversor); a folha 2 com as 14 placas, o diagrama de blocos e os detalhes. "Uma folha só": como antes
+    const u1 = P.desenhoStringsA(pr, campM, GAm, 1), u2 = P.desenhoStringsA(pr, campM, GAm, 2), u0 = P.desenhoStringsA(pr, campM, GAm);
+    const txU1 = u1.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; }), txU2 = u2.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    ok('2 folhas com um inversor: folha 1 sem fileiras (croqui ao lado das tabelas, STR1/STR2), folha 2 com as 14 placas, blocos e detalhes; uma folha só como antes',
+      conta(u1, 'CRMMod') === 0 && !!u1.moverRegiao && txU1.indexOf('STR1') >= 0 && txU1.indexOf('STR2') >= 0 && txU1.indexOf('INV1-STR1') < 0 && txU1.indexOf('1/2') >= 0 &&
+      conta(u2, 'CRMMod') === 14 && u2.soCarimbo === true && ['DIAGRAMA DE BLOCOS', 'DETALHE DO ATERRAMENTO DO SISTEMA', 'INVERSOR INV1', '2/2'].every(function (t) { return txU2.indexOf(t) >= 0; }) &&
+      txU2.some(function (t) { return /^disjuntor: INV1 40 A$/.test(t); }) && conta(u0, 'CRMMod') === 14 && !u0.moverRegiao && !u0.soCarimbo,
+      { mod1: conta(u1, 'CRMMod'), mod2: conta(u2, 'CRMMod'), mod0: conta(u0, 'CRMMod'), disj: txU2.filter(function (t) { return /^disjunt/.test(t); }) });
+    const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
       (cfM.match(/Queda unitária CC/g) || []).length === 1 && !/INV1: Disjuntor/.test(cfM), cfM);

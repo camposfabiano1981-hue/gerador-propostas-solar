@@ -504,7 +504,8 @@ window.App = window.App || {};
    */
   function desenhoStringsA(pr, campos, G, folha) {
     const lista = inversores(pr);
-    if (G && lista.length > 1) return desenhoMultiA(pr, campos, G, lista, folha);
+    // em 2 folhas (o padrão) e com mais de um inversor, o desenho vai pelo caminho de várias folhas/inversores
+    if (G && (lista.length > 1 || folha)) return desenhoMultiA(pr, campos, G, lista, folha);
     const c = calcular(pr), cmds = [];
     cmds.desloc = null;
     if (!G) return cmds;
@@ -946,7 +947,7 @@ window.App = window.App || {};
     const st = Math.min(1, sp / 1.4 / H0), altB = (N - 1) * sp + H0 * st, baseFundo = (T.topo + fundo) / 2 - altB / 2;
     todas.forEach(function (x, i) {
       const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(x.p, x.s);
-      if (rotTab) cmds.push({ t: 'texto', txt: 'INV' + (x.j + 1) + '-' + x.rot, oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
+      if (rotTab) cmds.push({ t: 'texto', txt: (nI > 1 ? 'INV' + (x.j + 1) + '-' : '') + x.rot, oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
       COLUNAS.forEach(function (k) { const o = um('t1_' + k); if (o && l[k]) cmds.push({ t: 'texto', txt: l[k], oc: Object.assign({}, o, { y: y, s: o.s * st }) }); });
     });
     // linha separando os inversores na tabela de strings
@@ -1113,7 +1114,7 @@ window.App = window.App || {};
       seta(cx, yJ, yCA);
       const disj = lista.slice(0, n2).map(function (x, j) { return 'INV' + (j + 1) + ' ' + (str(x.p.disjCa) || '?') + ' A'; }).join(' + ');
       const d = pr.dpsCa || {};
-      caixa(cx, yCA, largM, ['STRING BOX CA', 'disjuntores: ' + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '') + (str(d.in) ? ' - In ' + str(d.in) + ' kA' : '')]);
+      caixa(cx, yCA, largM, ['STRING BOX CA', (n2 > 1 ? 'disjuntores: ' : 'disjuntor: ') + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '') + (str(d.in) ? ' - In ' + str(d.in) + ' kA' : '')]);
       const yQ = yCA - bh - gap;
       seta(cx, yCA - bh, yQ, 'CA');
       caixa(cx, yQ, largM, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'ligação ' + (LIGACOES[pr.ligacao] || '') + ' - entrada ' + (str(pr.entrada.bit) || '?') + ' mm2']);
@@ -1137,7 +1138,7 @@ window.App = window.App || {};
       const itens = [
         ['MOLDURAS E ESTRUTURA DOS MÓDULOS', 'equipotencialização das molduras', '#' + tm],
         ['STRING BOX CC', 'barra PE e DPS CC', '#' + tm],
-        ['INVERSORES ' + lista.map(function (_, j) { return 'INV' + (j + 1); }).join(' / '), 'terminal PE (carcaça)', '#' + tb],
+        [(nI > 1 ? 'INVERSORES ' : 'INVERSOR ') + lista.map(function (_, j) { return 'INV' + (j + 1); }).join(' / '), 'terminal PE (carcaça)', '#' + tb],
         ['STRING BOX CA', 'barra PE e DPS CA', '#' + tb],
         ['QUADRO GERAL (QGBT)', 'barra de terra / neutro', '#' + tb]
       ];
@@ -1397,9 +1398,9 @@ window.App = window.App || {};
     return out;
   }
 
-  /** Folhas do estilo A: com mais de um inversor, o desenho das strings vai para uma 2ª folha A1 (a não ser que o projetista
-   * peça uma folha só). */
-  function folhasA(pr) { return pr.folhasA !== '1' && inversores(pr).length > 1 ? 2 : 1; }
+  /** Folhas do estilo A: o padrão são 2 folhas A1 (1/2: tabelas, diagramas e croqui; 2/2: layout das strings, diagrama de
+   * blocos e detalhes), com um ou mais inversores; o projetista pode pedir uma folha só. */
+  function folhasA(pr) { return pr.folhasA !== '1' ? 2 : 1; }
 
   /**
    * Conferências com mais de um inversor: as de cada inversor (com o prefixo INV1, INV2… quando são só dele; as que dão igual

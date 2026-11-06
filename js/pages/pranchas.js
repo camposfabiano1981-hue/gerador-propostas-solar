@@ -112,8 +112,8 @@ window.App = window.App || {};
     grupo('1. Estilo, cliente e carimbo', true, h('div',
       UI.grade([
         { k: 'estilo', label: 'Estilo da prancha', type: 'select', options: P.OPCOES_ESTILO, help: 'A: tabelas e unifilar · B: plantas, fachadas e diagramas.' },
-        { k: 'folhasA', label: 'Folhas do estilo A', type: 'select', options: [{ v: '', t: 'Automático (2 folhas com 2 ou mais inversores)' }, { v: '1', t: 'Uma folha só' }],
-          help: 'Com 2 folhas: a 1ª com as tabelas e os diagramas; a 2ª com o layout das strings ampliado.' },
+        { k: 'folhasA', label: 'Folhas do estilo A', type: 'select', options: [{ v: '', t: '2 folhas (padrão)' }, { v: '1', t: 'Uma folha só' }],
+          help: '1ª folha: tabelas, diagramas unifilar e multifilar e croqui · 2ª folha: layout das strings ampliado, diagrama de blocos e detalhes do aterramento e da instalação. Uma folha só: tudo na mesma A1, como antes.' },
         { k: 'data', label: 'Data', type: 'date' },
         { k: 'art', label: 'ART/TRT', placeholder: 'Nº da ART' },
         { k: 'cliente.nome', label: 'Proprietário (cliente)', cls: 'span2' },
