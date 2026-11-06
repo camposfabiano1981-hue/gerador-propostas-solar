@@ -160,10 +160,15 @@ window.App = window.App || {};
           } }, '✕ Remover')),
         UI.grade([
           { k: 'fab', label: 'Fabricante' }, { k: 'modelo', label: 'Modelo', cls: 'span2' }, { k: 'kw', label: 'Potência (kW)', type: 'number' },
-          { k: 'tensao', label: 'Tensão CA (V)', type: 'number' }, { k: 'fases', label: 'Saída', type: 'select', options: FASES }, { k: 'vmaxCC', label: 'Tensão CC máx. (V)', type: 'number' },
-          { k: 'mppts', label: 'Nº de MPPT', type: 'int' }, { k: 'imaxMppt', label: 'Corrente máx. por MPPT (A)', type: 'number' }
+          { k: 'tensao', label: 'Tensão CA (V)', type: 'number', help: 'No trifásico, a de linha (220 ou 380 V).' }, { k: 'fases', label: 'Saída', type: 'select', options: FASES }, { k: 'vmaxCC', label: 'Tensão CC máx. (V)', type: 'number' },
+          { k: 'mppts', label: 'Nº de MPPT', type: 'int' }, { k: 'imaxMppt', label: 'Corrente máx. por MPPT (A)', type: 'number' },
+          { secao: 'Arranjo do INV' + (j + 1) }
         ].concat(arranjo(j), [
-          { k: 'caBit', label: 'Cabo CA (mm²)', type: 'number', placeholder: 'Igual ao INV1' }, { k: 'caDist', label: 'Distância CA (m)', type: 'number' },
+          { secao: 'Circuitos do INV' + (j + 1) },
+          { k: 'ccDist1', label: 'Distância CC string 1 (m)', type: 'number', placeholder: 'Igual ao INV1' }, { k: 'ccDist2', label: 'Distância CC demais strings (m)', type: 'number', placeholder: 'Igual à 1' },
+          { k: 'caBit', label: 'Cabo CA (mm²)', type: 'number', placeholder: 'Igual ao INV1' }, { k: 'caUn', label: 'Queda unitária CA (V/A·km)', placeholder: 'Igual ao INV1' },
+          { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: [{ v: '', t: 'Pela saída do inversor' }].concat(P.CONDUTORES_CA), help: 'Marcas da fiação no desenho; trifásico = 3 fases.' },
+          { k: 'caDist', label: 'Distância CA (m)', type: 'number' },
           { k: 'disjCa', label: 'Disjuntor CA (A)', type: 'number', help: sugJ ? 'Sugestão: ' + sugJ + ' A (≥ 1,25 × ' + U.fmt(cj.iInv, 2) + ' A).' : '' }
         ]), x, function (k) {
           // disjuntor sugerido enquanto o projetista não digitar outro (≥ 1,25 × corrente do inversor)
@@ -244,7 +249,7 @@ window.App = window.App || {};
     const refCc = P.quedaRef(pr.cc.bit, false), refCa = P.quedaRef(pr.ca.bit, pr.inv && pr.inv.fases === 'tri');
     const ref = function (v, bit) { return v ? 'Referência para ' + bit + ' mm² (cobre a 70 °C): ≈ ' + U.fmt(v, 2) + ' V/A·km.' : ''; };
     grupo('3. Circuitos e quedas de tensão', true, h('div',
-      h('h4.secao-form', 'Circuito CC (strings)'),
+      h('h4.secao-form', multi ? 'Circuito CC (strings do INV1 — e dos outros, se não tiverem distância própria)' : 'Circuito CC (strings)'),
       UI.grade([
         { k: 'cc.bit', label: 'Cabo CC (mm²)', type: 'number' }, { k: 'cc.tipo', label: 'Tipo do cabo CC', placeholder: 'EPR SOLAR 1.8 KV' },
         { k: 'cc.un', label: 'Queda unitária (V/A·km)', help: ref(refCc, pr.cc.bit) },

@@ -132,7 +132,9 @@ window.App = window.App || {};
   function dadosInversor(eq, placa, qtd) {
     const g = function (v) { return v != null && v !== '' && isFinite(U.num(v)) ? String(v) : ''; };
     const fases = /tri/i.test((eq && eq.fases) || '') ? 'tri' : 'mono';
-    const tensao = ((eq && eq.tensao) ? String(eq.tensao).match(/\d+/) : null);
+    // "127/220V": no trifásico vale a tensão de linha (a maior); nos outros, a primeira
+    const nums = (eq && eq.tensao) ? String(eq.tensao).match(/\d+/g) : null;
+    const tensao = nums ? [fases === 'tri' ? String(Math.max.apply(null, nums.map(Number))) : nums[0]] : null;
     return {
       fab: (eq && eq.fabricante) || (placa && placa.marca) || '', modelo: (eq && eq.modelo) || (placa && placa.modelo) || '',
       kw: g((eq && eq.potencia) || (placa && placa.potencia)), qtd: qtd > 0 ? String(qtd) : '', fases: fases,
@@ -244,7 +246,7 @@ window.App = window.App || {};
     pr.art = inst.art || pr.art || '';
     if (!str(pr.ruas.uc)) pr.ruas.uc = rua(cli.endereco);
     // mais de um inversor na obra: INV1 = o primeiro e INV2… em pr.invs, guardando o arranjo e o circuito já digitados de cada um
-    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caDist', 'disjCa'];
+    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caUn', 'caDist', 'condCA', 'ccDist1', 'ccDist2', 'disjCa'];
     const guarda = function (novo, velho) { ARR.forEach(function (k) { if (velho && str(velho[k])) novo[k] = velho[k]; }); return novo; };
     const invAnt = pr.inv || {}, invsAnt = Array.isArray(pr.invs) ? pr.invs : [];
     pr.mod = e.mod;
@@ -716,6 +718,13 @@ window.App = window.App || {};
   }
   // condutores do diagrama multifilar do modelo (R e S) e o 3º condutor (R) da UC trifásica, à esquerda
   const MF = { xR: 1131.0, xS: 1151.8, xT: 1172.6, d: 20.8 };
+  // inversor trifásico no multifilar: o símbolo do modelo ampliado (1,55×) com as 3 fases entrando por cima e as proteções afastadas
+  const INV_TRI = {
+    bb: [1141.9, 981.7, 1180.7, 1020.6], k: 1.55, prot: [1200.7, 973.6, 1230.0, 1026.8], dProt: 21,
+    topo: 981.7 + (1020.12 - 981.7) * 1.55,
+    entradas: function (x0) { const a = x0 + 0.5 * 1.55, w = 37.8 * 1.55; return [a + w / 6, a + w / 2, a + 5 * w / 6]; },
+    dir: function (x0) { return x0 + (1180.7 - 1141.9) * 1.55; }
+  };
 
   /**
    * Diagrama multifilar (unifilar principal) de UC trifásica. O modelo é bifásico (R, S e N, 2 condutores); aqui entram a fase T
@@ -743,7 +752,10 @@ window.App = window.App || {};
     // medidor mais largo, com os 3 condutores
     branco([1144.9, 1447.0, 1176.9, 1488.5]);
     linha([[1124.8, 1487.8], [1177.6, 1487.8]]); linha([[1124.8, 1447.7], [1177.6, 1447.7]]); linha([[1124.8, 1447.7], [1124.8, 1487.8]]); linha([[1124.8, 1481.4], [1177.6, 1481.4]]);
-    regiao([1146.5, 1448.5, 1176.8, 1481.0], -10.4, 0); regiao([1146.5, 1481.9, 1176.8, 1487.3], -10.4, 0);
+    // setas e "kWh" maiores, no centro da caixa mais larga
+    const cxM = (1124.8 + 1177.6) / 2;
+    cmds.push({ t: 'regiao', bb: [1148.4, 1482.2, 1174.8, 1487.0], dx: cxM - 19.8 - 1148.4, dy: 0, w: 39.6, h: 4.8 });
+    cmds.push({ t: 'regiao', bb: [1152.2, 1459.3, 1169.1, 1468.0], dx: cxM - 11.83 - 1152.2, dy: 1457.6 - 1459.3, w: 23.66, h: 12.18 });
     linha([[XR, 1594.3], [XR, 1487.8]]); linha([[XR, 1447.7], [XR, 1405.9]]);
     // até onde a fase R desce: o INV1 trifásico, a derivação do INV2 trifásico ou a carga da fase R
     const yFim = inv1Tri ? null : (inv2Tri ? 1210 : 1323.3);
@@ -770,7 +782,14 @@ window.App = window.App || {};
     linha([[XT, 1114.7], [1186.0, 1114.7]]);
     linha([[XT, 1135.6], [1206.8, 1135.6], [1206.8, 1114.9]]);
     linha([[XR, 1141.5], [1227.6, 1141.5], [1227.6, 1114.9]]); ponto(XR, 1141.5);
-    linha([[XR, 1143.6], [XR, 1032], [(XS + XT) / 2, 1032], [(XS + XT) / 2, 1020.1]]);
+    // inversor maior (1,55×) para as 3 fases entrarem por cima, em escada (sem cruzar), e as proteções à direita dele
+    const k = INV_TRI.k, xe = INV_TRI.entradas(1141.9);
+    branco([1141.4, 981.2, 1182, 1061]); branco([1182, 973.0, 1230.5, 1061]);
+    cmds.push({ t: 'regiao', bb: INV_TRI.bb, dx: 0, dy: 0, w: (INV_TRI.bb[2] - INV_TRI.bb[0]) * k, h: (INV_TRI.bb[3] - INV_TRI.bb[1]) * k });
+    linha([[XT, 1062], [XT, 1060], [xe[2], 1060], [xe[2], INV_TRI.topo]]);
+    linha([[XS, 1062], [XS, 1055], [xe[1], 1055], [xe[1], INV_TRI.topo]]);
+    linha([[XR, 1143.6], [XR, 1050], [xe[0], 1050], [xe[0], INV_TRI.topo]]);
+    regiao(INV_TRI.prot, INV_TRI.dProt, 0); linha([[INV_TRI.dir(1141.9), 1001.2], [INV_TRI.prot[0] + INV_TRI.dProt + 0.5, 1001.2]]);
   }
 
   // ------------------------------------------------------------ obra com mais de um inversor (estilo A)
@@ -782,7 +801,7 @@ window.App = window.App || {};
   /** INV2…: os campos do arranjo e do circuito CA em branco (automáticos) e o disjuntor sugerido (≥ 1,25 × corrente). */
   function novoInversor(pr, base) {
     const x = Object.assign({ fab: '', modelo: '', kw: '', qtd: '1', fases: (pr.inv && pr.inv.fases) || 'mono', tensao: (pr.inv && pr.inv.tensao) || '220', vmaxCC: '',
-      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caDist: '', disjCa: '' }, base || {});
+      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caUn: '', caDist: '', condCA: '', ccDist1: '', ccDist2: '', disjCa: '' }, base || {});
     if (!str(x.disjCa)) { const i = correnteInv(x, pr.fp); if (i > 0) x.disjCa = String(proxDisjuntor(1.25 * i) || ''); }
     return x;
   }
@@ -816,7 +835,10 @@ window.App = window.App || {};
         nStrings: str(x.nStrings) || (ni > 0 ? String(Math.ceil(ni / maxS)) : ''), porString: str(x.porString), porMppt: str(x.porMppt),
         // INV1: o circuito CA e o disjuntor da prancha; INV2…: os dele (cabo e queda unitária do INV1 quando em branco)
         ca: i === 0 ? pr.ca : Object.assign({}, pr.ca, { bit: str(x.caBit) || pr.ca.bit, un: str(x.caUn) || pr.ca.un, dist: str(x.caDist) }),
-        disjCa: i === 0 ? pr.disjCa : str(x.disjCa)
+        disjCa: i === 0 ? pr.disjCa : str(x.disjCa),
+        // circuito CC e condutores CA do inversor (em branco: as distâncias CC e os condutores do INV1, ajustados à saída dele)
+        cc: i === 0 || !str(x.ccDist1) ? pr.cc : Object.assign({}, pr.cc, { dist1: str(x.ccDist1), dist2: str(x.ccDist2) }),
+        condCA: i === 0 ? pr.condCA : (str(x.condCA) || pr.condCA)
       });
       return { k: i, inv: x, p: p };
     });
@@ -1095,16 +1117,20 @@ window.App = window.App || {};
         linha([[1185.7 + d, 1170.6], [1206.5 + d, 1170.6]]); linha([[1185.7 + d, 1167.4], [1206.5 + d, 1167.4]]);
         linha([[MF.xR, 1210], [XS + d, 1210], [XS + d, 1186]]); linha([[XS, 1203], [XT + d, 1203], [XT + d, 1186]]); linha([[XT, 1196], [XT + d + MF.d, 1196], [XT + d + MF.d, 1190.6]]);
         ponto(MF.xR, 1210); ponto(XS, 1203); ponto(XT, 1196);
-        linha([[XT + d + MF.d, 1143.6], [XT + d + MF.d, 1032], [(XS + XT) / 2 + d, 1032], [(XS + XT) / 2 + d, 1020.1]]);
+        // inversor maior: as 3 fases entram retas por cima; proteções afastadas
+        [XS + d, XT + d].forEach(function (x) { linha([[x, 1150], [x, INV_TRI.topo]]); });
+        linha([[XT + d + MF.d, 1143.6], [XT + d + MF.d, INV_TRI.topo]]);
+        cmds.push({ t: 'regiao', bb: INV_TRI.bb, dx: d, dy: 0, w: (INV_TRI.bb[2] - INV_TRI.bb[0]) * INV_TRI.k, h: (INV_TRI.bb[3] - INV_TRI.bb[1]) * INV_TRI.k });
+        regiao(INV_TRI.prot, d + INV_TRI.dProt, 0); linha([[INV_TRI.dir(1141.9) + d, 1001.2], [INV_TRI.prot[0] + d + INV_TRI.dProt + 0.5, 1001.2]]);
       } else {
         linha([[XS, 1203], [XS + d, 1203], [XS + d, 1186]]); linha([[XT, 1197], [XT + d, 1197], [XT + d, 1186]]);
         ponto(XS, 1203); ponto(XT, 1197);
+        linha([[XS + d, 1150], [XS + d, 1021]]); linha([[XT + d, 1150], [XT + d, 1021]]);
+        regiao([1140, 970, 1226, 1030], d, 0);                    // inversor e proteções
       }
-      linha([[XS + d, 1150], [XS + d, 1021]]); linha([[XT + d, 1150], [XT + d, 1021]]);
-      regiao([1140, 970, 1226, 1030], d, 0);                      // inversor e proteções
       regiao([1192, 846, 1212, 868], d, 0);                       // aterramento dos campos
       em(oc('disj_ca', 0), vj.disj_ca, { x: 1190.64 + d + dl }); em(oc('disj_ca_ka', 0), vj.disj_ca_ka, { x: 1191.12 + d + dl });
-      const xl = 1226 + d + 6;
+      const xl = 1226 + d + 6 + (tri ? INV_TRI.dProt + 6 : 0);
       em(oc('inv_nome_kw', 0), 'INVERSOR', { x: xl, y: 1010.6, s: 5.4, w: null });
       em(oc('inv_nome_kw', 0), vj.inv_nome_kw, { x: xl, w: null }); em(oc('inv_modelo', 0), vj.inv_modelo, { x: xl + 0.5, w: null });
     }
@@ -1151,6 +1177,8 @@ window.App = window.App || {};
           ' módulos e ' + c.nInv + ' inversor(es). Quantidades, potências e textos saem com os valores da obra.');
       }
     }
+    const vInvT = num(pr.inv && pr.inv.tensao);
+    if (pr.inv && pr.inv.fases === 'tri' && vInvT > 0 && vInvT < 200) add('aviso', 'Inversor trifásico com tensão CA de ' + vInvT + ' V: informe a tensão de linha (220 ou 380 V) — a corrente sai de P ÷ (√3 × V).');
     if (pr.modelosDiferentes) add('aviso', 'A obra tem inversores de modelos diferentes: a prancha mostra só o principal (' + [pr.inv.fab, pr.inv.modelo].filter(Boolean).join(' ') + ').');
     // proteções e cabos do lado CA
     const dca = num(pr.disjCa);

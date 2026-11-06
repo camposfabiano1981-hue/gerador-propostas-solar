@@ -107,7 +107,11 @@ window.App = window.App || {};
         pg.pushOperators.apply(pg, ops);
       } else if (c.t === 'linha') desenharLinha(pg, c.pts, c.cor, c.traco, P);
       else if (c.t === 'texto') { if (c.oc.t === 'tt') { if (fonte) desenharArial(pg, c.oc, c.txt, fonte, P); } else desenharTracos(pg, c.oc, c.txt, FT, P); }
-      else if (c.t === 'regiao') { const e = regioes && regioes[r++]; if (e) pg.drawPage(e, { x: c.bb[0] + c.dx, y: c.bb[1] + c.dy }); }
+      else if (c.t === 'regiao') {
+        // trecho do modelo na nova posição; w/h: o trecho ampliado (ex.: o inversor maior das 3 fases)
+        const e = regioes && regioes[r++];
+        if (e) pg.drawPage(e, { x: c.bb[0] + c.dx, y: c.bb[1] + c.dy, width: c.w || (c.bb[2] - c.bb[0]), height: c.h || (c.bb[3] - c.bb[1]) });
+      }
       else if (c.t === 'branco') pg.drawRectangle({ x: c.r[0], y: c.r[1], width: c.r[2] - c.r[0], height: c.r[3] - c.r[1], color: P.rgb(1, 1, 1) });
       else if (c.t === 'ponto') pg.drawCircle({ x: c.x, y: c.y, size: c.r, color: P.rgb(0, 0, 0) });
     });

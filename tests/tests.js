@@ -2381,11 +2381,19 @@
     const dT2 = P.desenhoStringsA(Object.assign(U.clone(prM2), { inv: Object.assign({}, prM2.inv, { fases: 'tri' }) }), campM, GAm);
     const nReg = function (d) { return d.filter(function (c) { return c.t === 'regiao'; }).length; };
     ok('UC trifásica: rede R, S, T e N, medidor e disjuntor geral com 3 polos, carga da fase R; INV2 trifásico com 3 polos; INV1 trifásico com 3º polo e 3 DPS',
-      txT.indexOf('T') >= 0 && txT.indexOf('N') >= 0 && nReg(dT) === nReg(dM) + 5 && nReg(dT2) === nReg(dT) + 4 &&
+      txT.indexOf('T') >= 0 && txT.indexOf('N') >= 0 && nReg(dT) === nReg(dM) + 6 && nReg(dT2) === nReg(dT) + 6 &&
       dT.filter(function (c) { return c.t === 'ponto'; }).length > dM.filter(function (c) { return c.t === 'ponto'; }).length + 4,
       { bi: nReg(dM), tri: nReg(dT), tri2: nReg(dT2) });
     igual('condutores pela saída de cada inversor e, no QD, pela ligação da UC', [P.letrasInv({ condCA: 'FFT', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: 'FFFNT', inv: { fases: 'mono' } }).join(''),
       P.letrasInv({ condCA: 'FNT', inv: { fases: 'mono' } }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'tri' }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'bi' }).join('')].join('|'), 'FFF|FFN|FN|FFF|FF');
+    const LC = P.inversores(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { ccDist1: '25', ccDist2: '28', caUn: '3,1', condCA: 'FFFNT' })] }));
+    igual('INV2 com circuitos próprios: distâncias CC, queda unitária CA e condutores (o INV1 com os da prancha)',
+      [LC[1].p.cc.dist1, LC[1].p.cc.dist2, LC[1].p.ca.un, LC[1].p.condCA, P.letrasInv(LC[1].p).join(''), LC[0].p.cc.dist1, LC[0].p.condCA,
+        P.inversores(prM2)[1].p.cc.dist1, P.inversores(prM2)[1].p.condCA].join('|'), '25|28|3,1|FFFNT|FFFN|24,66||24,66|');
+    const cfV = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { tensao: '127' })] })).map(function (x) { return x.texto; }).join(' | ');
+    ok('conferência: inversor trifásico com tensão de fase (127 V) pede a tensão de linha', /INV2: Inversor trifásico com tensão CA de 127 V: informe a tensão de linha/.test(cfV), cfV);
+    const prV = P.sugerir({ placas: { modulo: { quantidade: 10 }, inversor: { equipamentoId: 'inv-v' } } }, Object.assign({}, ctxP, { equipamentos: [{ id: 'inv-v', tipo: 'inversor', fabricante: 'X', modelo: 'T-15', potencia: 15, fases: 'Trifásico', tensao: '127/220V' }] }), {});
+    igual('CRM: no inversor trifásico "127/220V" vale a tensão de linha', prV.inv.tensao, '220');
     const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
