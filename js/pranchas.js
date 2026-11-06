@@ -364,7 +364,7 @@ window.App = window.App || {};
       const cs = lista.map(function (x) { return calcular(x.p); });
       return { nStr: cs.reduce(function (a, k) { return a + k.nStr; }, 0) };
     })() : calcular(pr);
-    const cond = letrasCA(pr).length, tm = terraMod(pr);
+    const cond = letrasInv(lista[0].p).length, tm = terraMod(pr);
     return {
       empEndereco: endEmp, empContato: contato, rtNome: str(emp.responsavel),
       rtRegistro: reg ? [str(emp.registroTipo) || 'CFT-BR', 'nº', regFmt].join(' ') : '', rtTel: telRt ? 'TEL. ' + telRt.replace(/^\(?\d{2}\)?\s+(?=9?\d{4})/, '') : '',
@@ -623,6 +623,7 @@ window.App = window.App || {};
 
     unifilares(tam);
     condutoresCA();
+    if (pr.ligacao === 'tri') multifilarTri(pr, [{ p: pr }], cmds);
     return cmds;
 
     // ---- unifilares: um ramo por string com o "Campo Fotov.", o rótulo e a bitola, e a marca e o texto do cabo CC
@@ -680,19 +681,96 @@ window.App = window.App || {};
     if (occ && str(pr.cc.bit)) cmds.push({ t: 'texto', txt: (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : str(pr.cc.bit)) + 'mm2/' + str(pr.cc.tipo), oc: Object.assign({}, occ, { x: occ.x + (xn - V.xs[1]) }) });
     }
 
-    // condutores do circuito CA (FFT, FNT…): traços na fiação quadro–inversor e nos dois pontos do unifilar simplificado
+    // condutores do circuito CA (FFT, FNT…): traços na fiação quadro–inversor e nos dois pontos do unifilar simplificado — os do
+    // inversor (pela saída dele) e, no QD, os da ligação da UC
     function condutoresCA() {
       const Kc = G.condutores;
       if (!Kc) return;
-      letrasCA(pr).forEach(function (l, i) {
+      letrasInv(pr).forEach(function (l, i) {
         const x = Kc.h.xF - i * Kc.h.passo;
         if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1);
-        Kc.v.forEach(function (pv) {
+      });
+      Kc.v.forEach(function (pv, k) {
+        (k === 0 ? letrasUC(pr) : letrasInv(pr)).forEach(function (l, i) {
           const y = pv.y - i * pv.passo;
           if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1);
         });
       });
     }
+  }
+
+  // ------------------------------------------------------------ fases dos circuitos CA (diagramas do estilo A)
+  /** O inversor é trifásico? */
+  function triInv(p) { return !!(p && p.inv && p.inv.fases === 'tri'); }
+  /** Condutores do circuito CA de um inversor pela saída dele: trifásico com 3 fases; mono/bifásico com até 2 (o terra à parte). */
+  function letrasInv(p) {
+    const l = letrasCA(p), f = l.filter(function (x) { return x === 'F'; }).length, n = l.indexOf('N') >= 0;
+    if (triInv(p) && f < 3) return ['F', 'F', 'F'].concat(n ? ['N'] : []);
+    if (!triInv(p) && f > 2) return ['F', 'F'].concat(n ? ['N'] : []);
+    return l;
+  }
+  /** Condutores do quadro à String Box CA: os da ligação da UC (trifásica: 3 fases). */
+  function letrasUC(pr) {
+    const l = letrasCA(pr);
+    return pr.ligacao === 'tri' ? ['F', 'F', 'F'].concat(l.indexOf('N') >= 0 ? ['N'] : []) : l;
+  }
+  // condutores do diagrama multifilar do modelo (R e S) e o 3º condutor (R) da UC trifásica, à esquerda
+  const MF = { xR: 1131.0, xS: 1151.8, xT: 1172.6, d: 20.8 };
+
+  /**
+   * Diagrama multifilar (unifilar principal) de UC trifásica. O modelo é bifásico (R, S e N, 2 condutores); aqui entram a fase T
+   * e o 3º condutor — R à esquerda, depois S e T — da rede ao medidor (mais largo), o 3º polo do disjuntor geral, a carga da
+   * fase R e as marcas dos cabos. Com o INV1 trifásico, a fase R segue até ele: 3º polo na String Box CA, um DPS por fase e a
+   * entrada no inversor. Com o INV2 trifásico, a fase R desce até a derivação dele (o desenho do INV2 tira R, S e T).
+   */
+  function multifilarTri(pr, lista, cmds) {
+    const preto = [0, 0, 0], azul = [0, 0, 1], roxo = [0.498, 0, 1], tr = [12.6, 6.3];
+    const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
+    const regiao = function (bb, dx, dy) { cmds.push({ t: 'regiao', bb: bb, dx: dx, dy: dy }); };
+    const branco = function (r) { cmds.push({ t: 'branco', r: r }); };
+    const ponto = function (x, y) { cmds.push({ t: 'ponto', x: x, y: y, r: 1.6 }); };
+    const rotulo = function (x, y, s) { cmds.push({ t: 'texto', txt: s, oc: { t: 'txt', x: x, y: y, s: 4.7, fl: 0.85, ang: 0, cor: azul, al: 'l' } }); };
+    const XR = MF.xR, XS = MF.xS, XT = MF.xT, D = MF.d;
+    const inv1Tri = triInv(lista[0].p), inv2Tri = lista.length > 1 && triInv(lista[1].p);
+    // rede: R, S, T e N — S sai da linha S, T da linha T (no modelo: R e S)
+    branco([1149.6, 1574.4, 1154.2, 1596.5]); linha([[1147, 1594.3], [1157, 1594.3]]);
+    branco([1170.4, 1553.6, 1174.8, 1575.5]); linha([[1168, 1573.4], [1178, 1573.4]]);
+    branco([1109, 1551.4, 1227.6, 1553.8]); branco([1231.5, 1549.3, 1237.6, 1555.9]);
+    linha([[1110, 1552.6], [1226.5, 1552.6]]); rotulo(1232.7, 1550.2, 'T');
+    linha([[1110, 1531.7], [1226.5, 1531.7]], azul); rotulo(1232.7, 1529.3, 'N');
+    linha([[XS, 1573.4], [XS, 1548]]); linha([[XT, 1552.6], [XT, 1548]]);
+    ponto(XR, 1594.3); ponto(XS, 1573.4); ponto(XT, 1552.6);
+    // medidor mais largo, com os 3 condutores
+    branco([1144.9, 1447.0, 1176.9, 1488.5]);
+    linha([[1124.8, 1487.8], [1177.6, 1487.8]]); linha([[1124.8, 1447.7], [1177.6, 1447.7]]); linha([[1124.8, 1447.7], [1124.8, 1487.8]]); linha([[1124.8, 1481.4], [1177.6, 1481.4]]);
+    regiao([1146.5, 1448.5, 1176.8, 1481.0], -10.4, 0); regiao([1146.5, 1481.9, 1176.8, 1487.3], -10.4, 0);
+    linha([[XR, 1594.3], [XR, 1487.8]]); linha([[XR, 1447.7], [XR, 1405.9]]);
+    // até onde a fase R desce: o INV1 trifásico, a derivação do INV2 trifásico ou a carga da fase R
+    const yFim = inv1Tri ? null : (inv2Tri ? 1210 : 1323.3);
+    // marcas dos cabos cobrindo os 3 condutores
+    [[1423.9, 1426.3], [1347.8, 1350.1]].concat(yFim === 1323.3 ? [] : [[1219.9, 1222.2]]).forEach(function (m) {
+      branco([1149.3, m[0] - 0.6, 1150.3, m[1] + 0.6]);
+      linha([[1149.8, m[0]], [1128.6, m[0]], [1128.6, m[1]], [1149.8, m[1]]]);
+    });
+    // disjuntor geral: 3º polo e a alavanca dos três
+    regiao([1149.6, 1358.9, 1160.5, 1405.9], -D, 0);
+    linha([[1132.3, 1385.0], [1153.1, 1385.0]]); linha([[1132.3, 1381.8], [1153.1, 1381.8]]);
+    // carga instalada: a da fase R (caixa mais alta)
+    branco([1048, 1315.6, 1183, 1317.0]); linha([[XS, 1314], [XS, 1318.5]]); linha([[XT, 1314], [XT, 1318.5]]);
+    linha([[1049.3, 1316.3], [1049.3, 1334.0], [1181.8, 1334.0], [1181.8, 1316.3]], roxo, tr);
+    regiao([1060, 1297.5, 1114.0, 1311.0], 0, 20.9);
+    linha([[1113.2, 1323.3], [XR, 1323.3]]); ponto(XR, 1323.3);
+    linha([[XR, 1358.9], [XR, yFim == null ? 1190.6 : yFim]]);
+    if (!inv1Tri) return;
+    // INV1 trifásico: 3º polo na String Box CA, um DPS por fase e a fase R entrando no inversor pelo meio
+    regiao([1149.6, 1143.6, 1160.5, 1190.6], -D, 0);
+    linha([[1132.3, 1170.6], [1153.1, 1170.6]]); linha([[1132.3, 1167.4], [1153.1, 1167.4]]);
+    branco([1175.5, 1084.0, 1233.0, 1137.2]);
+    [-15.6, 5.2, 26.0].forEach(function (dx) { regiao([1195.4, 1085.9, 1208.0, 1114.9], dx, 0); });
+    linha([[XT, 1114.7], [1186.0, 1114.7]]);
+    linha([[XT, 1135.6], [1206.8, 1135.6], [1206.8, 1114.9]]);
+    linha([[XR, 1141.5], [1227.6, 1141.5], [1227.6, 1114.9]]); ponto(XR, 1141.5);
+    linha([[XR, 1143.6], [XR, 1032], [(XS + XT) / 2, 1032], [(XS + XT) / 2, 1020.1]]);
   }
 
   // ------------------------------------------------------------ obra com mais de um inversor (estilo A)
@@ -903,22 +981,24 @@ window.App = window.App || {};
       const oR = { t: 'txt', s: 5.66, fl: 0.92, ang: 0, cor: preto, al: 'l' };
       em(oR, 'INV' + (j + 1), { x: 469.6, y: 780.1 + dy }); em(oR, 'INV' + (j + 1), { x: 569.9, y: 772.2 + dy });
       const Kc = G.condutores;
-      if (Kc) letrasCA(lista[j].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, dy, 1); else forma('CRMTickF', Kc.h.xF, 0, x, dy, 1); });
+      if (Kc) letrasInv(lista[j].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, dy, 1); else forma('CRMTickF', Kc.h.xF, 0, x, dy, 1); });
       em(um('bit_ca_lig'), vj.bit_ca_lig, { y: 758.3 + dy }); em(um('bit_terra_lig'), vj.bit_terra_lig, { y: 758.0 + dy });
       em(oc('inv_kw_cad', 1), vj.inv_kw_cad ? vj.inv_kw_cad : (cs[j].kw > 0 ? pt(cs[j].kw, 2) + 'KW' : ''), { y: 779.2 + dy });
       em(um('inv_logo'), maiusc(lista[j].inv.fab), { y: 760.2 + dy });
     }
     // condutores do circuito CA do INV1 (fiação e os dois pontos do unifilar simplificado)
     const Kc = G.condutores;
-    if (Kc) letrasCA(pr).forEach(function (l, i) {
-      const x = Kc.h.xF - i * Kc.h.passo;
-      if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1);
-      Kc.v.forEach(function (pv) { const y = pv.y - i * pv.passo; if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1); });
-    });
+    if (Kc) {
+      letrasInv(lista[0].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1); });
+      Kc.v.forEach(function (pv, k) {
+        (k === 0 ? letrasUC(pr) : letrasInv(lista[0].p)).forEach(function (l, i) { const y = pv.y - i * pv.passo; if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1); });
+      });
+    }
 
     // ---- unifilar simplificado: cada inversor com o seu disjuntor dentro da String Box CA, o seu símbolo e os seus campos
     // (até 2 inversores: o croqui e o unifilar principal limitam a largura)
     unifilaresMulti(Math.min(nI, 2));
+    if (pr.ligacao === 'tri') multifilarTri(pr, lista, cmds);
     return cmds;
     function unifilaresMulti(nI) {
     const S = G.uniS, cfS = campos.campo_fv && campos.campo_fv[2];
@@ -953,7 +1033,7 @@ window.App = window.App || {};
       linha([[S.xInv, 1256], [xInv, 1256], [xInv, 1243]]); ponto(S.xInv, 1256);
       linha([[xInv, 1183], [xInv, 1056]]);
       regiao([926, 1137, 937, 1147], d, 0);                       // T verde
-      if (Kc) letrasCA(lista[j].p).forEach(function (l, i) { const y = Kc.v[1].y - i * Kc.v[1].passo; forma(l === 'N' ? 'CRMTickNh' : 'CRMTickFh', 0, l === 'N' ? Kc.yN : Kc.yF, d, y, 1); });
+      if (Kc) letrasInv(lista[j].p).forEach(function (l, i) { const y = Kc.v[1].y - i * Kc.v[1].passo; forma(l === 'N' ? 'CRMTickNh' : 'CRMTickFh', 0, l === 'N' ? Kc.yN : Kc.yF, d, y, 1); });
       regiao([905, 1020, 940, 1057], d, 0);                       // símbolo do inversor
       linha([[xInv, 1020.5], [xInv, S.yBus]]);
       em(oc('disj_ca_a', 0), vj.disj_ca_a, { x: 909.2 + d });
@@ -966,7 +1046,7 @@ window.App = window.App || {};
     // ---- unifilar principal: o INV1 no lugar do desenho; os outros à direita, com o disjuntor na mesma String Box CA
     const V = G.uniU, cf = campos.campo_fv || [], uc = campos._uU_campo || [];
     // o 2º inversor fica à direita da String Box CA (o croqui começa em x ≈ 1400 nessa altura)
-    const DX = 150, xBoxD = Math.max(1295.4, 1190.64 + DX * (nI - 1) + 32);
+    const tri2 = pr.ligacao === 'tri' && nI > 1 && triInv(lista[1].p), DX = 150, xBoxD = Math.max(1295.4, 1190.64 + DX * (nI - 1) + 32 + (tri2 ? MF.d : 0));
     if (nI > 1) {
       branco([1294.2, 1080.5, 1296.6, 1190.5]);
       linha([[1295.4, 1188.7], [xBoxD, 1188.7], [xBoxD, 1082.5], [1295.4, 1082.5]], roxo, [12.6, 6.3]);
@@ -1007,13 +1087,23 @@ window.App = window.App || {};
       if (occ && bit && j === nI - 1) cmds.push({ t: 'texto', txt: (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : bit) + 'mm2/' + str(pr.cc.tipo), oc: Object.assign({}, occ, { x: occ.x + (xn - V.xs[1]) }) });
       if (j === 0) continue;
       const vj = valores(lista[j].p, 'A');
+      const XS = MF.xS, XT = MF.xT, tri = tri2 && j === 1, dl = tri ? MF.d : 0;
       regiao([1140, 1150, 1186, 1186], d, 0);                     // disjuntor (2 polos)
-      linha([[1150.5, 1203], [1150.5 + d, 1203], [1150.5 + d, 1186]]); linha([[1172.5, 1197], [1172.5 + d, 1197], [1172.5 + d, 1186]]);
-      ponto(1150.5, 1203); ponto(1172.5, 1197);
-      linha([[1150.5 + d, 1150], [1150.5 + d, 1021]]); linha([[1172.5 + d, 1150], [1172.5 + d, 1021]]);
+      if (tri) {
+        // UC e INV2 trifásicos: derivação das fases R, S e T, 3º polo do disjuntor e a fase T entrando no inversor pelo meio
+        regiao([1149.6, 1143.6, 1160.5, 1190.6], d + 2 * MF.d, 0);
+        linha([[1185.7 + d, 1170.6], [1206.5 + d, 1170.6]]); linha([[1185.7 + d, 1167.4], [1206.5 + d, 1167.4]]);
+        linha([[MF.xR, 1210], [XS + d, 1210], [XS + d, 1186]]); linha([[XS, 1203], [XT + d, 1203], [XT + d, 1186]]); linha([[XT, 1196], [XT + d + MF.d, 1196], [XT + d + MF.d, 1190.6]]);
+        ponto(MF.xR, 1210); ponto(XS, 1203); ponto(XT, 1196);
+        linha([[XT + d + MF.d, 1143.6], [XT + d + MF.d, 1032], [(XS + XT) / 2 + d, 1032], [(XS + XT) / 2 + d, 1020.1]]);
+      } else {
+        linha([[XS, 1203], [XS + d, 1203], [XS + d, 1186]]); linha([[XT, 1197], [XT + d, 1197], [XT + d, 1186]]);
+        ponto(XS, 1203); ponto(XT, 1197);
+      }
+      linha([[XS + d, 1150], [XS + d, 1021]]); linha([[XT + d, 1150], [XT + d, 1021]]);
       regiao([1140, 970, 1226, 1030], d, 0);                      // inversor e proteções
       regiao([1192, 846, 1212, 868], d, 0);                       // aterramento dos campos
-      em(oc('disj_ca', 0), vj.disj_ca, { x: 1190.64 + d }); em(oc('disj_ca_ka', 0), vj.disj_ca_ka, { x: 1191.12 + d });
+      em(oc('disj_ca', 0), vj.disj_ca, { x: 1190.64 + d + dl }); em(oc('disj_ca_ka', 0), vj.disj_ca_ka, { x: 1191.12 + d + dl });
       const xl = 1226 + d + 6;
       em(oc('inv_nome_kw', 0), 'INVERSOR', { x: xl, y: 1010.6, s: 5.4, w: null });
       em(oc('inv_nome_kw', 0), vj.inv_nome_kw, { x: xl, w: null }); em(oc('inv_modelo', 0), vj.inv_modelo, { x: xl + 0.5, w: null });
@@ -1245,7 +1335,7 @@ window.App = window.App || {};
     mapa: mapa, modelo: modelo, fonteTxt: fonteTxt, fonteRomans: fonteRomans, fonteArial: fonteArial,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
-    CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, terraMod: terraMod,
+    CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod,
     correnteInv: correnteInv, novoInversor: novoInversor,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,

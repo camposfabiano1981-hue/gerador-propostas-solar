@@ -2301,7 +2301,7 @@
       conta(d2, 'CRMTickF') + conta(d2, 'CRMTickFh') === 6 && conta(d2, 'CRMTickN') + conta(d2, 'CRMTickNh') === 0 &&
       (function (d) { return conta(d, 'CRMTickN') === 1 && conta(d, 'CRMTickNh') === 2 && conta(d, 'CRMTickF') === 1 && conta(d, 'CRMTickFh') === 2; })(P.desenhoStringsA(Object.assign(U.clone(pr), { condCA: 'FNT' }), campA, GA)) &&
       [P.letrasCA({}).join(''), P.letrasCA({ condCA: 'FNT' }).join(''), P.letrasCA({ condCA: 'FFFNT' }).join(''), P.letrasCA({ condCA: 'xx' }).join('')].join('|') === 'FF|FN|FFFN|FF');
-    const auto3 = P.automaticos(Object.assign(U.clone(pr), { condCA: 'FFFNT', terraMod: '4', terraBit: '10' }), ctxP);
+    const auto3 = P.automaticos(Object.assign(U.clone(pr), { condCA: 'FFFNT', terraMod: '4', terraBit: '10', inv: Object.assign({}, pr.inv, { fases: 'tri' }) }), ctxP);
     igual('fiação do inversor pelos condutores escolhidos e aterramento dos módulos separado do terra CA', [auto3.fiaInversor, auto3.fiaPlacas, P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_cc_marca,
       P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_ca_marca].join('|'), '4#6(T#10)|4#6(T#4)|#4|#10');
     const d1 = P.desenhoStringsA(Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '8' }), nStrings: '1' }), campA, GA);
@@ -2367,7 +2367,7 @@
     const campM = Object.assign({}, campA, { ti_nstr: [ocT(285.35, 258.4, 7.4)], ti_kw: [ocT(463.55, 258.4, 7.4)], inv_kw_cad: [ocT(236.6, 1052.9, 5.86), ocT(556.1, 779.2, 4.4), ocT(905, 1031.9, 5.48, 90)],
       inv_nome: [ocT(350, 1040, 7.48), ocT(185, 392, 7.48), ocT(949.6, 1013.3, 5.68, 90)], disj_ca: [ocT(1190.6, 1167, 4.68)], disj_ca_ka: [ocT(1191.1, 1158.6, 4.56)], inv_nome_kw: [ocT(1066.9, 998.8, 4.64)], inv_modelo: [ocT(1067.4, 987, 4.56)],
       disj_ca_a: [ocT(909.2, 1198.1, 5.6, 90)], bit_ca_marca: [ocT(938.2, 1138, 7.48, 90)], bit_ca_lig: [ocT(477.4, 758.3, 7.3)], bit_terra_lig: [ocT(497.8, 758, 7.36)] });
-    const dM = P.desenhoStringsA(prM2, campM, GAm);
+    const dM = P.desenhoStringsA(Object.assign(U.clone(prM2), { ligacao: 'bi' }), campM, GAm);
     const txM = dM.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
     const descM = dM.desloc.map(function (r) { return r.y.toFixed(1) + ':' + r.dy.toFixed(2); }).join(' ');
     ok('desenho com 2 inversores: 59 módulos, 7 ramais, INV2 copiado do modelo (strings, unifilar simplificado e principal), tabela com o inversor de cada string e as seções descendo em dois degraus',
@@ -2375,6 +2375,17 @@
       ['INV1-STR1', 'INV1-STR3', 'INV2-STR4', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].every(function (t) { return txM.indexOf(t) >= 0; }) &&
       txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '485.4:-58.78 250.0:-73.58',
       { mod: conta(dM, 'CRMMod'), regioes: dM.filter(function (c) { return c.t === 'regiao'; }).length, desloc: descM, faltam: ['INV1-STR1', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].filter(function (t) { return txM.indexOf(t) < 0; }) });
+    // UC trifásica: fase T e 3º condutor no multifilar; o INV2 trifásico com 3 condutores; marcas pelos condutores de cada um
+    const prT = Object.assign(U.clone(prM2), { inv: Object.assign({}, prM2.inv, { fases: 'mono', tensao: '220' }) });
+    const dT = P.desenhoStringsA(prT, campM, GAm), txT = dT.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    const dT2 = P.desenhoStringsA(Object.assign(U.clone(prM2), { inv: Object.assign({}, prM2.inv, { fases: 'tri' }) }), campM, GAm);
+    const nReg = function (d) { return d.filter(function (c) { return c.t === 'regiao'; }).length; };
+    ok('UC trifásica: rede R, S, T e N, medidor e disjuntor geral com 3 polos, carga da fase R; INV2 trifásico com 3 polos; INV1 trifásico com 3º polo e 3 DPS',
+      txT.indexOf('T') >= 0 && txT.indexOf('N') >= 0 && nReg(dT) === nReg(dM) + 5 && nReg(dT2) === nReg(dT) + 4 &&
+      dT.filter(function (c) { return c.t === 'ponto'; }).length > dM.filter(function (c) { return c.t === 'ponto'; }).length + 4,
+      { bi: nReg(dM), tri: nReg(dT), tri2: nReg(dT2) });
+    igual('condutores pela saída de cada inversor e, no QD, pela ligação da UC', [P.letrasInv({ condCA: 'FFT', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: 'FFFNT', inv: { fases: 'mono' } }).join(''),
+      P.letrasInv({ condCA: 'FNT', inv: { fases: 'mono' } }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'tri' }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'bi' }).join('')].join('|'), 'FFF|FFN|FN|FFF|FF');
     const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
