@@ -73,7 +73,7 @@ window.App = window.App || {};
           lista.length > 1 ? h('span', 'Strings: ', h('strong', cs.map(function (k, j) { return 'INV' + (j + 1) + ': ' + strTxt(k); }).join(' · ')))
             : h('span', 'Strings: ', h('strong', strTxt(c, true))),
           lista.length > 1 ? h('span', 'Inversores: ', h('strong', cs.map(function (k) { return f2(k.kw); }).join(' + ') + ' kW · ' + cs.map(function (k) { return f2(k.iInv); }).join(' + ') + ' A'))
-            : h('span', 'Inversor: ', h('strong', c.kw ? f2(c.kw) + ' kW · ' + f2(c.iInv) + ' A' : '—')), h('span', 'Páginas: ', h('strong', String(P.estilosDe(pr).length)))),
+            : h('span', 'Inversor: ', h('strong', c.kw ? f2(c.kw) + ' kW · ' + f2(c.iInv) + ' A' : '—')), h('span', 'Páginas: ', h('strong', String(P.estilosDe(pr).reduce(function (a, e) { return a + (e === 'A' ? P.folhasA(pr) : 1); }, 0))))),
         pend.length ? h('details.homolog-pendencias', h('summary', '⚠ ' + pend.length + (pend.length === 1 ? ' campo pendente' : ' campos pendentes')), h('ul', pend.map(function (p) { return h('li', p); })))
           : h('p.nota.ok', '✓ Campos da prancha preenchidos.'),
         conf.length ? h('details.prancha-conferencias' + (nErro ? '.tem-erro' : ''), { open: nErro > 0 }, h('summary', (nErro ? '⛔ ' : '🔎 ') + conf.length + (conf.length === 1 ? ' conferência' : ' conferências') + ' do projeto'),
@@ -112,6 +112,8 @@ window.App = window.App || {};
     grupo('1. Estilo, cliente e carimbo', true, h('div',
       UI.grade([
         { k: 'estilo', label: 'Estilo da prancha', type: 'select', options: P.OPCOES_ESTILO, help: 'A: tabelas e unifilar · B: plantas, fachadas e diagramas.' },
+        { k: 'folhasA', label: 'Folhas do estilo A', type: 'select', options: [{ v: '', t: 'Automático (2 folhas com 2 ou mais inversores)' }, { v: '1', t: 'Uma folha só' }],
+          help: 'Com 2 folhas: a 1ª com as tabelas e os diagramas; a 2ª com o layout das strings ampliado.' },
         { k: 'data', label: 'Data', type: 'date' },
         { k: 'art', label: 'ART/TRT', placeholder: 'Nº da ART' },
         { k: 'cliente.nome', label: 'Proprietário (cliente)', cls: 'span2' },

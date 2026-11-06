@@ -502,9 +502,9 @@ window.App = window.App || {};
    * traco} e {t: 'texto', oc, txt}; e ainda cmds.desloc ({x, y, dy}: os campos à esquerda de x e abaixo de y descem dy).
    * campos: mapa do estilo A; G: mapa.stringsA.
    */
-  function desenhoStringsA(pr, campos, G) {
+  function desenhoStringsA(pr, campos, G, folha) {
     const lista = inversores(pr);
-    if (G && lista.length > 1) return desenhoMultiA(pr, campos, G, lista);
+    if (G && lista.length > 1) return desenhoMultiA(pr, campos, G, lista, folha);
     const c = calcular(pr), cmds = [];
     cmds.desloc = null;
     if (!G) return cmds;
@@ -863,14 +863,33 @@ window.App = window.App || {};
     });
   }
 
+  /** Comandos de desenho levados a outra escala e posição (ponto → k·ponto + t): blocos, linhas, textos, trechos e pontos. */
+  function transformar(lista, k, tx, ty) {
+    const P = function (p) { return [k * p[0] + tx, k * p[1] + ty]; };
+    return lista.map(function (c) {
+      if (c.t === 'forma') return Object.assign({}, c, { m: [k * c.m[0], k * c.m[1], k * c.m[2], k * c.m[3], k * c.m[4] + tx, k * c.m[5] + ty],
+        clip: c.clip ? [k * c.clip[0] + tx, k * c.clip[1] + ty, k * c.clip[2] + tx, k * c.clip[3] + ty] : null });
+      if (c.t === 'linha') return Object.assign({}, c, { pts: c.pts.map(P), traco: c.traco ? c.traco.map(function (v) { return v * k; }) : null });
+      if (c.t === 'texto') return Object.assign({}, c, { oc: Object.assign({}, c.oc, { x: k * c.oc.x + tx, y: k * c.oc.y + ty, s: c.oc.s * k, w: c.oc.w ? c.oc.w * k : c.oc.w }) });
+      if (c.t === 'regiao') {
+        const w = c.w || (c.bb[2] - c.bb[0]), h = c.h || (c.bb[3] - c.bb[1]), x = k * (c.bb[0] + c.dx) + tx, y = k * (c.bb[1] + c.dy) + ty;
+        return Object.assign({}, c, { dx: x - c.bb[0], dy: y - c.bb[1], w: w * k, h: h * k });
+      }
+      if (c.t === 'branco') return Object.assign({}, c, { r: [k * c.r[0] + tx, k * c.r[1] + ty, k * c.r[2] + tx, k * c.r[3] + ty] });
+      if (c.t === 'ponto') return Object.assign({}, c, { x: k * c.x + tx, y: k * c.y + ty, r: c.r * k });
+      return c;
+    });
+  }
+
   /**
    * Desenho do estilo A com mais de um inversor: um bloco de fileiras por inversor (e os blocos de MPPT dentro dele), o canal de
    * cada inversor até o seu símbolo (o INV1 no lugar do desenho; os outros copiados do modelo abaixo dele, com a sua ligação ao
    * quadro), a tabela de strings com o inversor de cada uma, a tabela do inversor com uma linha por inversor e, nos unifilares,
    * cada inversor com o seu disjuntor na String Box CA, o seu símbolo e os seus campos.
    */
-  function desenhoMultiA(pr, campos, G, lista) {
-    const cmds = [], preto = [0, 0, 0], roxo = [0.498, 0, 1];
+  function desenhoMultiA(pr, campos, G, lista, folha) {
+    let cmds = [];
+    const preto = [0, 0, 0], roxo = [0.498, 0, 1];
     cmds.desloc = [];
     const forma = function (nome, ox, oy, nx, ny, s, clip) { cmds.push({ t: 'forma', nome: nome, m: [s, 0, 0, s, nx - s * ox, ny - s * oy], clip: clip || null }); };
     const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
@@ -931,7 +950,9 @@ window.App = window.App || {};
     cs.slice(0, -1).forEach(function (c) { nAc += c.tam.length; const y = baseFundo + (N - nAc) * sp - sp * 0.32; linha([[K ? K.xs[0] : 188.8, y], [K ? K.xs[K.xs.length - 1] : 975.8, y]], [0.6, 0.6, 0.6]); });
 
     // ---- fileiras: o INV1 em cima, depois o INV2…; dentro de cada inversor, STR de número menor embaixo; folga entre MPPTs e
-    // folga maior entre inversores
+    // folga maior entre inversores. F: a área das fileiras; avulso: desenho para a folha das strings (o INV1 e o quadro também
+    // copiados do modelo, na altura das fileiras dele). Devolve os limites do desenho.
+    function layoutStrings(F, avulso) {
     const ordem = [];
     for (let j = 0; j < nI; j++) todas.filter(function (x) { return x.j === j; }).reverse().forEach(function (x) { ordem.push(x); });
     const folgaB = 0.55 * F.passoY, folgaI = 1.1 * F.passoY;
@@ -961,8 +982,10 @@ window.App = window.App || {};
       linha([[F.x0 + s * (F.ret[0] - F.x0), yr], [xf + s * (F.ret[2] - xu), yr]]);
       x.ent = [F.x0 + s * (F.entrada[0] - F.x0), oy + s * (F.entrada[1] - F.y0)];
     });
-    // posição de cada inversor: o INV1 no lugar do desenho; os outros na altura média das suas fileiras (abaixo do anterior)
-    const y0s = [R.p0[1]];
+    // posição de cada inversor: o INV1 no lugar do desenho (na folha das strings, como os outros); os outros na altura média
+    // das suas fileiras (abaixo do anterior)
+    const medio = function (j) { const ys = todas.filter(function (x) { return x.j === j; }).map(function (x) { return x.ent[1]; }); return ys.reduce(function (a, b) { return a + b; }, 0) / ys.length; };
+    const y0s = [avulso ? medio(0) : R.p0[1]];
     for (let j = 1; j < nI; j++) {
       const ys = todas.filter(function (x) { return x.j === j; }).map(function (x) { return x.ent[1]; });
       const med = ys.reduce(function (a, b) { return a + b; }, 0) / ys.length;
@@ -994,24 +1017,42 @@ window.App = window.App || {};
         const sm = Math.min(1, 1.6 * s), o = um('_ram_str') || { t: 'txt', s: 5.66, fl: 0.9, ang: 0, cor: preto, al: 'l' };
         cmds.push({ t: 'texto', txt: 'MPPT' + (m + 1), oc: Object.assign({}, o, { x: xk - 2.2, y: (yb + yt) / 2 - 8.2 * sm, s: o.s * sm, ang: 90, al: 'l', w: null }) });
       });
-      if (j === 0) continue;
-      // INV2…: cópia do trecho do modelo (linha do quadro, T, símbolo do inversor) na altura dele, ligada à linha do quadro
+      if (j === 0 && !avulso) continue;
+      // INV2… (e, na folha das strings, o INV1 com o quadro): cópia do trecho do modelo (linha do quadro, T, símbolo do
+      // inversor) na altura dele, ligada à linha do quadro
       const dy = y0 - R.p0[1], vj = valores(lista[j].p, 'A');
-      regiao([433.5, 755, 600, 790], 0, dy);
-      linha([[433.5, 772.7 + (j === 1 ? 0 : y0s[j - 1] - R.p0[1])], [433.5, 772.7 + dy]]);
-      branco([468.5, 779.3 + dy, 486, 787 + dy]); branco([569, 771.6 + dy, 586, 778.6 + dy]);
-      const oR = { t: 'txt', s: 5.66, fl: 0.92, ang: 0, cor: preto, al: 'l' };
-      em(oR, 'INV' + (j + 1), { x: 469.6, y: 780.1 + dy }); em(oR, 'INV' + (j + 1), { x: 569.9, y: 772.2 + dy });
+      if (j === 0) regiao([400, 755, 600, 790], 0, dy);
+      else {
+        regiao([433.5, 755, 600, 790], 0, dy);
+        linha([[433.5, 772.7 + y0s[j - 1] - R.p0[1]], [433.5, 772.7 + dy]]);
+        branco([468.5, 779.3 + dy, 486, 787 + dy]); branco([569, 771.6 + dy, 586, 778.6 + dy]);
+        const oR = { t: 'txt', s: 5.66, fl: 0.92, ang: 0, cor: preto, al: 'l' };
+        em(oR, 'INV' + (j + 1), { x: 469.6, y: 780.1 + dy }); em(oR, 'INV' + (j + 1), { x: 569.9, y: 772.2 + dy });
+      }
       const Kc = G.condutores;
       if (Kc) letrasInv(lista[j].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, dy, 1); else forma('CRMTickF', Kc.h.xF, 0, x, dy, 1); });
       em(um('bit_ca_lig'), vj.bit_ca_lig, { y: 758.3 + dy }); em(um('bit_terra_lig'), vj.bit_terra_lig, { y: 758.0 + dy });
       em(oc('inv_kw_cad', 1), vj.inv_kw_cad ? vj.inv_kw_cad : (cs[j].kw > 0 ? pt(cs[j].kw, 2) + 'KW' : ''), { y: 779.2 + dy });
       em(um('inv_logo'), maiusc(lista[j].inv.fab), { y: 760.2 + dy });
     }
-    // condutores do circuito CA do INV1 (fiação e os dois pontos do unifilar simplificado)
+    const xs = todas.map(function (x) { return F.x0 + x.n * F.passo * s; }), ys = todas.map(function (x) { return x.oy; });
+    return { x0: 398, x1: Math.max.apply(null, xs) + 6, y0: Math.min.apply(null, ys.concat(y0s)) - 22, y1: Math.max.apply(null, ys.concat(y0s)) + F.alt * s + 16 };
+    }
+
     const Kc = G.condutores;
+    if (folha === 2) return folhaStrings();
+    if (folha === 1) {
+      // folha 1 de 2: sem o desenho das strings (vai para a folha 2); no lugar, a indicação da folha e o resumo dos inversores
+      branco([398, 757, 1850, 830]); branco([440, 624, 1850, 830]);
+      cmds.pularOc = { inv_kw_cad: [1] }; cmds.pular = ['inv_logo', 'bit_ca_lig', 'bit_terra_lig'];
+      const oT = { t: 'txt', s: 12, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'c' };
+      em(oT, 'LAYOUT DAS STRINGS: VER PRANCHA 2/2', { x: 1140, y: 760 });
+      resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.48 }), t, { x: 1140, y: 728 - i * 15 }); });
+      folhaNum('1/2');
+    } else layoutStrings(F, false);
+    // condutores do circuito CA do INV1 (fiação e os dois pontos do unifilar simplificado)
     if (Kc) {
-      letrasInv(lista[0].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1); });
+      if (folha !== 1) letrasInv(lista[0].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1); });
       Kc.v.forEach(function (pv, k) {
         (k === 0 ? letrasUC(pr) : letrasInv(lista[0].p)).forEach(function (l, i) { const y = pv.y - i * pv.passo; if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1); });
       });
@@ -1022,6 +1063,44 @@ window.App = window.App || {};
     unifilaresMulti(Math.min(nI, 2));
     if (pr.ligacao === 'tri') multifilarTri(pr, lista, cmds);
     return cmds;
+
+    // número da folha no carimbo (no lugar do "1/1" do modelo)
+    function folhaNum(t) {
+      branco([2280, 43.5, 2316, 64]);
+      cmds.push({ t: 'texto', txt: t, oc: { t: 'tt', x: 2282.0, y: 46.7, s: 19.8, ang: 0, f: 'A', cor: [0.247, 0, 1], al: 'l' } });
+    }
+    // uma linha por inversor: modelo, potência, módulos, strings e MPPTs
+    function resumoInversores() {
+      return lista.map(function (x, j) {
+        const c = cs[j];
+        return 'INV' + (j + 1) + ': ' + [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' - ') + '  |  ' + pt(c.kw, 2) + ' kW  |  ' + c.nMod + ' módulos  |  ' +
+          c.nStr + ' strings (' + c.tam.join(' + ') + ')' + (c.grupos.length > 1 ? '  |  por MPPT: ' + c.grupos.join(' + ') : '');
+      });
+    }
+    // folha 2 de 2: só o desenho das strings, ampliado para a área de desenho (o resto da página em branco; entram só os campos
+    // do carimbo e das legendas, à direita)
+    function folhaStrings() {
+      // (a folha começa vazia: as tabelas e os diagramas ficam na folha 1)
+      cmds = [];
+      const nmaxV = Math.max.apply(null, todas.map(function (x) { return x.n; }));
+      const Fv = Object.assign({}, F, { xmax: F.x0 + (nmaxV - 1) * F.passo + F.larg, base: -100000 });
+      const lim = layoutStrings(Fv, true);
+      const virt = cmds;
+      cmds = [];
+      cmds.soCarimbo = true;
+      branco([72, 29.6, 1861.8, 1654]);
+      // título e resumo logo acima do desenho; o conjunto centrado na altura da folha
+      const area = [110, 90, 1840, 1630], cab = 50 + 15 * nI;
+      const k = Math.min(2.2, (area[2] - area[0]) / (lim.x1 - lim.x0), (area[3] - area[1] - cab) / (lim.y1 - lim.y0));
+      const hd = k * (lim.y1 - lim.y0), topo = (area[1] + area[3]) / 2 + (hd + cab) / 2;
+      const tx = (area[0] + area[2]) / 2 - k * (lim.x0 + lim.x1) / 2, ty = topo - cab - k * lim.y1;
+      transformar(virt, k, tx, ty).forEach(function (c) { cmds.push(c); });
+      const oT = { t: 'txt', s: 14, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'l' }, xT = Math.max(area[0], tx + k * lim.x0);
+      em(oT, 'LAYOUT DAS STRINGS', { x: xT, y: topo - 14 });
+      resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 8.5 }), t, { x: xT + 2, y: topo - 36 - i * 15 }); });
+      folhaNum('2/2');
+      return cmds;
+    }
     function unifilaresMulti(nI) {
     const S = G.uniS, cfS = campos.campo_fv && campos.campo_fv[2];
     const xI = [S.xInv].concat(Array.from({ length: nI - 1 }, function (_, j) { return S.xInv + 77.35 * (j + 1); }));
@@ -1210,6 +1289,10 @@ window.App = window.App || {};
     return out;
   }
 
+  /** Folhas do estilo A: com mais de um inversor, o desenho das strings vai para uma 2ª folha A1 (a não ser que o projetista
+   * peça uma folha só). */
+  function folhasA(pr) { return pr.folhasA !== '1' && inversores(pr).length > 1 ? 2 : 1; }
+
   /**
    * Conferências com mais de um inversor: as de cada inversor (com o prefixo INV1, INV2… quando são só dele; as que dão igual
    * em todos aparecem uma vez), a divisão dos módulos entre eles e os limites do desenho.
@@ -1364,7 +1447,7 @@ window.App = window.App || {};
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod,
-    correnteInv: correnteInv, novoInversor: novoInversor,
+    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

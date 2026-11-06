@@ -142,8 +142,14 @@ window.App = window.App || {};
     doc.registerFontkit(window.fontkit);
     const fonte = await doc.embedFont(arial, { subset: false });
     const ass = pr.assinarRt !== false && !o.semAssinatura ? await assinaturaRt(doc) : null;
-    for (let i = 0; i < estilos.length; i++) {
-      const e = estilos[i];
+    // folhas: o estilo A com mais de um inversor sai em 2 folhas A1 (1/2: tabelas e diagramas; 2/2: o desenho das strings)
+    const folhas = [];
+    estilos.forEach(function (e, i) {
+      const n = e === 'A' && Pr.folhasA ? Pr.folhasA(pr) : 1;
+      for (let f = 1; f <= n; f++) folhas.push({ e: e, i: i, folha: n > 1 ? f : undefined });
+    });
+    for (const fo of folhas) {
+      const e = fo.e, i = fo.i;
       const src = await P.PDFDocument.load(modelos[i]);
       const pg = (await doc.copyPages(src, [0]))[0];
       doc.addPage(pg);
@@ -151,11 +157,13 @@ window.App = window.App || {};
       const campos = mapa[e] || {};
       // estilo A: strings, tabela e unifilares com a quantidade real da obra
       const pular = {};
-      let desloc = null;
+      let desloc = null, pularOc = {}, soCarimbo = false;
       if (e === 'A' && mapa.stringsA) {
         Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
-        const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA);
+        const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA, fo.folha);
         desloc = d.desloc || null;
+        (d.pular || []).forEach(function (k) { pular[k] = true; });
+        pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo;
         // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): embutidos antes, na ordem dos comandos
         const regioes = [];
         for (const c of d) if (c.t === 'regiao') regioes.push(await doc.embedPage(src.getPage(0), { left: c.bb[0], bottom: c.bb[1], right: c.bb[2], top: c.bb[3] }));
@@ -168,6 +176,9 @@ window.App = window.App || {};
         campos[cid].forEach(function (oc, k) {
           const s = Array.isArray(v) ? v[k] : v;
           if (s == null || String(s).trim() === '') return;
+          if (pularOc[cid] && pularOc[cid].indexOf(k) >= 0) return;
+          // folha só das strings: entram o carimbo, o descritivo e as legendas (à direita da área de desenho)
+          if (soCarimbo && oc.x < 1862) return;
           // a tabela de strings (e a do inversor) cresceu: o que está abaixo dela na coluna de textos desce junto — vale a regra de
           // limite mais baixo que o campo atinge
           const regra = (Array.isArray(desloc) ? desloc : (desloc ? [desloc] : [])).filter(function (d) { return oc.x < d.x && oc.y < d.y; })
@@ -191,7 +202,7 @@ window.App = window.App || {};
     doc.setProducer('CRM Solar');
     doc.setCreator('CRM Solar — pranchas fotovoltaicas');
     const bytes = await doc.save();
-    return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: Pr.nomeArquivo(pr), paginas: estilos.length, estilos: estilos, assinado: !!ass };
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: Pr.nomeArquivo(pr), paginas: folhas.length, estilos: estilos, assinado: !!ass };
   }
 
   App.PranchasPdf = { gerar: gerar };

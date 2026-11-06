@@ -2394,6 +2394,16 @@
     ok('conferência: inversor trifásico com tensão de fase (127 V) pede a tensão de linha', /INV2: Inversor trifásico com tensão CA de 127 V: informe a tensão de linha/.test(cfV), cfV);
     const prV = P.sugerir({ placas: { modulo: { quantidade: 10 }, inversor: { equipamentoId: 'inv-v' } } }, Object.assign({}, ctxP, { equipamentos: [{ id: 'inv-v', tipo: 'inversor', fabricante: 'X', modelo: 'T-15', potencia: 15, fases: 'Trifásico', tensao: '127/220V' }] }), {});
     igual('CRM: no inversor trifásico "127/220V" vale a tensão de linha', prV.inv.tensao, '220');
+    // 2 folhas com mais de um inversor: a 1ª sem o desenho das strings; a 2ª só com ele, ampliado
+    const f1 = P.desenhoStringsA(prM2, campM, GAm, 1), f2 = P.desenhoStringsA(prM2, campM, GAm, 2);
+    const txF1 = f1.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; }), txF2 = f2.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    const mod2 = f2.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMMod'; });
+    ok('2 folhas: folha 1 com tabelas e diagramas (sem fileiras) e o aviso; folha 2 com as 59 placas ampliadas, o quadro e os inversores e só os campos do carimbo',
+      [P.folhasA(prM2), P.folhasA(Object.assign(U.clone(prM2), { folhasA: '1' })), P.folhasA(pr)].join() === '2,1,1' &&
+      conta(f1, 'CRMMod') === 0 && txF1.indexOf('LAYOUT DAS STRINGS: VER PRANCHA 2/2') >= 0 && txF1.indexOf('1/2') >= 0 && f1.pular.indexOf('inv_logo') >= 0 && conta(f1, 'CRMSec2') === 1 &&
+      mod2.length === 59 && mod2[0].m[0] > 0.6 && f2.soCarimbo === true && txF2.indexOf('LAYOUT DAS STRINGS') >= 0 && txF2.indexOf('2/2') >= 0 && conta(f2, 'CRMSec2') === 0 &&
+      f2.filter(function (c) { return c.t === 'regiao'; }).length === 2,
+      { escala2: mod2[0] && mod2[0].m[0], regioes2: f2.filter(function (c) { return c.t === 'regiao'; }).length });
     const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
