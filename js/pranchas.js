@@ -716,6 +716,8 @@ window.App = window.App || {};
     const l = letrasCA(pr);
     return pr.ligacao === 'tri' ? ['F', 'F', 'F'].concat(l.indexOf('N') >= 0 ? ['N'] : []) : l;
   }
+  // detalhe de instalação do inversor e da string box (com a placa CUIDADO e o poste) no modelo A: com 2 folhas, vai para a 2ª
+  const DETALHE_INST = [1186, 205, 1756, 632];
   // condutores do diagrama multifilar do modelo (R e S) e o 3º condutor (R) da UC trifásica, à esquerda
   const MF = { xR: 1131.0, xS: 1151.8, xT: 1172.6, d: 20.8 };
   // inversor trifásico no multifilar: o símbolo do modelo ampliado (1,55×) com as 3 fases entrando por cima e as proteções afastadas
@@ -1043,10 +1045,10 @@ window.App = window.App || {};
     if (folha === 2) return folhaStrings();
     if (folha === 1) {
       // folha 1 de 2: sem o desenho das strings (vai para a folha 2); no lugar, a indicação da folha e o resumo dos inversores
-      branco([398, 757, 1850, 830]); branco([440, 624, 1850, 830]);
-      cmds.pularOc = { inv_kw_cad: [1] }; cmds.pular = ['inv_logo', 'bit_ca_lig', 'bit_terra_lig'];
+      branco([398, 757, 1850, 830]); branco([440, 624, 1850, 830]); branco(DETALHE_INST);
+      cmds.pularOc = { inv_kw_cad: [1] }; cmds.pular = ['inv_logo', 'bit_ca_lig', 'bit_terra_lig']; cmds.pularRegiao = DETALHE_INST;
       const oT = { t: 'txt', s: 12, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'c' };
-      em(oT, 'LAYOUT DAS STRINGS: VER PRANCHA 2/2', { x: 1140, y: 760 });
+      em(oT, 'LAYOUT DAS STRINGS, DIAGRAMA DE BLOCOS E DETALHES: VER PRANCHA 2/2', { x: 1140, y: 760 });
       resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.48 }), t, { x: 1140, y: 728 - i * 15 }); });
       folhaNum('1/2');
     } else layoutStrings(F, false);
@@ -1069,6 +1071,100 @@ window.App = window.App || {};
       branco([2280, 43.5, 2316, 64]);
       cmds.push({ t: 'texto', txt: t, oc: { t: 'tt', x: 2282.0, y: 46.7, s: 19.8, ang: 0, f: 'A', cor: [0.247, 0, 1], al: 'l' } });
     }
+    // ---- diagrama de blocos do sistema: gerador FV, String Box CC e inversor de cada um; String Box CA, QGBT (com as cargas),
+    // medidor bidirecional e a rede da distribuidora
+    function diagramaBlocos(x0, y0, x1, y1) {
+      const azul = [0, 0, 1], t1 = { t: 'txt', s: 6.0, fl: 0.92, ang: 0, cor: azul, al: 'c' }, t2 = Object.assign({}, t1, { s: 4.7 });
+      em({ t: 'txt', s: 11, fl: 0.95, ang: 0, cor: azul, al: 'l' }, 'DIAGRAMA DE BLOCOS', { x: x0, y: y1 - 22 });
+      const bh = 40, gap = 24, cx = (x0 + x1) / 2 - 40, n2 = Math.min(nI, 3);
+      const bw = Math.min(170, (440 - 16 * (n2 - 1)) / n2), largM = Math.max(260, n2 * bw + (n2 - 1) * 16);
+      const caixa = function (xc, ytop, w, l) {
+        linha([[xc - w / 2, ytop], [xc + w / 2, ytop], [xc + w / 2, ytop - bh], [xc - w / 2, ytop - bh], [xc - w / 2, ytop]]);
+        l.forEach(function (t, i) { if (t) em(i === 0 ? t1 : t2, t, { x: xc, y: ytop - 12 - i * 10, w: w - 6 }); });
+      };
+      const seta = function (x, ya, yb, rot) {
+        linha([[x, ya], [x, yb]]); linha([[x - 2.6, yb + 5], [x, yb], [x + 2.6, yb + 5]]);
+        if (rot) em(t2, rot, { x: x + 9, y: (ya + yb) / 2 - 2, al: 'l', w: null });
+      };
+      const xs = Array.from({ length: n2 }, function (_, j) { return cx + (j - (n2 - 1) / 2) * (bw + 16); });
+      let y = y1 - 46;
+      const ccBit = str(pr.cc.bit), caBit = str(pr.ca.bit), tm = terraMod(pr);
+      xs.forEach(function (x, j) {
+        const c = cs[j], p = lista[j].p;
+        caixa(x, y, bw, ['GERADOR FV - INV' + (j + 1), c.nMod + ' x ' + pt(c.w, 0) + ' Wp = ' + fx(c.kwp, 2, ',') + ' kWp', c.nStr + ' strings (' + c.tam.join(' + ') + ')']);
+        seta(x, y - bh, y - bh - gap, ccBit ? 'CC #' + ccBit : 'CC');
+        caixa(x, y - bh - gap, bw, ['STRING BOX CC', 'DPS CC' + (str(pr.dpsCcUcpv) ? ' ' + str(pr.dpsCcUcpv) + ' V' : '') + ' - ' + (str(pr.sbCc) || ''), 'terra #' + tm + ' mm2']);
+        seta(x, y - 2 * bh - gap, y - 2 * bh - 2 * gap, ccBit ? 'CC #' + ccBit : 'CC');
+        caixa(x, y - 2 * bh - 2 * gap, bw, ['INVERSOR INV' + (j + 1), [maiusc(lista[j].inv.fab), str(lista[j].inv.modelo)].filter(Boolean).join(' '),
+          pt(c.kw, 2) + ' kW - ' + (triInv(p) ? 'trifásico' : 'monofásico') + ' ' + pt(c.vInv, 0) + ' V']);
+      });
+      // os inversores se juntam na String Box CA
+      const yCA = y - 3 * bh - 3 * gap, yJ = yCA + gap / 2;
+      xs.forEach(function (x, j) { linha([[x, y - 3 * bh - 2 * gap], [x, yJ]]); em(t2, 'CA #' + (str(lista[j].p.ca.bit) || caBit), { x: x + 9, y: yJ + 4, al: 'l', w: null }); });
+      if (n2 > 1) linha([[xs[0], yJ], [xs[n2 - 1], yJ]]);
+      seta(cx, yJ, yCA);
+      const disj = lista.slice(0, n2).map(function (x, j) { return 'INV' + (j + 1) + ' ' + (str(x.p.disjCa) || '?') + ' A'; }).join(' + ');
+      const d = pr.dpsCa || {};
+      caixa(cx, yCA, largM, ['STRING BOX CA', 'disjuntores: ' + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '') + (str(d.in) ? ' - In ' + str(d.in) + ' kA' : '')]);
+      const yQ = yCA - bh - gap;
+      seta(cx, yCA - bh, yQ, 'CA');
+      caixa(cx, yQ, largM, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'ligação ' + (LIGACOES[pr.ligacao] || '') + ' - entrada ' + (str(pr.entrada.bit) || '?') + ' mm2']);
+      // cargas da instalação ao lado do QGBT
+      const xC = cx + largM / 2 + 18 + 60;
+      linha([[cx + largM / 2, yQ - bh / 2], [xC - 60, yQ - bh / 2]]);
+      caixa(xC, yQ, 120, ['CARGAS DA UC', 'consumo da instalação', '']);
+      const yM = yQ - bh - gap;
+      seta(cx, yQ - bh, yM, 'CA');
+      caixa(cx, yM, largM, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
+      const yR = yM - bh - gap;
+      seta(cx, yM - bh, yR, 'ramal ' + (str(pr.ramal.bit) || '?') + ' mm2');
+      caixa(cx, yR, largM, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + (LIGACOES[pr.ligacao] || ''), '']);
+    }
+    // ---- detalhe da ligação do aterramento: as massas de cada equipamento ligadas pelo condutor de proteção (PE) ao BEP, a
+    // caixa de inspeção e a haste
+    function detalheAterramento(x0, y0, x1, y1) {
+      const azul = [0, 0, 1], verde = [0, 0.62, 0], t1 = { t: 'txt', s: 5.6, fl: 0.92, ang: 0, cor: azul, al: 'l' }, t2 = Object.assign({}, t1, { s: 4.6 });
+      em({ t: 'txt', s: 11, fl: 0.95, ang: 0, cor: azul, al: 'l' }, 'DETALHE DO ATERRAMENTO DO SISTEMA', { x: x0, y: y1 - 22 });
+      const tm = terraMod(pr), tb = str(pr.terraBit) || tm;
+      const itens = [
+        ['MOLDURAS E ESTRUTURA DOS MÓDULOS', 'equipotencialização das molduras', '#' + tm],
+        ['STRING BOX CC', 'barra PE e DPS CC', '#' + tm],
+        ['INVERSORES ' + lista.map(function (_, j) { return 'INV' + (j + 1); }).join(' / '), 'terminal PE (carcaça)', '#' + tb],
+        ['STRING BOX CA', 'barra PE e DPS CA', '#' + tb],
+        ['QUADRO GERAL (QGBT)', 'barra de terra / neutro', '#' + tb]
+      ];
+      // barramento de proteção afastado da borda: os rótulos da caixa de inspeção e da haste cabem antes do detalhe de instalação
+      const xBus = x1 - 165, yTop = y1 - 52, passo = 48, bw = xBus - x0 - 70;
+      itens.forEach(function (it, i) {
+        const yt = yTop - i * passo, ym = yt - 15;
+        linha([[x0, yt], [x0 + bw, yt], [x0 + bw, yt - 30], [x0, yt - 30], [x0, yt]]);
+        em(t1, it[0], { x: x0 + 5, y: yt - 12, w: bw - 8 }); em(t2, it[1], { x: x0 + 5, y: yt - 23, w: bw - 8 });
+        linha([[x0 + bw, ym], [xBus, ym]], verde); cmds.push({ t: 'ponto', x: xBus, y: ym, r: 1.6 });
+        em(Object.assign({}, t2, { cor: verde }), it[2] + ' mm2', { x: x0 + bw + 8, y: ym + 3 });
+      });
+      // condutor de proteção até o BEP; do BEP à caixa de inspeção e à haste
+      const yBep = yTop - itens.length * passo - 18;
+      linha([[xBus, yTop - 15], [xBus, yBep]], verde);
+      linha([[xBus - 40, yBep], [xBus + 40, yBep]]); linha([[xBus - 40, yBep - 4], [xBus + 40, yBep - 4]]);
+      linha([[xBus - 40, yBep], [xBus - 40, yBep - 4]]); linha([[xBus + 40, yBep], [xBus + 40, yBep - 4]]);
+      em(t1, 'BEP', { x: xBus - 40, y: yBep + 4 }); em(t2, 'barramento de equipotencialização principal', { x: x0, y: yBep - 2, w: xBus - 45 - x0 });
+      const yCx = yBep - 34, yChao = yCx - 8;
+      linha([[xBus, yBep - 4], [xBus, yCx]], verde);
+      em(Object.assign({}, t2, { cor: verde }), 'condutor de aterramento #' + tb + ' mm2', { x: xBus + 6, y: yBep - 20 });
+      linha([[xBus - 22, yCx], [xBus + 22, yCx], [xBus + 22, yCx - 26], [xBus - 22, yCx - 26], [xBus - 22, yCx]]);
+      // nível do solo (hachura) e a haste
+      linha([[xBus - 60, yChao], [xBus - 22, yChao]]); linha([[xBus + 22, yChao], [xBus + 60, yChao]]);
+      for (let i = 0; i < 9; i++) { const xh = xBus - 58 + i * 13.5; if (Math.abs(xh - xBus) > 24) linha([[xh, yChao], [xh - 5, yChao - 5]]); }
+      const yH = yCx - 26, yP = yH - 70;
+      linha([[xBus - 1.2, yH], [xBus - 1.2, yP + 6], [xBus, yP], [xBus + 1.2, yP + 6], [xBus + 1.2, yH]]);
+      em(t2, 'caixa de inspeção ' + (str(pr.cxInspecao) || ''), { x: xBus + 26, y: yCx - 14 });
+      em(t2, 'haste de aterramento ' + (str(pr.haste) || ''), { x: xBus + 6, y: yP + 22 });
+      // observações
+      const notas = ['Todas as massas metálicas (molduras, estruturas, carcaças dos inversores e quadros) interligadas ao BEP',
+        'pelo condutor de proteção (PE), na cor verde ou verde-amarela - NBR 5410 (6.4) e NBR 16690.',
+        'Bitolas: aterramento dos módulos #' + tm + ' mm2; terra do circuito CA #' + tb + ' mm2.'];
+      notas.forEach(function (t, i) { em(t2, t, { x: x0, y: Math.max(y0 + 20, yP - 22) - i * 9, w: x1 - x0 }); });
+    }
     // uma linha por inversor: modelo, potência, módulos, strings e MPPTs
     function resumoInversores() {
       return lista.map(function (x, j) {
@@ -1087,10 +1183,14 @@ window.App = window.App || {};
       const lim = layoutStrings(Fv, true);
       const virt = cmds;
       cmds = [];
-      cmds.soCarimbo = true;
-      branco([72, 29.6, 1861.8, 1654]);
+      cmds.soCarimbo = true; cmds.manterRegiao = DETALHE_INST;
+      // tudo em branco, menos o detalhe de instalação do modelo (fica no mesmo lugar, embaixo à direita)
+      const D = DETALHE_INST;
+      branco([72, D[3], 1861.8, 1654]); branco([72, 29.6, 1861.8, D[1]]); branco([72, D[1], D[0], D[3]]); branco([D[2], D[1], 1861.8, D[3]]);
+      diagramaBlocos(100, 60, 680, D[3]);
+      detalheAterramento(705, 60, D[0] - 15, D[3]);
       // título e resumo logo acima do desenho; o conjunto centrado na altura da folha
-      const area = [110, 90, 1840, 1630], cab = 50 + 15 * nI;
+      const area = [110, DETALHE_INST[3] + 40, 1840, 1630], cab = 50 + 15 * nI;
       const k = Math.min(2.2, (area[2] - area[0]) / (lim.x1 - lim.x0), (area[3] - area[1] - cab) / (lim.y1 - lim.y0));
       const hd = k * (lim.y1 - lim.y0), topo = (area[1] + area[3]) / 2 + (hd + cab) / 2;
       const tx = (area[0] + area[2]) / 2 - k * (lim.x0 + lim.x1) / 2, ty = topo - cab - k * lim.y1;
