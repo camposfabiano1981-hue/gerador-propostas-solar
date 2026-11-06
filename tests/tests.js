@@ -2399,7 +2399,8 @@
     const txF1 = f1.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; }), txF2 = f2.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
     const mod2 = f2.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMMod'; });
     ok('2 folhas: folha 1 com tabelas, diagramas e croqui (sem fileiras nem o detalhe de instalação); folha 2 com as 59 placas ampliadas, o diagrama de blocos, o detalhe do aterramento e o de instalação',
-      [P.folhasA(prM2), P.folhasA(Object.assign(U.clone(prM2), { folhasA: '1' })), P.folhasA(pr)].join() === '2,1,2' &&
+      [P.folhasA(prM2), P.folhasA(Object.assign(U.clone(prM2), { folhasA: '1' })), P.folhasA(pr), P.folhasA(Object.assign(U.clone(pr), { folhasA: '2' }))].join() === '2,1,1,2' &&
+      !P.folhasEscolhidas(pr) && P.folhasEscolhidas(Object.assign(U.clone(pr), { folhasA: '1' })) && P.folhasEscolhidas(Object.assign(U.clone(prM2), { folhasA: '2' })) &&
       conta(f1, 'CRMMod') === 0 && txF1.indexOf('LAYOUT DAS STRINGS, DIAGRAMA DE BLOCOS E DETALHES: VER PRANCHA 2/2') >= 0 && f1.pularRegiao && f2.manterRegiao &&
       ['DIAGRAMA DE BLOCOS', 'DETALHE DO ATERRAMENTO DO SISTEMA', 'STRING BOX CA', 'MEDIDOR BIDIRECIONAL', 'BEP', 'INVERSOR INV2'].every(function (t) { return txF2.indexOf(t) >= 0; }) && txF1.indexOf('1/2') >= 0 && f1.pular.indexOf('inv_logo') >= 0 && conta(f1, 'CRMSec2') === 1 &&
       mod2.length === 59 && mod2[0].m[0] > 0.6 && f2.soCarimbo === true && txF2.indexOf('LAYOUT DAS STRINGS') >= 0 && txF2.indexOf('2/2') >= 0 && conta(f2, 'CRMSec2') === 0 &&

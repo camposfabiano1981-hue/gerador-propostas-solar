@@ -1485,9 +1485,11 @@ window.App = window.App || {};
     return out;
   }
 
-  /** Folhas do estilo A: o padrão são 2 folhas A1 (1/2: tabelas, diagramas e croqui; 2/2: layout das strings, diagrama de
-   * blocos e detalhes), com um ou mais inversores; o projetista pode pedir uma folha só. */
-  function folhasA(pr) { return pr.folhasA !== '1' ? 2 : 1; }
+  /** Folhas do estilo A, escolhidas pelo projetista (a tela pergunta ao gerar): '1' = uma folha só (projetos menores, com o
+   * diagrama de blocos e o aterramento compactos); '2' = duas folhas A1 (1/2: tabelas, diagramas e croqui; 2/2: layout das
+   * strings, diagrama de blocos e detalhes). Sem escolha: 2 com mais de um inversor, 1 com um. */
+  function folhasA(pr) { return pr.folhasA === '1' ? 1 : pr.folhasA === '2' ? 2 : (inversores(pr).length > 1 ? 2 : 1); }
+  function folhasEscolhidas(pr) { return pr.folhasA === '1' || pr.folhasA === '2'; }
 
   /**
    * Conferências com mais de um inversor: as de cada inversor (com o prefixo INV1, INV2… quando são só dele; as que dão igual
@@ -1643,7 +1645,7 @@ window.App = window.App || {};
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod,
-    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA,
+    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

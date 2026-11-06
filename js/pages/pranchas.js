@@ -73,17 +73,54 @@ window.App = window.App || {};
           lista.length > 1 ? h('span', 'Strings: ', h('strong', cs.map(function (k, j) { return 'INV' + (j + 1) + ': ' + strTxt(k); }).join(' · ')))
             : h('span', 'Strings: ', h('strong', strTxt(c, true))),
           lista.length > 1 ? h('span', 'Inversores: ', h('strong', cs.map(function (k) { return f2(k.kw); }).join(' + ') + ' kW · ' + cs.map(function (k) { return f2(k.iInv); }).join(' + ') + ' A'))
-            : h('span', 'Inversor: ', h('strong', c.kw ? f2(c.kw) + ' kW · ' + f2(c.iInv) + ' A' : '—')), h('span', 'Páginas: ', h('strong', String(P.estilosDe(pr).reduce(function (a, e) { return a + (e === 'A' ? P.folhasA(pr) : 1); }, 0))))),
+            : h('span', 'Inversor: ', h('strong', c.kw ? f2(c.kw) + ' kW · ' + f2(c.iInv) + ' A' : '—')), h('span', 'Páginas: ', h('strong', paginasTxt()))),
         pend.length ? h('details.homolog-pendencias', h('summary', '⚠ ' + pend.length + (pend.length === 1 ? ' campo pendente' : ' campos pendentes')), h('ul', pend.map(function (p) { return h('li', p); })))
           : h('p.nota.ok', '✓ Campos da prancha preenchidos.'),
         conf.length ? h('details.prancha-conferencias' + (nErro ? '.tem-erro' : ''), { open: nErro > 0 }, h('summary', (nErro ? '⛔ ' : '🔎 ') + conf.length + (conf.length === 1 ? ' conferência' : ' conferências') + ' do projeto'),
           h('ul', conf.map(function (x) { return h('li.' + x.nivel, ROT_NIVEL[x.nivel] + ' ' + x.texto); }))) : null,
         h('div.barra-itens',
           h('button.btn.pequeno', { type: 'button', onclick: function () { P.puxarCrm(pr, inst, ctx); mudou(true); UI.toast('Dados do cliente, dos equipamentos e da Homologação atualizados.', 'ok'); } }, '↻ Puxar dados do CRM'),
-          h('button.btn.pequeno.btn-prancha-ver', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return App.PranchasPdf.gerar(pr, { ctx: ctx }); }, { titulo: 'Prancha — ' + ((pr.cliente && pr.cliente.nome) || '') }); } }, '👁 Visualizar'),
+          h('button.btn.pequeno.btn-prancha-ver', { type: 'button', onclick: async function () { if (!(await escolherFolhas())) return; App.Visualizar.abrir(function () { return App.PranchasPdf.gerar(pr, { ctx: ctx }); }, { titulo: 'Prancha — ' + ((pr.cliente && pr.cliente.nome) || '') }); } }, '👁 Visualizar'),
           h('button.btn.pequeno.primario.btn-prancha-pdf', { type: 'button', onclick: baixar }, '⬇ Prancha em PDF')));
     }
+    // páginas do PDF: com o estilo A sem a escolha das folhas, as duas contas
+    function paginasTxt() {
+      const es = P.estilosDe(pr), outras = es.filter(function (e) { return e !== 'A'; }).length;
+      if (es.indexOf('A') < 0) return String(outras);
+      return P.folhasEscolhidas(pr) ? String(outras + P.folhasA(pr)) : (outras + 1) + ' ou ' + (outras + 2) + ' (escolha ao gerar)';
+    }
+    // estilo A: pergunta uma folha só ou duas folhas (a escolha fica na prancha e aparece no campo "Folhas do estilo A")
+    function escolherFolhas() {
+      if (P.estilosDe(pr).indexOf('A') < 0 || P.folhasEscolhidas(pr)) return Promise.resolve(true);
+      const multiInv = P.inversores(pr).length > 1;
+      return new Promise(function (res) {
+        const escolher = function (v) {
+          return function () {
+            pr.folhasA = v;
+            const sel = box.querySelector('select[id^="f_folhasA_"]');
+            if (sel) sel.value = v;
+            mudou();
+            res(true);
+          };
+        };
+        UI.modal({
+          titulo: 'Folhas da prancha (estilo A)',
+          corpo: h('div',
+            h('p', h('strong', 'Uma folha só'), ' (projetos menores): tudo na mesma A1, com o diagrama de blocos e o detalhe do aterramento compactos.'),
+            h('p', h('strong', 'Duas folhas A1'), ': a 1ª com as tabelas, os diagramas e o croqui; a 2ª com o layout das strings ampliado, o diagrama de blocos e os detalhes do aterramento e da instalação.'),
+            h('p.nota', multiInv ? 'Sugestão para esta obra (mais de um inversor): duas folhas.' : 'Sugestão para esta obra (um inversor): uma folha só, ou duas se quiser o layout ampliado.'),
+            h('p.nota', 'A escolha fica guardada nesta prancha; dá para trocar em "Folhas do estilo A".')),
+          acoes: [
+            { label: 'Cancelar', onClick: function () { res(false); } },
+            { label: 'Uma folha só', primario: !multiInv, onClick: escolher('1') },
+            { label: 'Duas folhas', primario: multiInv, onClick: escolher('2') }
+          ],
+          aoFechar: function () { res(false); }
+        });
+      });
+    }
     async function baixar(ev) {
+      if (!(await escolherFolhas())) return;
       const pend = P.pendencias(pr, ctx);
       if (pend.length && !(await UI.confirmar('Faltam ' + pend.length + ' campo(s) (' + pend.slice(0, 4).join('; ') + (pend.length > 4 ? '…' : '') + '). Gerar a prancha mesmo assim?', 'Gerar mesmo assim'))) return;
       const b = ev && ev.target;
@@ -112,8 +149,8 @@ window.App = window.App || {};
     grupo('1. Estilo, cliente e carimbo', true, h('div',
       UI.grade([
         { k: 'estilo', label: 'Estilo da prancha', type: 'select', options: P.OPCOES_ESTILO, help: 'A: tabelas e unifilar · B: plantas, fachadas e diagramas.' },
-        { k: 'folhasA', label: 'Folhas do estilo A', type: 'select', options: [{ v: '', t: '2 folhas (padrão)' }, { v: '1', t: 'Uma folha só (projetos menores)' }],
-          help: '1ª folha: tabelas, diagramas unifilar e multifilar e croqui · 2ª folha: layout das strings ampliado, diagrama de blocos e detalhes do aterramento e da instalação. Uma folha só: tudo na mesma A1, como antes, com o diagrama de blocos e o detalhe do aterramento compactos nos espaços livres.' },
+        { k: 'folhasA', label: 'Folhas do estilo A', type: 'select', options: [{ v: '', t: 'Perguntar ao gerar' }, { v: '1', t: 'Uma folha só (projetos menores)' }, { v: '2', t: 'Duas folhas' }],
+          help: 'Duas folhas — 1ª: tabelas, diagramas unifilar e multifilar e croqui · 2ª: layout das strings ampliado, diagrama de blocos e detalhes do aterramento e da instalação. Uma folha só: tudo na mesma A1, como antes, com o diagrama de blocos e o detalhe do aterramento compactos nos espaços livres.' },
         { k: 'data', label: 'Data', type: 'date' },
         { k: 'art', label: 'ART/TRT', placeholder: 'Nº da ART' },
         { k: 'cliente.nome', label: 'Proprietário (cliente)', cls: 'span2' },
