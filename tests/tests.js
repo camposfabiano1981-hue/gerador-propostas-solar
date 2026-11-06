@@ -2346,6 +2346,49 @@
     const d2c = P.desenhoStringsA(pr, campA, GAc);
     ok('2 strings: desenho original (leque sem tracejado), tabela sem crescer e nada desce', d2c.desloc === null && conta(d2c, 'CRMBaixo') === 1 && Math.abs(d2c.filter(function (c) { return c.nome === 'CRMBaixo'; })[0].m[5]) < 1e-9 &&
       !d2c.some(function (c) { return c.t === 'linha' && c.traco && c.traco[0] === 6; }) && !d2c.some(function (c) { return c.t === 'texto' && /^MPPT/.test(c.txt); }));
+    // obra com mais de um inversor (59 × 560 W em um de 10 kW e um de 15 kW)
+    const prM = Object.assign(U.clone(pr), {
+      mod: Object.assign({}, pr.mod, { w: '560', vmp: '42', imp: '13.34', qtd: '59' }), nStrings: '', porString: '', porMppt: '', ligacao: 'tri', disjCa: '20',
+      inv: { fab: 'Marca Um', modelo: 'U-10K', kw: '10', qtd: '1', fases: 'tri', tensao: '380', vmaxCC: '1100', mppts: '2' },
+      invs: [{ fab: 'Marca Dois', modelo: 'D-15K', kw: '15', qtd: '1', fases: 'tri', tensao: '380', vmaxCC: '1100', mppts: '2', caDist: '12', disjCa: '32' }]
+    });
+    const LM = P.inversores(prM);
+    igual('vários inversores: módulos divididos pela potência (maiores restos) ou digitados, strings pelo máximo por string',
+      [LM.map(function (x) { return x.p.mod.qtd + '/' + x.p.nStrings + '/' + x.p.disjCa + '/' + x.p.ca.dist; }).join(' '),
+        P.inversores(Object.assign(U.clone(prM), { inv: Object.assign({}, prM.inv, { qtdMod: '23' }) })).map(function (x) { return x.p.mod.qtd; }).join('+'),
+        P.inversores(Object.assign(U.clone(pr), { inv: Object.assign({}, pr.inv, { qtd: '2' }) })).map(function (x) { return x.p.mod.qtd + '@' + x.inv.kw; }).join('+'),
+        P.inversores(pr).length].join('|'), '24/3/20/5 35/4/32/12|23+36|7@6+7@6|1');
+    const prM2 = Object.assign(U.clone(prM), { inv: Object.assign({}, prM.inv, { qtdMod: '23', porString: '8+8+7', porMppt: '2+1' }), invs: [Object.assign({}, prM.invs[0], { qtdMod: '36', porString: '9+9+9+9', porMppt: '2+2' })] });
+    const vM = P.valores(prM2, 'A', ctxP);
+    igual('vários inversores: seção 3 com os dois, tabela do inversor com o INV1, totais e legenda', [vM.inv_nome[1], vM.inv_strings, vM.inv_kw, vM.n_inv, vM.ti_kw, vM.ti_nmod, vM.total_kwp, vM.leg_inv_kw, vM.inv_kw_cad[0], vM.str_n].join('|'),
+      'MARCA UM - U-10K + MARCA DOIS - D-15K|3 + 4|10 + 15|2|10|23|33.04|10.0 KW / 15.0 KW|10KW / 15KW|9');
+    igual('vários inversores: fiação das placas com as strings de todos', P.automaticos(prM2, ctxP).fiaPlacas, '14#6(T#6)');
+    const GAm = Object.assign({}, GAc, { tabela: GA.tabela });
+    const campM = Object.assign({}, campA, { ti_nstr: [ocT(285.35, 258.4, 7.4)], ti_kw: [ocT(463.55, 258.4, 7.4)], inv_kw_cad: [ocT(236.6, 1052.9, 5.86), ocT(556.1, 779.2, 4.4), ocT(905, 1031.9, 5.48, 90)],
+      inv_nome: [ocT(350, 1040, 7.48), ocT(185, 392, 7.48), ocT(949.6, 1013.3, 5.68, 90)], disj_ca: [ocT(1190.6, 1167, 4.68)], disj_ca_ka: [ocT(1191.1, 1158.6, 4.56)], inv_nome_kw: [ocT(1066.9, 998.8, 4.64)], inv_modelo: [ocT(1067.4, 987, 4.56)],
+      disj_ca_a: [ocT(909.2, 1198.1, 5.6, 90)], bit_ca_marca: [ocT(938.2, 1138, 7.48, 90)], bit_ca_lig: [ocT(477.4, 758.3, 7.3)], bit_terra_lig: [ocT(497.8, 758, 7.36)] });
+    const dM = P.desenhoStringsA(prM2, campM, GAm);
+    const txM = dM.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    const descM = dM.desloc.map(function (r) { return r.y.toFixed(1) + ':' + r.dy.toFixed(2); }).join(' ');
+    ok('desenho com 2 inversores: 59 módulos, 7 ramais, INV2 copiado do modelo (strings, unifilar simplificado e principal), tabela com o inversor de cada string e as seções descendo em dois degraus',
+      conta(dM, 'CRMMod') === 59 && conta(dM, 'CRMRam') === 7 && dM.filter(function (c) { return c.t === 'regiao'; }).length === 7 && conta(dM, 'CRMBaixo') === 2 &&
+      ['INV1-STR1', 'INV1-STR3', 'INV2-STR4', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].every(function (t) { return txM.indexOf(t) >= 0; }) &&
+      txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '485.4:-58.78 250.0:-73.58',
+      { mod: conta(dM, 'CRMMod'), regioes: dM.filter(function (c) { return c.t === 'regiao'; }).length, desloc: descM, faltam: ['INV1-STR1', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].filter(function (t) { return txM.indexOf(t) < 0; }) });
+    const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
+    ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
+      /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
+      (cfM.match(/Queda unitária CC/g) || []).length === 1 && !/INV1: Disjuntor/.test(cfM), cfM);
+    const ctxM = Object.assign({}, ctxP, { equipamentos: [
+      { id: 'inv-a', tipo: 'inversor', fabricante: 'Marca Um', modelo: 'U-10K', potencia: 10, fases: 'Trifásico', tensao: '380V', mppts: 2 },
+      { id: 'inv-b', tipo: 'inversor', fabricante: 'Marca Dois', modelo: 'D-15K', potencia: 15, fases: 'Trifásico', tensao: '380V', mppts: 2 }] });
+    const instM = { placas: { modulo: { quantidade: 59, potencia: 560 }, inversor: { equipamentoId: 'inv-a', quantidade: 1 }, inversoresExtras: [{ equipamentoId: 'inv-b', quantidade: 1 }] } };
+    const prCrm = P.sugerir(instM, ctxM, {});
+    igual('puxar do CRM: os inversores da instalação viram INV1 e INV2 (com o disjuntor sugerido do INV2) e as strings ficam por inversor',
+      [prCrm.inv.modelo, prCrm.inv.qtd, prCrm.invs.length, prCrm.invs[0].modelo, prCrm.invs[0].disjCa, prCrm.nStrings, prCrm.modelosDiferentes, P.inversores(prCrm).map(function (x) { return x.p.mod.qtd; }).join('+')].join('|'),
+      'U-10K|1|1|D-15K|32||false|24+35');
+    const peM = P.pendencias(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { caDist: '', disjCa: '' })] }), ctxP);
+    ok('pendências com 2 inversores: as do INV2 com o prefixo', peM.indexOf('INV2: Distância do circuito CA') >= 0 && peM.indexOf('INV2: Disjuntor CA (A)') >= 0 && peM.indexOf('Distância do circuito CA') < 0, peM);
     igual('prancha: disjuntor comercial e capacidade do cabo (NBR 5410 B1)', [P.proxDisjuntor(1.25 * 27.27), P.proxDisjuntor(1.25 * 18.18), P.izCabo(6, 'bi'), P.izCabo(10, 'tri')].join('|'), '40|25|41|50');
     ok('prancha: queda unitária de referência 2ρ/S (6 mm² ≈ 6,87 V/A·km)', Math.abs(P.quedaRef(6, false) - 6.867) < 0.01 && Math.abs(P.quedaRef(6, true) - 5.947) < 0.01);
     ok('prancha: sem pendências com os campos preenchidos', P.pendencias(pr, ctxP).length === 0, P.pendencias(pr, ctxP));

@@ -847,6 +847,11 @@ td.num.saida { color: var(--vermelho); }
 .homolog-grupo { border: 1px solid var(--borda); border-radius: 10px; padding: 8px 12px; }
 .homolog-grupo > summary { cursor: pointer; font-weight: 700; color: var(--azul); padding: 4px 0; }
 .homolog-grupo[open] > summary { margin-bottom: 8px; }
+/* prancha: inversores além do INV1 */
+.prancha-invs { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 4px; }
+.prancha-inv-extra { border: 1px dashed var(--borda); border-radius: 8px; padding: 4px 10px 8px; }
+.prancha-inv-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.prancha-invs > .btn-inv-adicionar { align-self: flex-start; }
 .homolog-tab input, .homolog-tab select { width: 100%; min-width: 0; }
 .homolog-tab td.calc { color: var(--texto-2); white-space: nowrap; }
 .homolog-equip { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }

@@ -152,12 +152,16 @@ window.App = window.App || {};
     let qInv = num(pi.quantidade) || (r ? num(r.nInversores) : 0) || (eqInv || pi.modelo ? 1 : 0);
     const extras = (Array.isArray(pl.inversoresExtras) ? pl.inversoresExtras : []).filter(function (e) { return e && (e.modelo || e.equipamentoId); });
     const outros = extras.filter(function (e) { return !((e.equipamentoId && eqInv && e.equipamentoId === eqInv.id) || (!e.equipamentoId && e.modelo && e.modelo === (eqInv ? eqInv.modelo : pi.modelo))); });
+    // cada unidade é um inversor na prancha (INV1, INV2…): o principal × quantidade e os extras × quantidade
+    const unidades = [];
+    for (let i = 0; i < Math.max(qInv, eqInv || pi.modelo ? 1 : 0); i++) unidades.push(dadosInversor(eqInv, pi, 1));
+    extras.forEach(function (e) { const eq = x.porId(e.equipamentoId); for (let i = 0; i < (num(e.quantidade) || 1); i++) unidades.push(dadosInversor(eq, e, 1)); });
     qInv += extras.reduce(function (s, e) { return s + (num(e.quantidade) || 1); }, 0);
     const st = r && r.strings;
     let nStr = st ? num(st.nStrings) : 0;
     if (!nStr && qMod > 0) nStr = 1;
     return {
-      x: x, mod: dadosModulo(eqMod, pm, qMod), inv: dadosInversor(eqInv, pi, qInv), modelosDiferentes: outros.length > 0,
+      x: x, mod: dadosModulo(eqMod, pm, qMod), inv: dadosInversor(eqInv, pi, qInv), modelosDiferentes: outros.length > 0, unidades: unidades,
       nStrings: nStr > 0 ? String(nStr) : '', ligacao: (x.prop && x.prop.ligacao) || '', telhado: (x.prop && x.prop.telhado) || ''
     };
   }
@@ -239,13 +243,22 @@ window.App = window.App || {};
     pr.uc = inst.uc || pr.uc || '';
     pr.art = inst.art || pr.art || '';
     if (!str(pr.ruas.uc)) pr.ruas.uc = rua(cli.endereco);
-    pr.mod = e.mod; pr.inv = e.inv;
-    pr.modelosDiferentes = e.modelosDiferentes;
+    // mais de um inversor na obra: INV1 = o primeiro e INV2… em pr.invs, guardando o arranjo e o circuito já digitados de cada um
+    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caDist', 'disjCa'];
+    const guarda = function (novo, velho) { ARR.forEach(function (k) { if (velho && str(velho[k])) novo[k] = velho[k]; }); return novo; };
+    const invAnt = pr.inv || {}, invsAnt = Array.isArray(pr.invs) ? pr.invs : [];
+    pr.mod = e.mod;
+    if (e.unidades.length > 1) {
+      pr.inv = guarda(Object.assign({}, e.unidades[0], { qtd: '1' }), invAnt);
+      pr.invs = e.unidades.slice(1).map(function (u, i) { return novoInversor(pr, guarda(Object.assign({}, u, { qtd: '1' }), invsAnt[i])); });
+    } else pr.inv = invsAnt.length ? guarda(Object.assign({}, e.inv, { qtd: '1' }), invAnt) : e.inv;
+    pr.modelosDiferentes = e.modelosDiferentes && !(pr.invs && pr.invs.length);
     // strings: as do dimensionamento, respeitando o máximo de módulos por string do projetista (padrão 10)
     const maxS = num(pr.maxStr) || 10, nMod = num(e.mod.qtd);
     const nMin = nMod > 0 ? Math.ceil(nMod / maxS) : 0;
     if (e.nStrings || nMin) pr.nStrings = String(Math.max(num(e.nStrings), nMin));
     pr.porString = '';
+    if (pr.invs && pr.invs.length) pr.nStrings = '';
     if (LIGACOES[e.ligacao]) pr.ligacao = e.ligacao;
     if (e.telhado) pr.telhado = e.telhado;
     if (inst.homologacao) lerCompartilhados(pr, inst.homologacao);
@@ -683,6 +696,18 @@ window.App = window.App || {};
   }
 
   // ------------------------------------------------------------ obra com mais de um inversor (estilo A)
+  /** Corrente de saída de um inversor (P ÷ V, ÷ √3 no trifásico). */
+  function correnteInv(inv, fp) {
+    const kw = num(inv && inv.kw), v = num(inv && inv.tensao) || 220;
+    return kw > 0 ? kw * 1000 / (v * (num(fp) || 1) * (inv.fases === 'tri' ? Math.sqrt(3) : 1)) : 0;
+  }
+  /** INV2…: os campos do arranjo e do circuito CA em branco (automáticos) e o disjuntor sugerido (≥ 1,25 × corrente). */
+  function novoInversor(pr, base) {
+    const x = Object.assign({ fab: '', modelo: '', kw: '', qtd: '1', fases: (pr.inv && pr.inv.fases) || 'mono', tensao: (pr.inv && pr.inv.tensao) || '220', vmaxCC: '',
+      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caDist: '', disjCa: '' }, base || {});
+    if (!str(x.disjCa)) { const i = correnteInv(x, pr.fp); if (i > 0) x.disjCa = String(proxDisjuntor(1.25 * i) || ''); }
+    return x;
+  }
   /**
    * Inversores da obra: INV1 = pr.inv, INV2… = pr.invs. Cada um recebe os módulos digitados (qtdMod) ou, em branco, a sua parte
    * dos módulos da obra pela potência (maiores restos); strings, divisão por string e por MPPT, circuito CA e disjuntor são de
@@ -690,8 +715,13 @@ window.App = window.App || {};
    */
   function inversores(pr) {
     const extras = (Array.isArray(pr.invs) ? pr.invs : []).filter(function (x) { return x && (num(x.kw) > 0 || str(x.modelo)); });
-    if (!extras.length) return [{ k: 0, inv: pr.inv || {}, p: pr }];
-    const L = [pr.inv || {}].concat(extras), M = num(pr.mod && pr.mod.qtd), maxS = num(pr.maxStr) || 10;
+    const q1 = Math.max(1, Math.round(num(pr.inv && pr.inv.qtd)) || 1);
+    if (!extras.length && q1 === 1) return [{ k: 0, inv: pr.inv || {}, p: pr }];
+    // quantidade > 1 no INV1 (obras antigas): cada unidade vira um inversor, com o arranjo automático
+    const L = [pr.inv || {}];
+    for (let i = 1; i < q1; i++) L.push(novoInversor(pr, Object.assign({}, pr.inv, { qtd: '1', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caDist: '', disjCa: pr.disjCa || '' })));
+    extras.forEach(function (x) { for (let i = 0; i < Math.max(1, Math.round(num(x.qtd)) || 1); i++) L.push(x); });
+    const M = num(pr.mod && pr.mod.qtd), maxS = num(pr.maxStr) || 10;
     const dig = L.map(function (x) { return Math.max(0, Math.round(num(x.qtdMod))); });
     const resto = Math.max(0, M - dig.reduce(function (a, b) { return a + b; }, 0));
     const peso = L.map(function (x, i) { return dig[i] > 0 ? 0 : (num(x.kw) || 1); });
@@ -704,10 +734,11 @@ window.App = window.App || {};
     return L.map(function (x, i) {
       const ni = dig[i] || n[i];
       const p = Object.assign({}, pr, {
-        invs: [], inv: Object.assign({}, x, { qtd: '1' }), mod: Object.assign({}, pr.mod, { qtd: String(ni) }),
+        invs: [], inv: Object.assign({}, x, { qtd: '1' }), mod: Object.assign({}, pr.mod, { qtd: String(ni) }), modelosDiferentes: false,
         nStrings: str(x.nStrings) || (ni > 0 ? String(Math.ceil(ni / maxS)) : ''), porString: str(x.porString), porMppt: str(x.porMppt),
-        ca: Object.assign({}, pr.ca, tem(x.caBit) || str(x.caBit) ? { bit: str(x.caBit) } : {}, tem(x.caUn) ? { un: x.caUn } : {}, tem(x.caDist) ? { dist: x.caDist } : {}),
-        disjCa: str(x.disjCa) || (i === 0 ? pr.disjCa : '')
+        // INV1: o circuito CA e o disjuntor da prancha; INV2…: os dele (cabo e queda unitária do INV1 quando em branco)
+        ca: i === 0 ? pr.ca : Object.assign({}, pr.ca, { bit: str(x.caBit) || pr.ca.bit, un: str(x.caUn) || pr.ca.un, dist: str(x.caDist) }),
+        disjCa: i === 0 ? pr.disjCa : str(x.disjCa)
       });
       return { k: i, inv: x, p: p };
     });
@@ -886,6 +917,10 @@ window.App = window.App || {};
     });
 
     // ---- unifilar simplificado: cada inversor com o seu disjuntor dentro da String Box CA, o seu símbolo e os seus campos
+    // (até 2 inversores: o croqui e o unifilar principal limitam a largura)
+    unifilaresMulti(Math.min(nI, 2));
+    return cmds;
+    function unifilaresMulti(nI) {
     const S = G.uniS, cfS = campos.campo_fv && campos.campo_fv[2];
     const xI = [S.xInv].concat(Array.from({ length: nI - 1 }, function (_, j) { return S.xInv + 77.35 * (j + 1); }));
     const xBox = xI[nI - 1] + 32;
@@ -894,7 +929,7 @@ window.App = window.App || {};
       linha([[967.2, 1274.0], [xBox, 1274.0], [xBox, 1164.4], [967.2, 1164.4]], roxo, [12.6, 6.3]);
     }
     // faixas dos campos de cada inversor, proporcionais ao número de strings
-    const faixa = [800, 1055], nTot = N, gap = 22;
+    const nTot = todas.filter(function (x) { return x.j < nI; }).length, faixa = [800, 1055], gap = 22;
     let xIni = faixa[0];
     for (let j = 0; j < nI; j++) {
       const minhas = todas.filter(function (x) { return x.j === j; }), nj = minhas.length;
@@ -983,7 +1018,7 @@ window.App = window.App || {};
       em(oc('inv_nome_kw', 0), 'INVERSOR', { x: xl, y: 1010.6, s: 5.4, w: null });
       em(oc('inv_nome_kw', 0), vj.inv_nome_kw, { x: xl, w: null }); em(oc('inv_modelo', 0), vj.inv_modelo, { x: xl + 0.5, w: null });
     }
-    return cmds;
+    }
   }
 
   /** Campos do estilo A que o desenho das strings escreve (o laço geral do PDF não os desenha). */
@@ -992,6 +1027,8 @@ window.App = window.App || {};
   // ------------------------------------------------------------ conferências e pendências
   /** Conferências do projeto (avisos, não bloqueiam): [{nivel: 'erro' | 'aviso' | 'info', texto}]. */
   function conferir(pr, estilos) {
+    const lista = inversores(pr);
+    if (lista.length > 1) return conferirMulti(pr, estilos, lista);
     const c = calcular(pr), out = [];
     const add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); };
     const f2 = function (v) { return U.fmtSmart ? U.fmtSmart(v, 2) : String(U.round(v, 2)); };
@@ -1055,8 +1092,45 @@ window.App = window.App || {};
     return out;
   }
 
+  /**
+   * Conferências com mais de um inversor: as de cada inversor (com o prefixo INV1, INV2… quando são só dele; as que dão igual
+   * em todos aparecem uma vez), a divisão dos módulos entre eles e os limites do desenho.
+   */
+  function conferirMulti(pr, estilos, lista) {
+    const es = estilos || (pr.estilo === 'AB' ? ['A', 'B'] : [pr.estilo || 'A']);
+    const porInv = lista.map(function (x) { return conferir(x.p, ['A']).filter(function (m) { return !/^Estilo [AB]:/.test(m.texto); }); });
+    const out = [], visto = {};
+    const add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); };
+    porInv.forEach(function (l, j) {
+      l.forEach(function (m) {
+        const todos = porInv.every(function (o) { return o.some(function (n) { return n.texto === m.texto; }); });
+        if (todos) { if (!visto[m.texto]) { visto[m.texto] = 1; out.push(m); } } else out.push({ nivel: m.nivel, texto: 'INV' + (j + 1) + ': ' + m.texto });
+      });
+    });
+    const M = num(pr.mod && pr.mod.qtd);
+    const dig = [pr.inv || {}].concat(pr.invs || []).reduce(function (a, x) { return a + Math.max(0, Math.round(num(x.qtdMod))); }, 0);
+    const soma = lista.reduce(function (a, x) { return a + num(x.p.mod.qtd); }, 0);
+    if (dig > M) add('erro', 'Os módulos digitados por inversor somam ' + dig + ', mas a obra tem ' + M + '.');
+    else if (M && soma !== M) add('aviso', 'Os inversores recebem ' + soma + ' módulos, mas a obra tem ' + M + '. Confira os módulos de cada inversor.');
+    lista.forEach(function (x, j) {
+      const c = calcular(x.p);
+      if (c.kw > 0 && c.kwp > 0 && c.kwp / c.kw > 1.5) add('aviso', 'INV' + (j + 1) + ': ' + fx(c.kwp, 2, ',') + ' kWp para ' + fx(c.kw, 2, ',') + ' kW (relação CC/CA de ' + fx(c.kwp / c.kw, 2, ',') + ').');
+    });
+    if (es.indexOf('A') >= 0 && lista.length > 2) add('aviso', 'Estilo A: os unifilares desenham até 2 inversores (o croqui limita a largura); do INV3 em diante, só o desenho das strings e as tabelas.');
+    if (es.indexOf('B') >= 0) add('info', 'Estilo B: a planta, a fachada e os diagramas desenham ' + DESENHO.B.modulos + ' módulos e 1 inversor; esta obra tem ' + M + ' módulos e ' + lista.length + ' inversores. Quantidades e textos saem com o inversor 1.');
+    return out;
+  }
+
   /** Campos que faltam para a prancha sair completa. */
   function pendencias(pr, ctx) {
+    const lista = inversores(pr);
+    if (lista.length > 1) {
+      // os do INV1 e os gerais; dos outros, só os que são do inversor (com o prefixo)
+      const DO_INV = ['Potência do inversor (kW)', 'Modelo do inversor', 'Número de strings', 'Distância do circuito CA', 'Disjuntor CA (A)'];
+      const out = pendencias(lista[0].p, ctx).map(function (t) { return DO_INV.indexOf(t) >= 0 ? 'INV1: ' + t : t; });
+      lista.slice(1).forEach(function (x, j) { pendencias(x.p, ctx).filter(function (t) { return DO_INV.indexOf(t) >= 0; }).forEach(function (t) { out.push('INV' + (j + 2) + ': ' + t); }); });
+      return out;
+    }
     const p = [], c = calcular(pr), ef = efetivos(pr, ctx);
     const falta = function (cond, txt) { if (cond) p.push(txt); };
     falta(!str(pr.cliente.nome), 'Nome do cliente');
@@ -1172,6 +1246,7 @@ window.App = window.App || {};
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, terraMod: terraMod,
+    correnteInv: correnteInv, novoInversor: novoInversor,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

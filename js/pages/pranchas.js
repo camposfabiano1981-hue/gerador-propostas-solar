@@ -48,6 +48,13 @@ window.App = window.App || {};
     if (pr.condCA == null) pr.condCA = padroes().condCA || P.PADROES.condCA;
     if (pr.terraMod == null) pr.terraMod = padroes().terraMod || P.PADROES.terraMod;
     if (pr.porMppt == null) pr.porMppt = '';
+    if (!Array.isArray(pr.invs)) pr.invs = [];
+    // quantidade > 1 no inversor (obras antigas): cada unidade vira um inversor da prancha (INV1, INV2…)
+    if (!pr.invs.length && U.numOr(pr.inv.qtd, 1) > 1) {
+      for (let i = 1; i < U.numOr(pr.inv.qtd, 1); i++) pr.invs.push(P.novoInversor(pr, Object.assign({}, pr.inv, { qtd: '1', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caDist: '', disjCa: '' })));
+      pr.inv.qtd = '1';
+    }
+    const multi = pr.invs.length > 0;
     const mudou = function (redesenho) { pr.atualizadoEm = new Date().toISOString(); o.mudou(); pintarResumo(); pintarCalc(); if (redesenho) desenhar(box, o); };
     // campo compartilhado com a Homologação: grava lá também
     const comp = function () { if (inst.homologacao) P.gravarCompartilhados(pr, inst.homologacao); };
@@ -59,10 +66,14 @@ window.App = window.App || {};
       const c = P.calcular(pr), pend = P.pendencias(pr, ctx), conf = P.conferir(pr);
       const f2 = function (v) { return U.fmtSmart(v, 2); };
       const nErro = conf.filter(function (x) { return x.nivel === 'erro'; }).length;
+      const lista = P.inversores(pr), cs = lista.map(function (x) { return P.calcular(x.p); });
+      const strTxt = function (k, mod) { return k.nStr ? k.tam.join(' + ') + (mod ? ' módulos' : '') + (k.grupos.some(function (g) { return g > 1; }) ? ' (' + k.grupos.join(' + ') + ' por MPPT)' : '') : '—'; };
       resumo.replaceChildren(
         h('div.homolog-totais', h('span', 'Sistema: ', h('strong', f2(c.kwp) + ' kWp')),
-          h('span', 'Strings: ', h('strong', c.nStr ? c.tam.join(' + ') + ' módulos' + (c.grupos.some(function (g) { return g > 1; }) ? ' (' + c.grupos.join(' + ') + ' por MPPT)' : '') : '—')),
-          h('span', 'Inversor: ', h('strong', c.kw ? f2(c.kw) + ' kW · ' + f2(c.iInv) + ' A' : '—')), h('span', 'Páginas: ', h('strong', String(P.estilosDe(pr).length)))),
+          lista.length > 1 ? h('span', 'Strings: ', h('strong', cs.map(function (k, j) { return 'INV' + (j + 1) + ': ' + strTxt(k); }).join(' · ')))
+            : h('span', 'Strings: ', h('strong', strTxt(c, true))),
+          lista.length > 1 ? h('span', 'Inversores: ', h('strong', cs.map(function (k) { return f2(k.kw); }).join(' + ') + ' kW · ' + cs.map(function (k) { return f2(k.iInv); }).join(' + ') + ' A'))
+            : h('span', 'Inversor: ', h('strong', c.kw ? f2(c.kw) + ' kW · ' + f2(c.iInv) + ' A' : '—')), h('span', 'Páginas: ', h('strong', String(P.estilosDe(pr).length)))),
         pend.length ? h('details.homolog-pendencias', h('summary', '⚠ ' + pend.length + (pend.length === 1 ? ' campo pendente' : ' campos pendentes')), h('ul', pend.map(function (p) { return h('li', p); })))
           : h('p.nota.ok', '✓ Campos da prancha preenchidos.'),
         conf.length ? h('details.prancha-conferencias' + (nErro ? '.tem-erro' : ''), { open: nErro > 0 }, h('summary', (nErro ? '⛔ ' : '🔎 ') + conf.length + (conf.length === 1 ? ' conferência' : ' conferências') + ' do projeto'),
@@ -126,6 +137,56 @@ window.App = window.App || {};
 
     // ---------- 2. módulos, inversor e arranjo
     const c0 = P.calcular(pr);
+    const lista0 = P.inversores(pr), cs0 = lista0.map(function (x) { return P.calcular(x.p); });
+    const FASES = [{ v: 'mono', t: 'Monofásica' }, { v: 'tri', t: 'Trifásica' }];
+    // campos do arranjo de um inversor (com mais de um): módulos, strings, divisão por string e por MPPT
+    const arranjo = function (j) {
+      const cj = cs0[j] || { tam: [], grupos: [] }, nMod = lista0[j] ? lista0[j].p.mod.qtd : '';
+      return [
+        { k: 'qtdMod', label: 'Módulos neste inversor', type: 'int', placeholder: nMod ? 'Auto: ' + nMod : '', help: 'Em branco = divide os módulos da obra pela potência.' },
+        { k: 'nStrings', label: 'Nº de strings', type: 'int', placeholder: cj.tam.length ? 'Auto: ' + cj.tam.length : '' },
+        { k: 'porString', label: 'Módulos por string', placeholder: cj.tam.length ? 'Auto: ' + cj.tam.join(' + ') : '' },
+        { k: 'porMppt', label: 'Strings por MPPT', placeholder: cj.grupos.length ? 'Auto: ' + cj.grupos.join(' + ') : '' }
+      ];
+    };
+    const blocoExtra = function (x, i) {
+      const j = i + 1, cj = cs0[j], sugJ = cj && cj.iInv > 0 ? P.proxDisjuntor(1.25 * cj.iInv) : null;
+      return h('div.prancha-inv-extra', { 'data-inv': String(j + 1) },
+        h('div.prancha-inv-topo', h('h4.secao-form', 'Inversor ' + (j + 1) + ' (INV' + (j + 1) + ')'),
+          h('button.btn.pequeno.perigo.btn-inv-remover', { type: 'button', onclick: function () {
+            pr.invs.splice(i, 1);
+            if (!pr.invs.length) { pr.nStrings = String(Math.max(1, Math.ceil(U.numOr(pr.mod.qtd, 0) / (U.numOr(pr.maxStr, 10) || 10)))); pr.porString = ''; pr.porMppt = ''; }
+            mudou(true);
+          } }, '✕ Remover')),
+        UI.grade([
+          { k: 'fab', label: 'Fabricante' }, { k: 'modelo', label: 'Modelo', cls: 'span2' }, { k: 'kw', label: 'Potência (kW)', type: 'number' },
+          { k: 'tensao', label: 'Tensão CA (V)', type: 'number' }, { k: 'fases', label: 'Saída', type: 'select', options: FASES }, { k: 'vmaxCC', label: 'Tensão CC máx. (V)', type: 'number' },
+          { k: 'mppts', label: 'Nº de MPPT', type: 'int' }, { k: 'imaxMppt', label: 'Corrente máx. por MPPT (A)', type: 'number' }
+        ].concat(arranjo(j), [
+          { k: 'caBit', label: 'Cabo CA (mm²)', type: 'number', placeholder: 'Igual ao INV1' }, { k: 'caDist', label: 'Distância CA (m)', type: 'number' },
+          { k: 'disjCa', label: 'Disjuntor CA (A)', type: 'number', help: sugJ ? 'Sugestão: ' + sugJ + ' A (≥ 1,25 × ' + U.fmt(cj.iInv, 2) + ' A).' : '' }
+        ]), x, function (k) {
+          // disjuntor sugerido enquanto o projetista não digitar outro (≥ 1,25 × corrente do inversor)
+          if (k === 'kw' || k === 'tensao' || k === 'fases') {
+            const i = P.correnteInv(x, pr.fp), sug = i > 0 ? String(P.proxDisjuntor(1.25 * i) || '') : '';
+            if (!String(x.disjCa || '').trim() || x.disjCa === x.disjSug) {
+              x.disjCa = sug; x.disjSug = sug;
+              const el = box.querySelector('.prancha-inv-extra[data-inv="' + (j + 1) + '"] [data-k="disjCa"]');
+              if (el) el.value = sug;
+            }
+          }
+          mudou();
+        }, 4));
+    };
+    const extras = h('div.prancha-invs', pr.invs.map(blocoExtra),
+      h('button.btn.pequeno.btn-inv-adicionar', { type: 'button', onclick: function () {
+        if (!pr.invs.length) { pr.inv.qtd = '1'; pr.inv.qtdMod = ''; pr.inv.nStrings = ''; pr.inv.porString = ''; pr.inv.porMppt = ''; }
+        pr.invs.push(P.novoInversor(pr));
+        mudou(true);
+        UI.toast('Inversor ' + (pr.invs.length + 1) + ' incluído: informe o modelo e a potência. Os módulos se dividem pela potência.', 'ok');
+      } }, '+ Adicionar inversor'),
+      h('small.ajuda', multi ? 'Cada inversor tem os seus módulos, strings, circuito CA e disjuntor. Na prancha A, cada um ganha o seu bloco de strings, a sua linha na tabela e o seu disjuntor nos unifilares.'
+        : 'Obra com mais de um inversor (ex.: 10 kW + 15 kW)? Adicione aqui.'));
     grupo('2. Módulos, inversor e arranjo', true, h('div',
       h('h4.secao-form', 'Módulo (datasheet do cadastro)'),
       UI.grade([
@@ -134,20 +195,22 @@ window.App = window.App || {};
         { k: 'mod.voc', label: 'Voc (V)', type: 'number' }, { k: 'mod.isc', label: 'Isc (A)', type: 'number' }, { k: 'mod.celulas', label: 'Nº de células', type: 'int' },
         { k: 'mod.coefVoc', label: 'Coef. de Voc (%/°C)', type: 'number' }
       ], pr, function () { mudou(); }, 4),
-      h('h4.secao-form', 'Inversor'),
+      h('h4.secao-form', multi ? 'Inversor 1 (INV1)' : 'Inversor'),
       UI.grade([
-        { k: 'inv.fab', label: 'Fabricante' }, { k: 'inv.modelo', label: 'Modelo', cls: 'span2' }, { k: 'inv.qtd', label: 'Quantidade', type: 'int' },
+        { k: 'inv.fab', label: 'Fabricante' }, { k: 'inv.modelo', label: 'Modelo', cls: 'span2' }, multi ? null : { k: 'inv.qtd', label: 'Quantidade', type: 'int', help: 'Mais de 1: cada um vira INV1, INV2…' },
         { k: 'inv.kw', label: 'Potência (kW)', type: 'number' }, { k: 'inv.tensao', label: 'Tensão CA (V)', type: 'number' },
         { k: 'inv.fases', label: 'Saída', type: 'select', options: [{ v: 'mono', t: 'Monofásica' }, { v: 'tri', t: 'Trifásica' }] }, { k: 'inv.vmaxCC', label: 'Tensão CC máx. (V)', type: 'number' },
         { k: 'inv.mppts', label: 'Nº de MPPT', type: 'int' }, { k: 'inv.imaxMppt', label: 'Corrente máx. por MPPT (A)', type: 'number', help: 'Confere as strings em paralelo.' },
         { k: 'efic', label: 'Eficiência na tabela (%)', type: 'number' }, { k: 'fp', label: 'Fator de potência', type: 'number' }
-      ], pr, function () { mudou(); }, 4),
+      ], pr, function (k) { mudou(k === 'inv.qtd' && U.numOr(pr.inv.qtd, 1) > 1); }, 4),
+      multi ? UI.grade(arranjo(0), pr.inv, function () { mudou(); }, 4) : null,
+      extras,
       h('h4.secao-form', 'Arranjo e ligação'),
       UI.grade([
-        { k: 'nStrings', label: 'Nº de strings', type: 'int', help: 'Sugerido pelo máximo de módulos por string.' },
-        { k: 'porString', label: 'Módulos por string', placeholder: c0.tam.length ? 'Auto: ' + c0.tam.join(' + ') : '', help: 'Em branco = divide igual. Ou digite a divisão: 10+10+5.' },
+        multi ? null : { k: 'nStrings', label: 'Nº de strings', type: 'int', help: 'Sugerido pelo máximo de módulos por string.' },
+        multi ? null : { k: 'porString', label: 'Módulos por string', placeholder: c0.tam.length ? 'Auto: ' + c0.tam.join(' + ') : '', help: 'Em branco = divide igual. Ou digite a divisão: 10+10+5.' },
         { k: 'maxStr', label: 'Máx. de módulos por string', type: 'int', help: 'Seu limite (padrão 10): o CRM divide e avisa por ele.' },
-        { k: 'porMppt', label: 'Strings por MPPT (em paralelo)', placeholder: c0.grupos.length ? 'Auto: ' + c0.grupos.join(' + ') : '', help: 'Em branco = divide pelos MPPTs. Ou digite: 3+3+3. No desenho, as do mesmo MPPT ficam num bloco.' },
+        multi ? null : { k: 'porMppt', label: 'Strings por MPPT (em paralelo)', placeholder: c0.grupos.length ? 'Auto: ' + c0.grupos.join(' + ') : '', help: 'Em branco = divide pelos MPPTs. Ou digite: 3+3+3. No desenho, as do mesmo MPPT ficam num bloco.' },
         { k: 'ligacao', label: 'Ligação da UC', type: 'select', options: [{ v: 'mono', t: 'Monofásica' }, { v: 'bi', t: 'Bifásica' }, { v: 'tri', t: 'Trifásica' }] },
         { k: 'telhado', label: 'Telhado (estilo B)', placeholder: 'Ex.: Fibrocimento' },
         { k: 'inclinacao', label: 'Inclinação (°) (estilo B)', type: 'number' }
@@ -160,13 +223,21 @@ window.App = window.App || {};
     // ---------- 3. circuitos e quedas de tensão
     const calc = h('div.tabela-rolagem');
     function pintarCalc() {
-      const c = P.calcular(pr);
       const f = function (v, d) { return isFinite(v) && v ? U.fmt(v, d) : '—'; };
-      const linhas = c.strings.map(function (s, i) {
-        return h('tr', h('td', 'STR' + (i + 1)), h('td.num', String(s.n)), h('td.num', f(s.p, 2)), h('td.num', f(s.v, 1)), h('td.num', f(s.i, 2)), h('td.num', s.dist ? f(s.dist, 2) : '—'), h('td.num', s.dist ? f(s.dv, 2) : '—'), h('td.num', s.dist ? f(s.pct, 2) + '%' : '—'));
+      const lista = P.inversores(pr), cs = lista.map(function (x) { return P.calcular(x.p); }), varios = lista.length > 1;
+      const linhas = [];
+      let k = 0;
+      cs.forEach(function (c, j) {
+        c.strings.forEach(function (s) {
+          k++;
+          linhas.push(h('tr', h('td', (varios ? 'INV' + (j + 1) + '-' : '') + 'STR' + k), h('td.num', String(s.n)), h('td.num', f(s.p, 2)), h('td.num', f(s.v, 1)), h('td.num', f(s.i, 2)), h('td.num', s.dist ? f(s.dist, 2) : '—'), h('td.num', s.dist ? f(s.dv, 2) : '—'), h('td.num', s.dist ? f(s.pct, 2) + '%' : '—')));
+        });
       });
-      linhas.push(h('tr', h('td', 'CA (inversor)'), h('td.num', '—'), h('td.num', f(c.kw, 2)), h('td.num', f(c.vInv, 0)), h('td.num', f(c.iInv, 2)), h('td.num', num(pr.ca.dist) ? f(num(pr.ca.dist), 2) : '—'),
-        h('td.num', num(pr.ca.dist) ? f(c.dvCa, 2) : '—'), h('td.num', num(pr.ca.dist) ? f(c.pctCa, 2) + '%' : '—')));
+      cs.forEach(function (c, j) {
+        const d = num(lista[j].p.ca.dist);
+        linhas.push(h('tr', h('td', varios ? 'CA (INV' + (j + 1) + ')' : 'CA (inversor)'), h('td.num', '—'), h('td.num', f(c.kw, 2)), h('td.num', f(c.vInv, 0)), h('td.num', f(c.iInv, 2)), h('td.num', d ? f(d, 2) : '—'),
+          h('td.num', d ? f(c.dvCa, 2) : '—'), h('td.num', d ? f(c.pctCa, 2) + '%' : '—')));
+      });
       calc.replaceChildren(h('table.tabela.homolog-tab', h('thead', h('tr', ['Circuito', 'Módulos', 'kW', 'V', 'A', 'Dist. (m)', 'ΔV (V)', 'ΔV (%)'].map(function (t) { return h('th', t); }))), h('tbody', linhas)));
     }
     function num(v) { return U.numOr(v, 0); }
@@ -181,7 +252,7 @@ window.App = window.App || {};
         { k: 'cc.dist1', label: 'Distância string 1 (m)', type: 'number' }, { k: 'cc.dist2', label: 'Distância demais strings (m)', type: 'number', placeholder: 'Igual à 1' },
         { k: 'limiteCC', label: 'Limite de queda CC (%)', type: 'number' }
       ], pr, function (k) { mudou(k === 'cc.bit'); }, 3),
-      h('h4.secao-form', 'Circuito CA (inversor → QGBT)'),
+      h('h4.secao-form', multi ? 'Circuito CA do INV1 (inversor → QGBT) — os outros no bloco de cada inversor' : 'Circuito CA (inversor → QGBT)'),
       UI.grade([
         { k: 'ca.bit', label: 'Cabo CA (mm²)', type: 'number' }, { k: 'ca.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'ca.iso', label: 'Classe / temperatura', placeholder: '450/750V - 70°C' },
         { k: 'ca.un', label: 'Queda unitária (V/A·km)', help: ref(refCa, pr.ca.bit) },
@@ -196,7 +267,7 @@ window.App = window.App || {};
     grupo('4. Proteções', true, h('div',
       UI.grade([
         { k: 'disjGeral', label: 'Disjuntor geral (A)', type: 'number', help: 'O mesmo da Homologação.' },
-        { k: 'disjCa', label: 'Disjuntor CA do inversor (A)', type: 'number', help: sug ? 'Sugestão: ' + sug + ' A (≥ 1,25 × ' + U.fmt(c0.iInv, 2) + ' A).' : '' },
+        { k: 'disjCa', label: multi ? 'Disjuntor CA do INV1 (A)' : 'Disjuntor CA do inversor (A)', type: 'number', help: sug ? 'Sugestão: ' + sug + ' A (≥ 1,25 × ' + U.fmt(c0.iInv, 2) + ' A).' : '' },
         { k: 'disjCaKa', label: 'Capacidade de interrupção (kA)', type: 'number' }
       ], pr, function () { comp(); mudou(); }, 3),
       h('h4.secao-form', 'DPS CA'),
