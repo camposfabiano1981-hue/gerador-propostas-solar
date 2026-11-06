@@ -718,6 +718,8 @@ window.App = window.App || {};
   }
   // detalhe de instalação do inversor e da string box (com a placa CUIDADO e o poste) no modelo A: com 2 folhas, vai para a 2ª
   const DETALHE_INST = [1186, 205, 1756, 632];
+  // croqui de localização (com o selo do titular e as ruas): com 2 folhas, vai para o lado das tabelas, ampliado
+  const CROQUI = { r: [1343, 1043, 1844, 1433], k: 1.35, centro: [1480, 395] };
   // condutores do diagrama multifilar do modelo (R e S) e o 3º condutor (R) da UC trifásica, à esquerda
   const MF = { xR: 1131.0, xS: 1151.8, xT: 1172.6, d: 20.8 };
   // inversor trifásico no multifilar: o símbolo do modelo ampliado (1,55×) com as 3 fases entrando por cima e as proteções afastadas
@@ -1050,6 +1052,12 @@ window.App = window.App || {};
       const oT = { t: 'txt', s: 12, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'c' };
       em(oT, 'LAYOUT DAS STRINGS, DIAGRAMA DE BLOCOS E DETALHES: VER PRANCHA 2/2', { x: 1140, y: 760 });
       resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.48 }), t, { x: 1140, y: 728 - i * 15 }); });
+      // croqui de localização ao lado das tabelas (no espaço do detalhe de instalação), ampliado e longe dos diagramas; os campos
+      // dele (ruas e selo) vão junto
+      const C = CROQUI.r, kc = CROQUI.k, tcx = CROQUI.centro[0] - kc * (C[0] + C[2]) / 2, tcy = CROQUI.centro[1] - kc * (C[1] + C[3]) / 2;
+      branco(C);
+      cmds.push({ t: 'regiao', bb: C, dx: kc * C[0] + tcx - C[0], dy: kc * C[1] + tcy - C[1], w: (C[2] - C[0]) * kc, h: (C[3] - C[1]) * kc });
+      cmds.moverRegiao = { r: C, k: kc, tx: tcx, ty: tcy };
       folhaNum('1/2');
     } else layoutStrings(F, false);
     // condutores do circuito CA do INV1 (fiação e os dois pontos do unifilar simplificado)

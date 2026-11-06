@@ -157,13 +157,13 @@ window.App = window.App || {};
       const campos = mapa[e] || {};
       // estilo A: strings, tabela e unifilares com a quantidade real da obra
       const pular = {};
-      let desloc = null, pularOc = {}, soCarimbo = false, pularRegiao = null, manterRegiao = null;
+      let desloc = null, pularOc = {}, soCarimbo = false, pularRegiao = null, manterRegiao = null, mover = null;
       if (e === 'A' && mapa.stringsA) {
         Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
         const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA, fo.folha);
         desloc = d.desloc || null;
         (d.pular || []).forEach(function (k) { pular[k] = true; });
-        pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo; pularRegiao = d.pularRegiao || null; manterRegiao = d.manterRegiao || null;
+        pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo; pularRegiao = d.pularRegiao || null; manterRegiao = d.manterRegiao || null; mover = d.moverRegiao || null;
         // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): embutidos antes, na ordem dos comandos
         const regioes = [];
         for (const c of d) if (c.t === 'regiao') regioes.push(await doc.embedPage(src.getPage(0), { left: c.bb[0], bottom: c.bb[1], right: c.bb[2], top: c.bb[3] }));
@@ -182,6 +182,8 @@ window.App = window.App || {};
           if (em(pularRegiao)) return;
           // folha 2: entram o carimbo, o descritivo e as legendas (à direita) e os campos do trecho mantido (o detalhe de instalação)
           if (soCarimbo && oc.x < 1862 && !em(manterRegiao)) return;
+          // trecho levado a outro lugar da folha (ex.: o croqui ao lado das tabelas): os campos dele vão junto, na mesma escala
+          if (mover && em(mover.r)) oc = Object.assign({}, oc, { x: mover.k * oc.x + mover.tx, y: mover.k * oc.y + mover.ty, s: oc.s * mover.k, w: oc.w ? oc.w * mover.k : oc.w });
           // a tabela de strings (e a do inversor) cresceu: o que está abaixo dela na coluna de textos desce junto — vale a regra de
           // limite mais baixo que o campo atinge
           const regra = (Array.isArray(desloc) ? desloc : (desloc ? [desloc] : [])).filter(function (d) { return oc.x < d.x && oc.y < d.y; })

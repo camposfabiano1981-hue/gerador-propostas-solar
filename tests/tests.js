@@ -2405,7 +2405,15 @@
       mod2.length === 59 && mod2[0].m[0] > 0.6 && f2.soCarimbo === true && txF2.indexOf('LAYOUT DAS STRINGS') >= 0 && txF2.indexOf('2/2') >= 0 && conta(f2, 'CRMSec2') === 0 &&
       f2.filter(function (c) { return c.t === 'regiao'; }).length === 2,
       { escala2: mod2[0] && mod2[0].m[0], regioes2: f2.filter(function (c) { return c.t === 'regiao'; }).length });
-    const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
+    // Croqui da folha 1 ao lado das tabelas: o original apagado, a cópia ampliada embaixo, longe do diagrama, e os campos do croqui junto
+    const mv = f1.moverRegiao, rC = mv && f1.filter(function (c) { return c.t === 'regiao' && c.bb === mv.r; })[0];
+    const destC = rC && [rC.bb[0] + rC.dx, rC.bb[1] + rC.dy, rC.bb[0] + rC.dx + rC.w, rC.bb[1] + rC.dy + rC.h];
+    ok('2 folhas: croqui da folha 1 ao lado das tabelas (original apagado, cópia ampliada abaixo do diagrama, campos movidos junto)',
+      !!(mv && rC && mv.k > 1 && f1.some(function (c) { return c.t === 'branco' && c.r === mv.r; }) &&
+        destC[0] > 1050 && destC[2] < 1870 && destC[1] > 100 && destC[3] < 700 &&
+        Math.abs(mv.k * mv.r[0] + mv.tx - destC[0]) < 0.01 && Math.abs(mv.k * mv.r[1] + mv.ty - destC[1]) < 0.01 && !f2.moverRegiao),
+      { mv: mv, destC: destC });
+    const cfM =P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
       (cfM.match(/Queda unitária CC/g) || []).length === 1 && !/INV1: Disjuntor/.test(cfM), cfM);
