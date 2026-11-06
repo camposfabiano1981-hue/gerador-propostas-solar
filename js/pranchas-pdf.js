@@ -92,14 +92,24 @@ window.App = window.App || {};
     return a;
   }
 
-  /** Executa o desenho das strings do estilo A (blocos do desenho original, linhas e textos em traços). */
-  function desenharStringsA(pg, cmds, FT, P) {
+  /**
+   * Executa o desenho das strings do estilo A: blocos do desenho original (com recorte opcional), linhas, textos (em traços ou
+   * Arial), trechos copiados do modelo (regiões já embutidas em regioes, na ordem), retângulos brancos e pontos de ligação.
+   */
+  function desenharStringsA(pg, cmds, FT, P, fonte, regioes) {
     const Op = P.PDFOperator, n = P.PDFNumber;
+    let r = 0;
     cmds.forEach(function (c) {
       if (c.t === 'forma') {
-        pg.pushOperators(Op.of('q'), Op.of('cm', c.m.map(function (v) { return n.of(Math.round(v * 10000) / 10000); })), Op.of('Do', [P.PDFName.of(c.nome)]), Op.of('Q'));
+        const ops = [Op.of('q')];
+        if (c.clip) ops.push(Op.of('re', [n.of(c.clip[0]), n.of(c.clip[1]), n.of(c.clip[2] - c.clip[0]), n.of(c.clip[3] - c.clip[1])]), Op.of('W'), Op.of('n'));
+        ops.push(Op.of('cm', c.m.map(function (v) { return n.of(Math.round(v * 10000) / 10000); })), Op.of('Do', [P.PDFName.of(c.nome)]), Op.of('Q'));
+        pg.pushOperators.apply(pg, ops);
       } else if (c.t === 'linha') desenharLinha(pg, c.pts, c.cor, c.traco, P);
-      else if (c.t === 'texto') desenharTracos(pg, c.oc, c.txt, FT, P);
+      else if (c.t === 'texto') { if (c.oc.t === 'tt') { if (fonte) desenharArial(pg, c.oc, c.txt, fonte, P); } else desenharTracos(pg, c.oc, c.txt, FT, P); }
+      else if (c.t === 'regiao') { const e = regioes && regioes[r++]; if (e) pg.drawPage(e, { x: c.bb[0] + c.dx, y: c.bb[1] + c.dy }); }
+      else if (c.t === 'branco') pg.drawRectangle({ x: c.r[0], y: c.r[1], width: c.r[2] - c.r[0], height: c.r[3] - c.r[1], color: P.rgb(1, 1, 1) });
+      else if (c.t === 'ponto') pg.drawCircle({ x: c.x, y: c.y, size: c.r, color: P.rgb(0, 0, 0) });
     });
   }
 
@@ -142,7 +152,10 @@ window.App = window.App || {};
         Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
         const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA);
         desloc = d.desloc || null;
-        desenharStringsA(pg, d, FT, P);
+        // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): embutidos antes, na ordem dos comandos
+        const regioes = [];
+        for (const c of d) if (c.t === 'regiao') regioes.push(await doc.embedPage(src.getPage(0), { left: c.bb[0], bottom: c.bb[1], right: c.bb[2], top: c.bb[3] }));
+        desenharStringsA(pg, d, FT, P, fonte, regioes);
       }
       Object.keys(campos).forEach(function (cid) {
         if (pular[cid]) return;
@@ -151,8 +164,11 @@ window.App = window.App || {};
         campos[cid].forEach(function (oc, k) {
           const s = Array.isArray(v) ? v[k] : v;
           if (s == null || String(s).trim() === '') return;
-          // a tabela de strings cresceu: o que está abaixo dela na coluna de textos desce junto
-          if (desloc && oc.x < desloc.x && oc.y < desloc.y) oc = Object.assign({}, oc, { y: oc.y + desloc.dy });
+          // a tabela de strings (e a do inversor) cresceu: o que está abaixo dela na coluna de textos desce junto — vale a regra de
+          // limite mais baixo que o campo atinge
+          const regra = (Array.isArray(desloc) ? desloc : (desloc ? [desloc] : [])).filter(function (d) { return oc.x < d.x && oc.y < d.y; })
+            .sort(function (a, b) { return a.y - b.y; })[0];
+          if (regra) oc = Object.assign({}, oc, { y: oc.y + regra.dy });
           if (oc.t === 'tt') desenharArial(pg, oc, s, fonte, P);
           else desenharTracos(pg, oc, s, oc.t === 'rom' ? FR : FT, P);
         });
