@@ -2307,6 +2307,71 @@
     const d1 = P.desenhoStringsA(Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '8' }), nStrings: '1' }), campA, GA);
     const rS = d1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMRamS'; })[0];
     ok('strings A (1 string): um ramo direto sob o inversor no unifilar simplificado, sem barramento', conta(d1, 'CRMMod') === 8 && conta(d1, 'CRMRamS') === 1 && Math.abs(rS.m[4] - (922.65 - 866.9)) < 0.01, rS);
+    // strings em paralelo por MPPT: blocos, canal tracejado e tabela que cresce empurrando as seções 3 e 4
+    igual('strings por MPPT: divididas pelos MPPTs, lista digitada (o que falta vira mais um grupo, o que sobra é cortado), sem MPPT = um grupo',
+      [P.gruposMppt(9, 3, '').join('+'), P.gruposMppt(5, 2, '').join('+'), P.gruposMppt(7, 4, '4+4').join('+'), P.gruposMppt(4, 0, '').join('+'), P.gruposMppt(6, 2, '2+2').join('+'), P.gruposMppt(0, 3, '').length].join('|'),
+      '3+3+3|3+2|4+3|4|2+2+2|0');
+    const GAc = Object.assign({}, GA, { coluna: { xs: [188.8, 263.0, 344.8, 433.8, 537.7, 626.9, 701.2, 768.0, 842.2, 909.0, 975.8], cheias: [188.8, 344.8, 975.8],
+      topo: 588.8, cab: 529.4, corpo: 484.8, total: 455.2, livre: 124.0, fimTitulo: [370.7, 808.1], sec2: 674.0, xSec: 162.0, xItem: 185.0, passoTxt: 14.9, inv: [555.9, 771.4], quadro: [546.8, 771.4] } });
+    const pr9 = Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '90', w: '550', imp: '13.11' }), nStrings: '9', inv: Object.assign({}, pr.inv, { mppts: '3', imaxMppt: '40' }) });
+    const d9 = P.desenhoStringsA(pr9, campA, GAc);
+    const rotas9 = d9.filter(function (c) { return c.t === 'linha' && c.traco && c.traco[0] === 6; });
+    const mppt9 = d9.filter(function (c) { return c.t === 'texto' && /^MPPT\d$/.test(c.txt); }).map(function (c) { return c.txt; });
+    const baixo9 = d9.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMBaixo'; })[0];
+    const tab9 = d9.filter(function (c) { return c.t === 'texto' && /^STR\d$/.test(c.txt) && Math.abs(c.oc.x - 199.92) < 0.01; });
+    ok('9 strings em 3 MPPT (3 em paralelo cada): 90 módulos, 9 ramais pelo canal tracejado, colchetes MPPT1–3, tabela em passo cheio e seções 3/4 descendo junto',
+      conta(d9, 'CRMMod') === 90 && conta(d9, 'CRMRam') === 9 && rotas9.length === 9 && mppt9.join() === 'MPPT1,MPPT2,MPPT3' &&
+      conta(d9, 'CRMSec2') === 1 && conta(d9, 'CRMInvH') === 1 && conta(d9, 'CRMInvRot') === 1 && baixo9 && Math.abs(baixo9.m[5] + 88.39) < 0.01 &&
+      d9.desloc && Math.abs(d9.desloc.dy + 88.39) < 0.01 && tab9.length === 9 && Math.abs((tab9[0].oc.y - tab9[1].oc.y) - 14.8) < 0.01 &&
+      d9.filter(function (c) { return c.t === 'linha' && !c.traco && c.pts.length === 2 && c.pts[0][1] === 588.8; }).length === 11,
+      { mod: conta(d9, 'CRMMod'), rotas: rotas9.length, mppt: mppt9, baixo: baixo9 && baixo9.m, desloc: d9.desloc });
+    // nenhum ramal cruza outro: os trechos verticais das pistas não atravessam os horizontais dos outros ramais
+    const cruza = (function () {
+      const seg = []; rotas9.forEach(function (r, i) { for (let k = 0; k < 4; k++) seg.push({ i: i, a: r.pts[k], b: r.pts[k + 1] }); });
+      const vs = seg.filter(function (x) { return Math.abs(x.a[0] - x.b[0]) < 1e-6 && Math.abs(x.a[1] - x.b[1]) > 1e-6; });
+      const hs = seg.filter(function (x) { return Math.abs(x.a[1] - x.b[1]) < 1e-6 && Math.abs(x.a[0] - x.b[0]) > 1e-6; });
+      return vs.some(function (v) {
+        return hs.some(function (h) {
+          if (h.i === v.i) return false;
+          const x = v.a[0], y = h.a[1];
+          return x > Math.min(h.a[0], h.b[0]) + 1e-6 && x < Math.max(h.a[0], h.b[0]) - 1e-6 && y > Math.min(v.a[1], v.b[1]) + 1e-6 && y < Math.max(v.a[1], v.b[1]) - 1e-6;
+        });
+      });
+    })();
+    ok('canal das strings: nenhum ramal cruza outro (fileiras mais distantes nas pistas de fora)', !cruza);
+    const c9 = P.conferir(Object.assign(U.clone(pr9), { porString: '10+10+10+10+10+10+10+10+9+1', nStrings: '10', porMppt: '4+3+3', inv: Object.assign({}, pr9.inv, { imaxMppt: '45' }) })).map(function (x) { return x.texto; }).join(' | ');
+    ok('conferência das strings em paralelo: quantidades diferentes no mesmo MPPT e corrente acima do limite do MPPT', /MPPT3: strings em paralelo com quantidades diferentes/.test(c9) && /MPPT1: 4 strings em paralelo somam 52,44 A, acima da corrente máxima de entrada do MPPT \(45 A\)/.test(c9) && !/MPPT2:/.test(c9), c9);
+    const c9b = P.conferir(Object.assign(U.clone(pr9), { porMppt: '3+3' })).map(function (x) { return x.texto; }).join(' | ');
+    ok('conferência: strings por MPPT digitadas que não somam as strings', /As strings por MPPT \(3\+3\) somam 6, mas são 9 strings/.test(c9b), c9b);
+    const d2c = P.desenhoStringsA(pr, campA, GAc);
+    ok('2 strings: desenho original (leque sem tracejado), tabela sem crescer e nada desce', d2c.desloc === null && conta(d2c, 'CRMBaixo') === 1 && Math.abs(d2c.filter(function (c) { return c.nome === 'CRMBaixo'; })[0].m[5]) < 1e-9 &&
+      !d2c.some(function (c) { return c.t === 'linha' && c.traco && c.traco[0] === 6; }) && !d2c.some(function (c) { return c.t === 'texto' && /^MPPT/.test(c.txt); }));
+    // microinversores (como no desenho do projetista: 3 × APsystems de 2 módulos de 270 W, cabo 4 mm², 10,6 V/A·km)
+    const prMi = Object.assign(U.clone(pr), {
+      topologia: 'micro', nStrings: '', mod: Object.assign({}, pr.mod, { w: '270', vmp: '31.1', imp: '8.68', qtd: '6', larg: '992' }),
+      inv: { fab: 'Marca Micro', modelo: 'MM-600', kw: '0.6', qtd: '3', fases: 'mono', tensao: '220', vmaxCC: '55', tipo: 'micro', modPorUnid: '2', maxPorRamal: '7' },
+      ca: Object.assign({}, pr.ca, { bit: '4', un: '10,6', dist: '3,32' }), micro: { dists: '', passo: '' }
+    });
+    const cMi = P.calcular(prMi);
+    igual('micros: corrente P/V por micro, distâncias do mais próximo + passo (largura de 2 módulos + 2 cm) e quedas como na tabela do projetista',
+      [cMi.nMicro, cMi.modPorMicro, cMi.passoMicro, cMi.micros.map(function (x) { return [x.n, x.i.toFixed(2), x.dist.toFixed(2), x.dv.toFixed(2), x.pct.toFixed(2)].join('/'); }).join(' '), cMi.kwCa.toFixed(2), cMi.iInv.toFixed(2)].join('|'),
+      '3|2|2.02|2/2.73/7.36/0.21/0.10 2/2.73/5.34/0.15/0.07 2/2.73/3.32/0.10/0.04|1.80|8.18');
+    igual('micros: distâncias digitadas (vírgula decimal, separadas por ponto e vírgula ou vírgula e espaço)', [P.calcular(Object.assign(U.clone(prMi), { micro: { dists: '7,45; 5,38; 3,32' } })).micros.map(function (x) { return x.dist; }).join(','),
+      P.calcular(Object.assign(U.clone(prMi), { micro: { dists: '7.45, 5.38, 3.32' } })).micros.map(function (x) { return x.dist; }).join(',')].join('|'), '7.45,5.38,3.32|7.45,5.38,3.32');
+    const dMi = P.desenhoStringsA(prMi, campA, GAc);
+    const txMi = dMi.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    ok('desenho dos micros: 6 módulos, 3 caixas MI no tronco CA, sem inversor/strings/seções 2–4 do modelo, títulos e tabela dos micros',
+      conta(dMi, 'CRMMod') === 6 && conta(dMi, 'CRMInvH') === 3 && conta(dMi, 'CRMInvRot') === 0 && conta(dMi, 'CRMSec2') === 0 && conta(dMi, 'CRMBaixo') === 0 && conta(dMi, 'CRMRam') === 0 &&
+      ['MI-1', 'MI-2', 'MI-3', '(Micro Inversores)', '2) Micro Inversores', 'Módulos (Placas) por Micro Inversor: 2', 'Potência: 600W', '3) Total', 'Número de Micro Inversores: 3', 'Potência Total (KW): 1.8', '7.36', '0.21', '10.6', '2.73']
+        .every(function (t) { return txMi.indexOf(t) >= 0; }) &&
+      txMi.indexOf('Tipo: MARCA MICRO - MM-600 - 600W - 2 Mod. - 220V (Bifásico)') >= 0 && dMi.pular.indexOf('str_n') >= 0 && dMi.pular.indexOf('ti_kw') >= 0 && dMi.pularOc.inv_nome.join() === '1',
+      txMi.filter(function (t) { return /Tipo|Total|Micro/.test(t); }));
+    const auMi = P.automaticos(prMi, ctxP);
+    igual('micros: das placas vem o tronco CA (condutores do circuito CA e terra)', [auMi.fiaPlacas, auMi.fiaInversor].join('|'), '2#4(T#6)|2#4(T#6)');
+    const cfMi = P.conferir(Object.assign(U.clone(prMi), { mod: Object.assign({}, prMi.mod, { qtd: '8' }) })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
+    ok('micros: conferência de capacidade (8 módulos em 3 micros de 2) e sem conferências de string', /erro:8 módulos para 3 microinversor\(es\) de 2 módulos \(máx\. 6\)/.test(cfMi) && !/String|string/.test(cfMi), cfMi);
+    const peMi = P.pendencias(prMi, ctxP);
+    ok('micros: pendências sem strings nem circuito CC', peMi.length === 0 && P.pendencias(Object.assign(U.clone(prMi), { inv: Object.assign({}, prMi.inv, { modPorUnid: '' }), ca: Object.assign({}, prMi.ca, { dist: '' }) }), ctxP).join('|') === 'Módulos por microinversor|Distância do microinversor mais próximo ao quadro', peMi);
     igual('prancha: disjuntor comercial e capacidade do cabo (NBR 5410 B1)', [P.proxDisjuntor(1.25 * 27.27), P.proxDisjuntor(1.25 * 18.18), P.izCabo(6, 'bi'), P.izCabo(10, 'tri')].join('|'), '40|25|41|50');
     ok('prancha: queda unitária de referência 2ρ/S (6 mm² ≈ 6,87 V/A·km)', Math.abs(P.quedaRef(6, false) - 6.867) < 0.01 && Math.abs(P.quedaRef(6, true) - 5.947) < 0.01);
     ok('prancha: sem pendências com os campos preenchidos', P.pendencias(pr, ctxP).length === 0, P.pendencias(pr, ctxP));

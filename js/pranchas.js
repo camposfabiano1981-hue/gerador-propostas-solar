@@ -126,7 +126,8 @@ window.App = window.App || {};
     return {
       fab: (eq && eq.fabricante) || (placa && placa.marca) || '', modelo: (eq && eq.modelo) || (placa && placa.modelo) || '',
       w: g((eq && eq.potencia) || (placa && placa.potencia)), vmp: g(eq && eq.vmp), imp: imp ? String(U.round(imp, 2)) : '', voc: g(eq && eq.voc), isc: g(eq && eq.isc),
-      celulas: g(eq && eq.celulas), coefVoc: g(eq && eq.coefVoc), qtd: qtd > 0 ? String(qtd) : ''
+      celulas: g(eq && eq.celulas), coefVoc: g(eq && eq.coefVoc), qtd: qtd > 0 ? String(qtd) : '',
+      larg: g(eq && eq.largura), comp: g(eq && eq.comprimento)
     };
   }
   function dadosInversor(eq, placa, qtd) {
@@ -136,7 +137,8 @@ window.App = window.App || {};
     return {
       fab: (eq && eq.fabricante) || (placa && placa.marca) || '', modelo: (eq && eq.modelo) || (placa && placa.modelo) || '',
       kw: g((eq && eq.potencia) || (placa && placa.potencia)), qtd: qtd > 0 ? String(qtd) : '', fases: fases,
-      tensao: tensao ? tensao[0] : '220', vmaxCC: g(eq && eq.vmaxCC), iSaida: g(eq && eq.iSaidaMax), mppts: g(eq && eq.mppts)
+      tensao: tensao ? tensao[0] : '220', vmaxCC: g(eq && eq.vmaxCC), iSaida: g(eq && eq.iSaidaMax), mppts: g(eq && eq.mppts),
+      tipo: (eq && eq.tipo) || '', imaxMppt: g(eq && eq.imaxMppt), modPorUnid: g(eq && eq.modulosPorUnidade), maxPorRamal: g(eq && eq.maxPorRamal)
     };
   }
 
@@ -158,7 +160,8 @@ window.App = window.App || {};
     if (!nStr && qMod > 0) nStr = 1;
     return {
       x: x, mod: dadosModulo(eqMod, pm, qMod), inv: dadosInversor(eqInv, pi, qInv), modelosDiferentes: outros.length > 0,
-      nStrings: nStr > 0 ? String(nStr) : '', ligacao: (x.prop && x.prop.ligacao) || '', telhado: (x.prop && x.prop.telhado) || ''
+      nStrings: nStr > 0 ? String(nStr) : '', ligacao: (x.prop && x.prop.ligacao) || '', telhado: (x.prop && x.prop.telhado) || '',
+      topologia: (eqInv && eqInv.tipo === 'micro') || (r && r.micro) || (x.prop && x.prop.topologia === 'micro') ? 'micro' : (eqInv || (r && r.inversor) ? 'string' : '')
     };
   }
 
@@ -215,7 +218,7 @@ window.App = window.App || {};
       cliente: { nome: '', documento: '', endereco: '' }, uc: '', art: '',
       ruas: { uc: '', r2: '', r3: '', r4: '' }, utm: { fuso: '21K', x: '', y: '' },
       emp: { endereco: '', contato: '' }, rt: { nome: '', registro: '', tel: '' },
-      mod: {}, inv: {}, nStrings: '', porString: '', ligacao: 'bi',
+      mod: {}, inv: {}, topologia: 'string', nStrings: '', porString: '', porMppt: '', micro: { dists: '', passo: '' }, ligacao: 'bi',
       cc: { bit: pad.cc.bit, tipo: pad.cc.tipo, un: pad.cc.un, dist1: '', dist2: '' },
       ca: { bit: pad.ca.bit, mat: pad.ca.mat, iso: pad.ca.iso, un: pad.ca.un, dist: '' },
       entrada: U.clone(pad.entrada), saida: U.clone(pad.saida), ramal: U.clone(pad.ramal), terraBit: pad.terraBit,
@@ -241,6 +244,8 @@ window.App = window.App || {};
     if (!str(pr.ruas.uc)) pr.ruas.uc = rua(cli.endereco);
     pr.mod = e.mod; pr.inv = e.inv;
     pr.modelosDiferentes = e.modelosDiferentes;
+    if (e.topologia) pr.topologia = e.topologia;
+    pr.micro = pr.micro || { dists: '', passo: '' };
     // strings: as do dimensionamento, respeitando o máximo de módulos por string do projetista (padrão 10)
     const maxS = num(pr.maxStr) || 10, nMod = num(e.mod.qtd);
     const nMin = nMod > 0 ? Math.ceil(nMod / maxS) : 0;
@@ -274,6 +279,39 @@ window.App = window.App || {};
     return Array.from({ length: nStr }, function (_, i) { return base + (i < extra ? 1 : 0); });
   }
 
+  /** Lista "3+3+3" (ou "10 10 5") em números inteiros positivos. */
+  function listaNum(v) { return String(v == null ? '' : v).split(/[+;\s]+/).map(function (x) { return Math.round(num(x)); }).filter(function (x) { return x > 0; }); }
+  /**
+   * Strings de cada MPPT (as do mesmo MPPT ficam em paralelo). porMppt: em branco = as strings divididas pelos MPPTs do inversor
+   * (as primeiras levam uma a mais); uma lista ("3+3+3") = strings por MPPT, nessa ordem. Sempre soma nStr: o que faltar vira
+   * mais um grupo e o que sobrar é cortado.
+   */
+  function gruposMppt(nStr, mppts, porMppt) {
+    if (!(nStr > 0)) return [];
+    let g = listaNum(porMppt);
+    if (!g.length) {
+      const m = Math.max(1, Math.min(Math.round(num(mppts)) || 1, nStr));
+      const base = Math.floor(nStr / m), extra = nStr % m;
+      return Array.from({ length: m }, function (_, i) { return base + (i < extra ? 1 : 0); });
+    }
+    const out = [];
+    let resto = nStr;
+    g.forEach(function (n) { if (resto > 0) { out.push(Math.min(n, resto)); resto -= Math.min(n, resto); } });
+    if (resto > 0) out.push(resto);
+    return out;
+  }
+  /** Distâncias digitadas de cada micro ("7,45; 5,38; 3,32" ou "7.45, 5.38"): ponto e vírgula, espaço ou vírgula seguida de espaço. */
+  function distsMicro(pr) {
+    return String((pr.micro && pr.micro.dists) || '').split(/;|,\s+|\s+/).map(function (x) { return num(x); }).filter(function (x) { return x > 0; });
+  }
+  /** Passo entre microinversores (m): o digitado ou, em branco, a largura dos módulos de um micro lado a lado (+ 2 cm de fixação). */
+  function passoMicro(pr) {
+    const p = num(pr.micro && pr.micro.passo);
+    if (p > 0) return p;
+    const k = Math.max(1, Math.round(num(pr.inv && pr.inv.modPorUnid)) || 1), larg = num(pr.mod && pr.mod.larg);
+    return Math.round(k * ((larg > 0 ? larg / 1000 : 1.134) + 0.02) * 100) / 100;
+  }
+
   function calcular(pr) {
     const m = pr.mod || {}, iv = pr.inv || {};
     const nMod = num(m.qtd), nStr = num(pr.nStrings), nInv = Math.max(num(iv.qtd), iv.kw || iv.modelo ? 1 : 0);
@@ -295,14 +333,36 @@ window.App = window.App || {};
     const vocMod = num(m.voc);
     const vocFrioMod = vocMod > 0 ? (C && C.vocFrio ? C.vocFrio({ voc: vocMod, coefVoc: m.coefVoc }, prem) : vocMod * 1.12) : 0;
     const maxStr = tam.length ? Math.max.apply(null, tam) : 0;
-    return {
-      nMod: nMod, nStr: tam.length, nInv: nInv, tam: tam, strings: strings, maxStr: maxStr, w: w, vmp: vmp, imp: imp, kwp: kwp,
+    const out = {
+      micro: false, nMod: nMod, nStr: tam.length, nInv: nInv, tam: tam, strings: strings, maxStr: maxStr, w: w, vmp: vmp, imp: imp, kwp: kwp,
       kw: kw, vInv: vInv, fp: fp, iInv: iInv, dvCa: dvCa, pctCa: vInv > 0 ? dvCa / vInv * 100 : 0,
       strPorInv: nInv > 0 ? Math.ceil(tam.length / nInv) : tam.length, modPorInv: nInv > 0 ? Math.round(nMod / nInv) : nMod,
-      vocFrioStr: vocFrioMod * maxStr, iscStr: num(m.isc)
+      vocFrioStr: vocFrioMod * maxStr, vocFrioMod: vocFrioMod, iscStr: num(m.isc),
+      grupos: gruposMppt(tam.length, iv.mppts, pr.porMppt), micros: []
     };
+    if (pr.topologia !== 'micro') return out;
+    // microinversores: cada unidade com os seus módulos, a corrente CA dela e a queda até o quadro (MI-1 é o mais distante)
+    const k = Math.max(1, Math.round(num(iv.modPorUnid)) || 1);
+    const nMi = num(iv.qtd) > 0 ? Math.round(num(iv.qtd)) : (nMod > 0 ? Math.ceil(nMod / k) : 0);
+    const wMi = kw * 1000, iMi = wMi > 0 ? wMi / (vInv * fp * (iv.fases === 'tri' ? Math.sqrt(3) : 1)) : 0;
+    const dl = distsMicro(pr);
+    const perto = num(pr.ca.dist), passo = passoMicro(pr);
+    const micros = Array.from({ length: nMi }, function (_, i) {
+      const n = Math.min(k, Math.max(0, nMod - i * k));
+      const dist = dl.length >= nMi ? dl[i] : (perto > 0 ? perto + (nMi - 1 - i) * passo : 0);
+      const dv = num(pr.ca.un) * iMi * dist / 1000;
+      return { n: n, w: wMi, v: vInv, i: iMi, dist: dist, dv: dv, pct: vInv > 0 ? dv / vInv * 100 : 0 };
+    });
+    const pior = micros.reduce(function (a, x) { return !a || x.dv > a.dv ? x : a; }, null);
+    return Object.assign(out, {
+      micro: true, micros: micros, nMicro: nMi, modPorMicro: k, wMicro: wMi, iMicro: iMi, passoMicro: passo,
+      nStr: 0, tam: [], strings: [], grupos: [], maxStr: 0, vocFrioStr: vocFrioMod, nInv: nMi,
+      kwCa: nMi * kw, iInv: nMi * iMi, dvCa: pior ? pior.dv : 0, pctCa: pior ? pior.pct : 0,
+      ramais: num(iv.maxPorRamal) > 0 && nMi > 0 ? Math.ceil(nMi / num(iv.maxPorRamal) - 1e-9) : 0
+    });
   }
 
+  const TOPOLOGIAS = [{ v: 'string', t: 'Inversor de string' }, { v: 'micro', t: 'Microinversores' }];
   /** Condutores do circuito CA do inversor ao quadro, escolhidos pelo projetista (padrão FFT). */
   const CONDUTORES_CA = [{ v: 'FFT', t: 'F + F + T (2 fases e terra)' }, { v: 'FNT', t: 'F + N + T (fase, neutro e terra)' },
     { v: 'FFFT', t: 'F + F + F + T (3 fases e terra)' }, { v: 'FFFNT', t: 'F + F + F + N + T (3 fases, neutro e terra)' }];
@@ -327,8 +387,9 @@ window.App = window.App || {};
     return {
       empEndereco: endEmp, empContato: contato, rtNome: str(emp.responsavel),
       rtRegistro: reg ? [str(emp.registroTipo) || 'CFT-BR', 'nº', regFmt].join(' ') : '', rtTel: telRt ? 'TEL. ' + telRt.replace(/^\(?\d{2}\)?\s+(?=9?\d{4})/, '') : '',
-      fiaPlacas: c.nStr > 0 ? (2 * c.nStr) + '#' + str(pr.cc.bit) + '(T#' + tm + ')' : '',
-      fiaSb: (2 * Math.max(1, Math.min(c.nStr || 1, num(pr.inv && pr.inv.mppts) || 1))) + '#' + str(pr.cc.bit) + '(T#' + tm + ')',
+      // microinversores: das placas vem o tronco CA (condutores do circuito CA e o terra)
+      fiaPlacas: c.micro ? (c.nMicro > 0 ? cond + '#' + str(pr.ca.bit) + '(T#' + str(pr.terraBit) + ')' : '') : (c.nStr > 0 ? (2 * c.nStr) + '#' + str(pr.cc.bit) + '(T#' + tm + ')' : ''),
+      fiaSb: c.micro ? cond + '#' + str(pr.ca.bit) + '(T#' + str(pr.terraBit) + ')' : (2 * Math.max(1, Math.min(c.nStr || 1, num(pr.inv && pr.inv.mppts) || 1))) + '#' + str(pr.cc.bit) + '(T#' + tm + ')',
       fiaInversor: cond + '#' + str(pr.ca.bit) + '(T#' + str(pr.terraBit) + ')'
     };
   }
@@ -450,31 +511,92 @@ window.App = window.App || {};
   }
 
   /**
-   * Desenho das strings do estilo A com a quantidade real da obra: uma fileira por string com os módulos dela (as placas diminuem
-   * só quando não cabem), o ramal de cada string até o inversor, a tabela com uma linha por string e um "Campo Fotov." por string
-   * nos dois unifilares. Devolve comandos para o gerador do PDF: {t: 'forma', nome, m} (bloco do desenho original com a matriz),
-   * {t: 'linha', pts, cor, traco} e {t: 'texto', oc, txt} (texto em traços na posição/tamanho do original).
+   * Desenho do estilo A com a quantidade real da obra. Inversor de string: uma fileira por string com os módulos dela (as placas
+   * diminuem só quando não cabem), as strings do mesmo MPPT (em paralelo) agrupadas em blocos, o ramal de cada string até o
+   * inversor (em leque com até 2 strings, como no desenho original; com 3 ou mais, por um canal tracejado, sem cruzamentos), a
+   * tabela com uma linha por string (cresce para baixo empurrando as seções 3 e 4) e um "Campo Fotov." por string nos unifilares.
+   * Microinversores: os módulos de cada micro lado a lado, a caixa MI ligada por baixo, o tronco CA com as marcas dos condutores e
+   * do terra até o quadro, e as seções "2) Micro Inversores" (com a tabela de quedas de cada micro) e "3) Total".
+   * Devolve comandos para o gerador do PDF: {t: 'forma', nome, m} (bloco do desenho original com a matriz), {t: 'linha', pts, cor,
+   * traco} e {t: 'texto', oc, txt}; e ainda cmds.pular (campos que o desenho substitui), cmds.pularOc ({campo: [ocorrências]}) e
+   * cmds.desloc ({x, y, dy}: os campos à esquerda de x e abaixo de y descem dy).
    * campos: mapa do estilo A; G: mapa.stringsA.
    */
   function desenhoStringsA(pr, campos, G) {
-    const c = calcular(pr), cmds = [], tam = c.tam, N = tam.length;
-    if (!N || !G) return cmds;
-    const w = c.w > 0 ? pt(c.w, 1) : '', bit = str(pr.cc.bit), preto = [0, 0, 0];
+    const c = calcular(pr), cmds = [];
+    cmds.pular = []; cmds.pularOc = {}; cmds.desloc = null;
+    if (!G) return cmds;
+    const w = c.w > 0 ? pt(c.w, 1) : '', bit = str(pr.cc.bit), preto = [0, 0, 0], azul = [0, 0, 1];
     const forma = function (nome, ox, oy, nx, ny, s) { cmds.push({ t: 'forma', nome: nome, m: [s, 0, 0, s, nx - s * ox, ny - s * oy] }); };
     const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
     const texto = function (oc, txt, ox, oy, nx, ny, s) {
       if (!oc || !txt) return;
       cmds.push({ t: 'texto', txt: txt, oc: Object.assign({}, oc, { x: nx + s * (oc.x - ox), y: ny + s * (oc.y - oy), s: oc.s * s, w: oc.w ? oc.w * s : oc.w }) });
     };
+    const escrever = function (oc, txt) { if (oc && txt) cmds.push({ t: 'texto', txt: txt, oc: oc }); };
     const um = function (k) { return campos[k] && campos[k][0]; };
-    // ---- fileiras e ramais
-    const F = G.fileira, R = G.ramal;
+    const F = G.fileira, R = G.ramal, K = G.coluna || null;
+    // marcas dos condutores CA (FFT, FNT…) com a origem (ox, oy) da fiação quadro–inversor levada a (nx, ny) na escala s
+    const marcasCA = function (nx, ny, s) {
+      const Kc = G.condutores;
+      if (!Kc) return;
+      letrasCA(pr).forEach(function (l, i) {
+        const x = Kc.h.xF - i * Kc.h.passo;
+        if (l === 'N') forma('CRMTickN', Kc.h.xN, 772.2, nx + s * (x - Kc.h.xF), ny, s); else forma('CRMTickF', Kc.h.xF, 772.2, nx + s * (x - Kc.h.xF), ny, s);
+      });
+    };
+    if (c.micro) { desenhoMicros(); return cmds; }
+
+    // ---- inversor (espelhado: CA para o quadro, CC para as strings) e os rótulos INV1
+    forma('CRMInvH', 555.9, 0, 555.9, 0, 1);
+    cmds[cmds.length - 1].m = [-1, 0, 0, 1, 2 * 555.9, 0];
+    forma('CRMInvRot', 0, 0, 0, 0, 1);
+    const tam = c.tam, N = tam.length;
+
+    // ---- tabela de strings: uma linha por string; com mais de 3 o corpo cresce (até a moldura) e o resto da coluna desce
+    const T = G.tabela, rotTab = um('_tab_str');
+    const H0 = 7.48, req = (Math.max(N, 1) - 1) * T.passo + T.passo / 1.4 + 4.01; // corpo para o passo cheio (14,8)
+    const desce = K ? Math.max(0, Math.min(K.livre, req - (T.topo - T.fundo))) : 0;
+    const fundo = T.fundo - desce;
+    if (K) {
+      forma('CRMSec2', 0, 0, 0, 0, 1);
+      K.xs.forEach(function (x) { linha([[x, K.topo], [x, K.cheias.indexOf(x) >= 0 ? K.total - desce : K.corpo - desce]]); });
+      forma('CRMBaixo', 0, 0, 0, -desce, 1);
+      if (desce > 0) cmds.desloc = { x: 1160, y: K.corpo + 0.6, dy: -desce };
+    }
+    if (!N) return cmds;
+    // passo entre linhas e altura das letras: 14,8 como no desenho; só quando nem a coluna inteira basta as linhas se aproximam e
+    // as letras diminuem na mesma proporção, o bloco sempre centrado no corpo da tabela
+    const livreT = T.topo - fundo - 4;
+    const sp = N > 1 ? Math.min(T.passo, livreT / (N - 1 + 1 / 1.4)) : T.passo;
+    const st = Math.min(1, sp / 1.4 / H0), altB = (N - 1) * sp + H0 * st;
+    const baseFundo = (T.topo + fundo) / 2 - altB / 2;
+    c.strings.forEach(function (sx, i) {
+      const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(pr, sx);
+      if (rotTab) cmds.push({ t: 'texto', txt: 'STR' + (i + 1), oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
+      COLUNAS.forEach(function (k) { const oc = um('t1_' + k); if (oc && l[k]) cmds.push({ t: 'texto', txt: l[k], oc: Object.assign({}, oc, { y: y, s: oc.s * st }) }); });
+    });
+
+    // ---- fileiras: STR1 embaixo; as strings do mesmo MPPT (em paralelo) num bloco, com folga entre os blocos
+    const paralelo = c.grupos.some(function (g) { return g > 1; });
+    const blocoDe = [];
+    (paralelo ? c.grupos : tam.map(function () { return 1; })).forEach(function (g, j) { for (let i = 0; i < g; i++) blocoDe.push(j); });
+    const nBlocos = paralelo ? c.grupos.length : 1, folgaB = paralelo && N > 2 ? 0.55 * F.passoY : 0;
     const nmax = Math.max.apply(null, tam);
-    const s = Math.min(1, (F.xmax - F.x0) / ((nmax - 1) * F.passo + F.larg), (F.topo - F.base) / (N * F.alt + (N - 1) * (F.passoY - F.alt)));
+    const altTot = N * F.alt + (N - 1) * (F.passoY - F.alt) + (nBlocos - 1) * folgaB;
+    const s = Math.min(1, (F.xmax - F.x0) / ((nmax - 1) * F.passo + F.larg), (F.topo - F.base) / altTot);
     const xu = F.x0 + F.ultimo * F.passo; // 1º módulo da última posição no desenho original
     const sg = Math.min(1, 1.5 * s);     // grupo + − T do ramal
+    const oys = [];
+    let yAt = F.topo - F.alt * s;
+    for (let k = N - 1; k >= 0; k--) {
+      oys[k] = yAt;
+      yAt -= F.passoY * s;
+      if (k > 0 && blocoDe[k - 1] !== blocoDe[k]) yAt -= folgaB * s;
+    }
+    const ents = [];
     tam.forEach(function (n, k) {
-      const oy = F.topo - F.alt * s - (N - 1 - k) * F.passoY * s, rot = 'STR' + (k + 1);
+      const oy = oys[k], rot = 'STR' + (k + 1);
       for (let j = 0; j < n; j++) forma('CRMMod', F.x0, F.y0, F.x0 + j * F.passo * s, oy, s);
       forma('CRMDps', F.x0, F.y0, F.x0, oy, s);
       for (let j = 0; j < n - 1; j++) {
@@ -487,28 +609,63 @@ window.App = window.App || {};
       forma('CRMFim', xu, F.y0, xf, oy, s);
       const yr = oy + s * (F.ret[1] - F.y0);
       linha([[F.x0 + s * (F.ret[0] - F.x0), yr], [xf + s * (F.ret[2] - xu), yr]]);
-      const ent = [F.x0 + s * (F.entrada[0] - F.x0), oy + s * (F.entrada[1] - F.y0)];
-      linha([R.p0, ent]);
-      const ax = R.ancora[0], ay = R.p0[1] + (ax - R.p0[0]) / (ent[0] - R.p0[0]) * (ent[1] - R.p0[1]);
+      ents[k] = [F.x0 + s * (F.entrada[0] - F.x0), oy + s * (F.entrada[1] - F.y0)];
+    });
+    // grupo + − T, rótulo da string e bitolas (#cabo CC sob + e −, #terra sob o T) no ramal, no ponto (ax, ay)
+    const grupoRamal = function (k, ax, ay) {
       forma('CRMRam', ax, R.ancora[1], ax, ay, sg);
-      texto(um('_ram_str'), rot, ax, R.ancora[1], ax, ay, sg);
-      // rótulos sob os condutores + − (cabo CC) e sob o T (terra)
+      texto(um('_ram_str'), 'STR' + (k + 1), ax, R.ancora[1], ax, ay, sg);
       (campos._ram_bit || []).forEach(function (oc, i) { const b = i === 0 ? bit : terraMod(pr); texto(oc, b ? '#' + b : '', ax, R.ancora[1], ax, ay, sg); });
-    });
-    // ---- tabela de strings: uma linha por string, centradas no corpo da tabela
-    const T = G.tabela, rotTab = um('_tab_str');
-    // passo entre linhas e altura das letras: até 3 strings como no desenho (14,8); com mais, as linhas se aproximam e as letras
-    // diminuem na mesma proporção, o bloco sempre centrado no corpo da tabela
-    const H0 = 7.48, livre = T.topo - T.fundo - 4;
-    const sp = Math.min(T.passo, livre / (N - 1 + 1 / 1.4));
-    const st = Math.min(1, sp / 1.4 / H0), alt = (N - 1) * sp + H0 * st;
-    const baseFundo = (T.topo + T.fundo) / 2 - alt / 2;
-    c.strings.forEach(function (sx, i) {
-      const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(pr, sx);
-      if (rotTab) cmds.push({ t: 'texto', txt: 'STR' + (i + 1), oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
-      COLUNAS.forEach(function (k) { const oc = um('t1_' + k); if (oc && l[k]) cmds.push({ t: 'texto', txt: l[k], oc: Object.assign({}, oc, { y: y, s: oc.s * st }) }); });
-    });
-    // ---- unifilar simplificado: um ramo por string sob o inversor, ligados pelo barramento
+    };
+    if (N <= 2) {
+      // como no desenho original: ramais retos do inversor até cada fileira
+      ents.forEach(function (ent, k) {
+        linha([R.p0, ent]);
+        const ax = R.ancora[0], ay = R.p0[1] + (ax - R.p0[0]) / (ent[0] - R.p0[0]) * (ent[1] - R.p0[1]);
+        grupoRamal(k, ax, ay);
+      });
+    } else {
+      // canal: cada string sai da fileira na horizontal até a sua pista, desce/sobe até o seu nível e segue para o inversor; as
+      // fileiras mais distantes usam as pistas mais externas, então nenhum ramal cruza outro
+      // as pistas chegam por linhas curtas a um ponto à direita do rótulo INV1 e seguem juntas até o inversor
+      const y0 = R.p0[1], xa = 640, xb = R.ancora[0] - 14, xc = xa - 12, q = [R.p0[0] + 36, y0];
+      const acima = [], abaixo = [];
+      ents.forEach(function (e, k) { (e[1] >= y0 ? acima : abaixo).push(k); });
+      acima.sort(function (a, b) { return ents[b][1] - ents[a][1]; });   // de cima (mais longe) para baixo
+      abaixo.sort(function (a, b) { return ents[a][1] - ents[b][1]; });  // de baixo (mais longe) para cima
+      const nPistas = Math.max(acima.length, abaixo.length, 1);
+      const dx = Math.min(10, (xb - xa) / nPistas), db = Math.min(3, 30 / N);
+      const traco = [6, 3];
+      const rota = function (k, i, nivel) {
+        const e = ents[k], xp = xa + i * dx;
+        linha([e, [xp, e[1]], [xp, nivel], [xc, nivel], q, R.p0], preto, traco);
+        grupoRamal(k, R.ancora[0], e[1]);
+      };
+      acima.forEach(function (k, i) { rota(k, i, y0 + (acima.length - 1 - i) * db); });
+      abaixo.forEach(function (k, i) { rota(k, i, y0 - (abaixo.length - i) * db); });
+      // blocos de strings em paralelo: colchete com o MPPT entre os ramais e as fileiras
+      if (paralelo) {
+        let ini = 0;
+        const ocM = um('_ram_str') || { t: 'txt', s: 5.66, fl: 0.9, ang: 0, cor: preto, al: 'l' };
+        c.grupos.forEach(function (g, j) {
+          const ks = []; for (let i = 0; i < g; i++) ks.push(ini + i);
+          ini += g;
+          const yb = oys[ks[0]] - 1, yt = oys[ks[ks.length - 1]] + F.alt * s + 1, xk = F.x0 - 6;
+          linha([[xk + 3, yb], [xk, yb], [xk, yt], [xk + 3, yt]], preto);
+          if (ocM) cmds.push({ t: 'texto', txt: 'MPPT' + (j + 1), oc: Object.assign({}, ocM, { x: xk - 2.2, y: (yb + yt) / 2 - 8.2 * Math.min(1, 1.6 * s), s: ocM.s * Math.min(1, 1.6 * s), ang: 90, al: 'l', w: null }) });
+        });
+      }
+    }
+
+    unifilares(tam, 'STR', true);
+    condutoresCA();
+    return cmds;
+
+    // ---- unifilares: um ramo por string (ou por micro) com o "Campo Fotov.", o rótulo e a bitola; comCC = marca e texto do cabo CC
+    function unifilares(tam, pref, comCC) {
+    const N = tam.length;
+    if (!N) return;
+    // unifilar simplificado: um ramo por string sob o inversor, ligados pelo barramento
     const S = G.uniS, cfS = campos.campo_fv && campos.campo_fv[2];
     let xsS = [S.xInv], su = 1;
     if (N > 1) {
@@ -521,8 +678,8 @@ window.App = window.App || {};
       forma('CRMRamS', S.x, S.yBus, x, S.yBus, su);
       texto(um('_uS_campo'), 'Campo Fotov.', S.x, S.yBus, x, S.yBus, su);
       texto(cfS, w ? tam[k] + 'x' + w + 'W' : '', S.x, S.yBus, x, S.yBus, su);
-      texto(um('_uS_str'), 'STR' + (k + 1), S.x, S.yBus, x, S.yBus, su);
-      texto(um('_uS_bit'), bit ? '#' + bit : '', S.x, S.yBus, x, S.yBus, su);
+      texto(um('_uS_str'), pref + (k + 1), S.x, S.yBus, x, S.yBus, su);
+      texto(um('_uS_bit'), comCC && bit ? '#' + bit : '', S.x, S.yBus, x, S.yBus, su);
     });
     // ---- unifilar principal: até 2 strings como no desenho; 3 ou mais pelo barramento sob o inversor
     const V = G.uniU, cf = campos.campo_fv || [], uc = campos._uU_campo || [];
@@ -552,24 +709,133 @@ window.App = window.App || {};
       const cz = V.caixa, x0 = Math.min(cz[0], xsU[0] - (V.xs[0] - (uc[0] ? uc[0].x - uc[0].s : V.xs[0] - 23.1)) * sv - 4);
       linha([[x0, cz[1]], [cz[2], cz[1]], [cz[2], cz[3]], [x0, cz[3]], [x0, cz[1]]], [0.498, 0, 1], [12.6, 6.3]);
     }
-    // condutores do circuito CA (FFT, FNT…): traços na fiação quadro–inversor e nos dois pontos do unifilar simplificado
-    const K = G.condutores;
-    if (K) {
-      letrasCA(pr).forEach(function (l, i) {
-        const x = K.h.xF - i * K.h.passo;
-        if (l === 'N') forma('CRMTickN', K.h.xN, 0, x, 0, 1); else forma('CRMTickF', K.h.xF, 0, x, 0, 1);
-        K.v.forEach(function (pv) {
-          const y = pv.y - i * pv.passo;
-          if (l === 'N') forma('CRMTickNh', 0, K.yN, 0, y, 1); else forma('CRMTickFh', 0, K.yF, 0, y, 1);
-        });
-      });
-    }
+    if (!comCC) return;
     // marca do cabo CC cruzando os condutores e o texto do cabo logo depois dela
     const x1 = xsU[0] - 1.3, xn = xsU[xsU.length - 1], mk = V.marca;
     linha([[xn + 1.9, mk[1]], [xn + 1.9, mk[0]], [x1, mk[0]], [x1, mk[1]], [xn + 10.6, mk[1]]]);
     const occ = um('cabo_cc');
     if (occ && str(pr.cc.bit)) cmds.push({ t: 'texto', txt: (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : str(pr.cc.bit)) + 'mm2/' + str(pr.cc.tipo), oc: Object.assign({}, occ, { x: occ.x + (xn - V.xs[1]) }) });
-    return cmds;
+    }
+
+    // condutores do circuito CA (FFT, FNT…): traços na fiação quadro–inversor e nos dois pontos do unifilar simplificado
+    function condutoresCA() {
+      const Kc = G.condutores;
+      if (!Kc) return;
+      letrasCA(pr).forEach(function (l, i) {
+        const x = Kc.h.xF - i * Kc.h.passo;
+        if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1);
+        Kc.v.forEach(function (pv) {
+          const y = pv.y - i * pv.passo;
+          if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1);
+        });
+      });
+    }
+
+    // ================================================================= microinversores
+    function desenhoMicros() {
+      const mic = c.micros, nMi = mic.length, kM = c.modPorMicro;
+      ['campo_fv', 'cabo_cc', 'bit_cc_marca', 'str_n', 'str_p', 'str_v', 'total_kwp', 'inv_strings', 'inv_kw', 'n_inv', 'inv_logo']
+        .concat(COLUNAS.map(function (k) { return 't2_' + k; }), ['ti_nstr', 'ti_nmod', 'ti_efic', 'ti_kw', 'ti_v', 'ti_fp', 'ti_i', 'ti_cabo', 'ti_un', 'ti_dist', 'ti_dv', 'ti_pct'])
+        .forEach(function (k) { cmds.pular.push(k); });
+      cmds.pularOc.inv_nome = [1];      // "INVERSOR …" da seção 3
+      cmds.pularOc.inv_kw_cad = [1];    // potência sobre o símbolo do inversor
+      unifilares(mic.map(function (x) { return x.n; }), 'MI-', false);
+      condutoresCA();
+      // ---- módulos de cada micro, caixa MI, ligação por baixo e o tronco CA até o quadro
+      if (nMi) {
+        const gw = (kM - 1) * F.passo + F.larg, gG = 0.45 * F.larg, rh = F.alt + 58, gR = 12;
+        const xA = 650, xB = F.xmax, yT = F.topo, yB = F.base;
+        let melhor = null;
+        for (let r = 1; r <= nMi; r++) {
+          const cols = Math.ceil(nMi / r), W = cols * gw + (cols - 1) * gG, H = r * rh + (r - 1) * gR;
+          const sx = Math.min(1, (xB - xA) / W, (yT - yB) / H);
+          if (!melhor || sx > melhor.s + 1e-6) melhor = { r: r, cols: cols, s: sx };
+        }
+        const s = melhor.s, cols = melhor.cols, linhas = Math.ceil(nMi / cols);
+        const sm = Math.min(1.2, 1.6 * s), traco = [4, 2];
+        const xCol = xA - 22, trilhos = [];
+        const ocMi = { t: 'txt', s: 6.4 * Math.min(1, 1.5 * s), fl: 0.9, ang: 0, cor: preto, al: 'l' };
+        for (let i = 0; i < nMi; i++) {
+          // MI-1 é o mais distante do quadro (à direita na 1ª linha); a numeração anda para o quadro
+          const lin = Math.floor(i / cols), col = cols - 1 - (i % cols);
+          const gx = xA + col * (gw + gG) * s, ytop = yT - lin * (rh + gR) * s, ym = ytop - F.alt * s;
+          const yMi = ym - 22 * s, yTr = ym - 44 * s, cx = gx + gw * s / 2;
+          for (let j = 0; j < mic[i].n; j++) {
+            const xm = gx + j * F.passo * s;
+            forma('CRMMod', F.x0, F.y0, xm, ym, s);
+            const xc = xm + F.larg * s / 2;
+            linha([[xc, ym], [xc, yMi], [cx + (xc < cx ? -9 : 9) * sm, yMi]], preto, traco);
+          }
+          // caixa do micro: o símbolo do inversor em escala, ligado ao tronco
+          cmds.push({ t: 'forma', nome: 'CRMInvH', m: [sm, 0, 0, sm, cx - sm * 555.95, yMi - sm * 771.25] });
+          linha([[cx, yMi - 6.3 * sm], [cx, yTr]]);
+          escrever(Object.assign({}, ocMi, { x: cx + 10.5 * sm, y: yMi - 2.5 * sm }), 'MI-' + (i + 1));
+          // condutores do circuito CA, T do terra e as bitolas logo antes da descida do micro
+          const xr = cx - 30 * Math.min(1, 1.5 * s), sr = Math.min(1, 1.5 * s);
+          marcasCA(xr, yTr, sr);
+          forma('CRMTerra', 478.1, 772.2, xr, yTr, sr);
+          texto(um('bit_ca_lig'), str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '', 478.1, 772.2, xr, yTr, sr);
+          texto(um('bit_terra_lig'), str(pr.terraBit) ? '#' + str(pr.terraBit) : '', 478.1, 772.2, xr, yTr, sr);
+          trilhos[lin] = trilhos[lin] || { y: yTr, x: cx };
+          trilhos[lin].x = Math.max(trilhos[lin].x, cx);
+        }
+        const yQ = K ? K.quadro[1] : 771.4;
+        trilhos.forEach(function (t) { linha([[xCol, t.y], [t.x, t.y]]); });
+        const ys = trilhos.map(function (t) { return t.y; }).concat([yQ]);
+        linha([[xCol, Math.min.apply(null, ys)], [xCol, Math.max.apply(null, ys)]]);
+        linha([[K ? K.quadro[0] : 546.8, yQ], [xCol, yQ]]);
+        void linhas;
+      }
+      // ---- coluna de textos: título, seção 2 dos micros com a tabela e a seção 3 (total)
+      if (!K) return;
+      const base = um('mod_w') || { t: 'txt', s: 7.4, fl: 1.04, ang: 0, cor: azul, al: 'l' };
+      const T1 = Object.assign({}, base, { s: 7.48, fl: 1.0, al: 'l', w: null, cor: azul });
+      const em = function (x, y, txt, extra) { escrever(Object.assign({}, T1, { x: x, y: y }, extra || {}), txt); };
+      em(K.fimTitulo[0] + 9, K.fimTitulo[1], '(Micro Inversores)');
+      const iv = pr.inv || {}, nomeMi = [maiusc(iv.fab), str(iv.modelo)].filter(Boolean).join(' - ');
+      const lig = LIGACOES[pr.ligacao];
+      const wTxt = c.wMicro > 0 ? pt(c.wMicro, 1) + 'W' : '';
+      const tipo = [nomeMi, wTxt, kM + ' Mod.', pt(c.vInv, 1) + 'V' + (lig ? ' (' + lig.charAt(0).toUpperCase() + lig.slice(1) + ')' : '')].filter(Boolean).join(' - ');
+      const yS = K.sec2, pT = K.passoTxt;
+      em(K.xSec, yS, '2) Micro Inversores');
+      em(K.xItem, yS - 2 * pT, 'Tipo: ' + tipo, { w: 620 - K.xItem }); // até o coletor do tronco CA
+      em(K.xItem, yS - 3 * pT, 'Módulos (Placas) por Micro Inversor: ' + kM);
+      em(K.xItem, yS - 4 * pT, 'Potência: ' + wTxt);
+      // tabela: cabeçalho de até 3 linhas e uma linha por micro
+      const COL = [
+        { t: ['MICRO', 'INVERSOR'], w: 62 }, { t: ['NÚMERO', 'DE', 'MÓDULOS'], w: 58 }, { t: ['POT. POR', 'MICRO.INV.', '(W)'], w: 72 },
+        { t: ['TENSÃO DO', 'MICRO', 'INVERSOR(Vac)'], w: 92 }, { t: ['FATOR DE', 'POTÊNCIA'], w: 64 }, { t: ['CORRENTE', 'DE OPERAÇÃO', '(A-AC)'], w: 88 },
+        { t: ['Cabo(mm²)'], w: 70 }, { t: ['Queda', 'Tensão', '(V/A*km)'], w: 72 }, { t: ['Distância', '(m)'], w: 68 }, { t: ['Queda', 'Tensão', '(V)'], w: 62 }, { t: ['Queda', 'Tensão', '(%)'], w: 62 }
+      ];
+      const x0 = K.xs[0], x1 = K.xs[K.xs.length - 1], kx = (x1 - x0) / COL.reduce(function (a, cc) { return a + cc.w; }, 0);
+      const xs = [x0];
+      COL.forEach(function (cc) { xs.push(xs[xs.length - 1] + cc.w * kx); });
+      const topo = K.topo, cab = K.cab, nL = Math.max(nMi, 1);
+      const minFundo = 40 + 33 + 2 * pT + 12;
+      const passoT = G.tabela.passo, reqM = (nL - 1) * passoT + 7.48 + 7 + 11.6;
+      const fundoM = Math.max(minFundo, cab - reqM);
+      const spM = nL > 1 ? Math.min(passoT, (cab - fundoM - 4 - 11.6) / (nL - 1 + 1 / 1.4)) : passoT;
+      const stM = Math.min(1, spM / 1.4 / 7.48);
+      [topo, cab, fundoM].forEach(function (y) { linha([[x0, y], [x1, y]]); });
+      xs.forEach(function (x) { linha([[x, topo], [x, fundoM]]); });
+      const ocC = Object.assign({}, um('t1_n') || T1, { al: 'c', cor: azul });
+      COL.forEach(function (cc, j) {
+        const xm = (xs[j] + xs[j + 1]) / 2, n = cc.t.length, ys = n === 1 ? [555.3] : (n === 2 ? [562.7, 547.9] : [570.1, 555.3, 540.5]);
+        cc.t.forEach(function (t, i) { escrever(Object.assign({}, ocC, { x: xm, y: ys[i], s: 7.48, w: xs[j + 1] - xs[j] - 3 }), t); });
+      });
+      const altM = (nL - 1) * spM + 7.48 * stM, yIni = (cab + fundoM) / 2 + altM / 2 - 7.48 * stM;
+      mic.forEach(function (x, i) {
+        const y = yIni - i * spM;
+        const vals = ['MI-' + (i + 1), String(x.n), wTxt.replace('W', ''), pt(x.v, 1), dig(pr.fp), x.i > 0 ? pt(x.i, 2) : '', str(pr.ca.bit), dig(pr.ca.un),
+          x.dist > 0 ? pt(x.dist, 2) : '', x.dist > 0 ? pt(x.dv, 2) : '', x.dist > 0 ? pt(x.pct, 2) : ''];
+        vals.forEach(function (v, j) { if (v) escrever(Object.assign({}, ocC, { x: (xs[j] + xs[j + 1]) / 2, y: y, s: 7.45 * stM, w: xs[j + 1] - xs[j] - 3 }), v); });
+      });
+      // seção 3: total
+      const yTot = fundoM - 33;
+      em(K.xSec, yTot, '3) Total');
+      em(K.xItem, yTot - 2 * pT, 'Número de Micro Inversores: ' + nMi);
+      em(K.xItem, yTot - 3 * pT, 'Potência Total (KW): ' + (c.kwCa > 0 ? pt(c.kwCa, 2) : ''));
+    }
   }
   /** Campos do estilo A que o desenho das strings escreve (o laço geral do PDF não os desenha). */
   const CAMPOS_STRINGS_A = ['campo_fv', 'cabo_cc', 'bit_cc_marca'].concat(COLUNAS.map(function (k) { return 't1_' + k; }), COLUNAS.map(function (k) { return 't2_' + k; }));
@@ -584,11 +850,25 @@ window.App = window.App || {};
     // desenho fixo de cada modelo
     // strings: máximo de módulos por string do projetista e a soma da divisão manual
     const maxS = num(pr.maxStr) || 10;
+    if (c.micro) conferirMicro(pr, c, add, f2);
+    // strings em paralelo no mesmo MPPT: mesma quantidade de módulos e a soma das correntes dentro do limite do MPPT
+    let ini = 0;
+    const imaxM = num(pr.inv && pr.inv.imaxMppt);
+    c.grupos.forEach(function (g, j) {
+      const ns = c.tam.slice(ini, ini + g), rot = 'MPPT' + (j + 1);
+      if (g > 1 && Math.min.apply(null, ns) !== Math.max.apply(null, ns)) add('aviso', rot + ': strings em paralelo com quantidades diferentes de módulos (' + ns.join(', ') + '). Em paralelo, as strings devem ser iguais.');
+      if (imaxM > 0 && c.imp > 0 && g * c.imp > imaxM + 1e-9) add('aviso', rot + ': ' + g + ' strings em paralelo somam ' + f2(g * c.imp) + ' A, acima da corrente máxima de entrada do MPPT (' + f2(imaxM) + ' A).');
+      ini += g;
+    });
+    const mp = Math.round(num(pr.inv && pr.inv.mppts));
+    const somaG = listaNum(pr.porMppt).reduce(function (a, n) { return a + n; }, 0);
+    if (c.nStr && str(pr.porMppt) && somaG !== c.nStr) add('aviso', 'As strings por MPPT (' + str(pr.porMppt) + ') somam ' + somaG + ', mas são ' + c.nStr + ' strings.');
+    if (mp > 0 && c.grupos.length > mp) add('aviso', 'São ' + c.grupos.length + ' grupos de strings, mas o inversor tem ' + mp + ' MPPT.');
     const acima = c.tam.map(function (n, i) { return n > maxS ? 'STR' + (i + 1) + ' (' + n + ')' : ''; }).filter(Boolean);
     if (acima.length) add('aviso', 'String com mais de ' + maxS + ' módulos (máximo adotado): ' + acima.join(', ') + '. Aumente o número de strings.');
     const soma = c.tam.reduce(function (a, n) { return a + n; }, 0);
     if (c.nStr && c.nMod && soma !== c.nMod) add('aviso', 'As strings somam ' + soma + ' módulos, mas a obra tem ' + c.nMod + '. Confira o número de strings e os módulos por string.');
-    if (es.indexOf('A') >= 0 && c.nInv > 1) add('info', 'Estilo A: o desenho mostra 1 inversor (INV1); esta obra tem ' + c.nInv + '. As strings, a tabela e os totais saem com os valores da obra.');
+    if (es.indexOf('A') >= 0 && c.nInv > 1 && !c.micro) add('info', 'Estilo A: o desenho mostra 1 inversor (INV1); esta obra tem ' + c.nInv + '. As strings, a tabela e os totais saem com os valores da obra.');
     if (es.indexOf('B') >= 0) {
       const D = DESENHO.B;
       if ((c.nMod && c.nMod !== D.modulos) || (c.nInv && c.nInv !== D.inversores)) {
@@ -612,19 +892,31 @@ window.App = window.App || {};
     if (dg > 0 && dca > 0 && dca > dg) add('aviso', 'Disjuntor CA do inversor (' + dca + ' A) maior que o disjuntor geral (' + dg + ' A).');
     // lado CC
     const izCc = IZ_SOLAR[num(pr.cc.bit)];
-    if (izCc && c.iscStr > 0 && 1.25 * c.iscStr > izCc) add('aviso', 'Cabo CC de ' + pr.cc.bit + ' mm² (' + izCc + ' A) abaixo de 1,25 × Isc do módulo (' + f2(1.25 * c.iscStr) + ' A).');
+    if (izCc && c.iscStr > 0 && 1.25 * c.iscStr > izCc && !c.micro) add('aviso', 'Cabo CC de ' + pr.cc.bit + ' mm² (' + izCc + ' A) abaixo de 1,25 × Isc do módulo (' + f2(1.25 * c.iscStr) + ' A).');
     const vmax = num(pr.inv && pr.inv.vmaxCC);
-    if (c.vocFrioStr > 0 && vmax > 0 && c.vocFrioStr > vmax) add('erro', 'Voc da string no frio (' + f2(c.vocFrioStr) + ' V) acima da tensão CC máxima do inversor (' + vmax + ' V).');
+    if (c.vocFrioStr > 0 && vmax > 0 && c.vocFrioStr > vmax) add('erro', c.micro ? 'Voc do módulo no frio (' + f2(c.vocFrioStr) + ' V) acima da tensão CC máxima do microinversor (' + vmax + ' V).' : 'Voc da string no frio (' + f2(c.vocFrioStr) + ' V) acima da tensão CC máxima do inversor (' + vmax + ' V).');
     const ucpv = num(pr.dpsCcUcpv);
-    if (ucpv > 0 && c.vocFrioStr > 0 && ucpv < c.vocFrioStr) add('aviso', 'DPS CC com Ucpv de ' + ucpv + ' V abaixo do Voc da string no frio (' + f2(c.vocFrioStr) + ' V).');
+    if (ucpv > 0 && c.vocFrioStr > 0 && ucpv < c.vocFrioStr && !c.micro) add('aviso', 'DPS CC com Ucpv de ' + ucpv + ' V abaixo do Voc da string no frio (' + f2(c.vocFrioStr) + ' V).');
     // quedas de tensão
     const limCC = num(pr.limiteCC) || 3, limCA = num(pr.limiteCA) || 4;
     c.strings.forEach(function (s, i) { if (s.dist > 0 && s.pct > limCC) add('aviso', 'Queda de tensão na string ' + (i + 1) + ' de ' + f2(s.pct) + '% (limite adotado: ' + limCC + '%).'); });
-    if (num(pr.ca.dist) > 0 && c.pctCa > limCA) add('aviso', 'Queda de tensão no circuito CA de ' + f2(c.pctCa) + '% (limite adotado: ' + limCA + '%, NBR 5410 6.2.7).');
+    if (num(pr.ca.dist) > 0 && c.pctCa > limCA && !c.micro) add('aviso', 'Queda de tensão no circuito CA de ' + f2(c.pctCa) + '% (limite adotado: ' + limCA + '%, NBR 5410 6.2.7).');
     const refCc = quedaRef(pr.cc.bit, false), refCa = quedaRef(pr.ca.bit, pr.inv && pr.inv.fases === 'tri');
-    if (refCc && num(pr.cc.un) > 0 && num(pr.cc.un) < refCc / 2) add('info', 'Queda unitária CC de ' + pr.cc.un + ' V/A·km: a referência para ' + pr.cc.bit + ' mm² (cobre a 70 °C, 2ρ/S) é ≈ ' + U.round(refCc, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
+    if (refCc && !c.micro && num(pr.cc.un) > 0 && num(pr.cc.un) < refCc / 2) add('info', 'Queda unitária CC de ' + pr.cc.un + ' V/A·km: a referência para ' + pr.cc.bit + ' mm² (cobre a 70 °C, 2ρ/S) é ≈ ' + U.round(refCc, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
     if (refCa && num(pr.ca.un) > 0 && num(pr.ca.un) < refCa / 2) add('info', 'Queda unitária CA de ' + pr.ca.un + ' V/A·km: a referência para ' + pr.ca.bit + ' mm² é ≈ ' + U.round(refCa, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
     return out;
+  }
+
+  /** Conferências dos microinversores: módulos por unidade, capacidade e queda de tensão de cada um até o quadro. */
+  function conferirMicro(pr, c, add, f2) {
+    const k = c.modPorMicro, cap = c.nMicro * k;
+    if (c.nMod > cap) add('erro', c.nMod + ' módulos para ' + c.nMicro + ' microinversor(es) de ' + k + ' módulos (máx. ' + cap + ').');
+    else if (c.nMod > 0 && cap - c.nMod >= k) add('aviso', 'Sobram ' + (cap - c.nMod) + ' entradas: ' + c.nMicro + ' microinversores de ' + k + ' módulos para ' + c.nMod + ' módulos.');
+    const lim = num(pr.limiteCA) || 4;
+    c.micros.forEach(function (x, i) { if (x.dist > 0 && x.pct > lim) add('aviso', 'Queda de tensão no MI-' + (i + 1) + ' de ' + f2(x.pct) + '% (limite adotado: ' + lim + '%).'); });
+    const n = distsMicro(pr).length;
+    if (n && n < c.nMicro) add('aviso', 'Distâncias digitadas para ' + n + ' de ' + c.nMicro + ' microinversores: o CRM usa a distância do mais próximo e o passo.');
+    if (c.ramais > 1) add('info', 'Microinversores em ' + c.ramais + ' ramais CA (até ' + pr.inv.maxPorRamal + ' por ramal, datasheet): confira os disjuntores de cada ramal.');
   }
 
   /** Campos que faltam para a prancha sair completa. */
@@ -640,11 +932,15 @@ window.App = window.App || {};
     falta(!(c.w > 0), 'Potência do módulo (W)');
     falta(!(c.vmp > 0), 'Vmp do módulo (datasheet)');
     falta(!(num(pr.mod.imp) > 0), 'Imp do módulo (datasheet)');
-    falta(!(c.kw > 0), 'Potência do inversor (kW)');
-    falta(!str(pr.inv.modelo), 'Modelo do inversor');
-    falta(!(c.nStr > 0), 'Número de strings');
-    falta(!(num(pr.cc.dist1) > 0), 'Distância do circuito CC (string 1)');
-    falta(!(num(pr.ca.dist) > 0), 'Distância do circuito CA');
+    const mi = pr.topologia === 'micro';
+    falta(!(c.kw > 0), mi ? 'Potência do microinversor (kW)' : 'Potência do inversor (kW)');
+    falta(!str(pr.inv.modelo), mi ? 'Modelo do microinversor' : 'Modelo do inversor');
+    if (mi) falta(!(num(pr.inv.modPorUnid) > 0), 'Módulos por microinversor');
+    else {
+      falta(!(c.nStr > 0), 'Número de strings');
+      falta(!(num(pr.cc.dist1) > 0), 'Distância do circuito CC (string 1)');
+    }
+    falta(!(num(pr.ca.dist) > 0) && !(mi && str(pr.micro && pr.micro.dists)), mi ? 'Distância do microinversor mais próximo ao quadro' : 'Distância do circuito CA');
     falta(!(num(pr.disjGeral) > 0), 'Disjuntor geral (A)');
     falta(!(num(pr.disjCa) > 0), 'Disjuntor CA (A)');
     falta(!str(pr.dpsCa.in) || !str(pr.dpsCa.imax) || !str(pr.dpsCa.uc), 'DPS CA (In, Imáx e Uc)');
@@ -742,8 +1038,8 @@ window.App = window.App || {};
     ESTILOS: ESTILOS, OPCOES_ESTILO: OPCOES_ESTILO, LIGACOES: LIGACOES, PADROES: PADROES, DESENHO: DESENHO, ASSINATURA: ASSINATURA, DISJUNTORES: DISJUNTORES,
     mapa: mapa, modelo: modelo, fonteTxt: fonteTxt, fonteRomans: fonteRomans, fonteArial: fonteArial,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
-    tamanhos: tamanhos, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
-    CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, terraMod: terraMod,
+    tamanhos: tamanhos, gruposMppt: gruposMppt, passoMicro: passoMicro, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
+    CONDUTORES_CA: CONDUTORES_CA, TOPOLOGIAS: TOPOLOGIAS, letrasCA: letrasCA, terraMod: terraMod,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }
