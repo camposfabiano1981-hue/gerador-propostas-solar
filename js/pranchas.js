@@ -627,6 +627,7 @@ window.App = window.App || {};
     unifilares(tam);
     condutoresCA();
     if (pr.ligacao === 'tri') multifilarTri(pr, [{ p: pr }], cmds);
+    compactos1F(pr, inversores(pr), cmds);
     return cmds;
 
     // ---- unifilares: um ramo por string com o "Campo Fotov.", o rótulo e a bitola, e a marca e o texto do cabo CC
@@ -892,6 +893,90 @@ window.App = window.App || {};
    * quadro), a tabela de strings com o inversor de cada uma, a tabela do inversor com uma linha por inversor e, nos unifilares,
    * cada inversor com o seu disjuntor na String Box CA, o seu símbolo e os seus campos.
    */
+  // ---- "Uma folha só": diagrama de blocos e detalhe do aterramento compactos, nos espaços livres do modelo (acima do croqui e
+  // abaixo do detalhe de instalação)
+  const BLOCOS_1F = [1280, 1447, 1852, 1648], ATERR_1F = [1192, 36, 1852, 196];
+  function compactos1F(pr, lista, cmds) {
+    const azul = [0, 0, 1], verde = [0, 0.62, 0], preto = [0, 0, 0], nI = lista.length;
+    const tT = { t: 'txt', s: 8.5, fl: 0.95, ang: 0, cor: azul, al: 'l' }, t1 = { t: 'txt', s: 5.2, fl: 0.92, ang: 0, cor: azul, al: 'c' }, t2 = Object.assign({}, t1, { s: 4.3 });
+    const em = function (oc, txt, extra) { if (txt) cmds.push({ t: 'texto', txt: txt, oc: Object.assign({}, oc, extra || {}) }); };
+    const linha = function (pts, cor) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: null }); };
+    const caixa = function (x, ytop, w, h, l, a, b) {
+      linha([[x, ytop], [x + w, ytop], [x + w, ytop - h], [x, ytop - h], [x, ytop]]);
+      const n = l.filter(Boolean).length, passo = h / (n + 1);
+      l.filter(Boolean).forEach(function (t, i) { em(i === 0 ? (a || t1) : (b || t2), t, { x: x + w / 2, y: ytop - passo * (i + 1) - 1.6, w: w - 5 }); });
+    };
+    // seta com o rótulo em cima (o trecho) e embaixo (a bitola)
+    const seta = function (xa, ya, xb, yb, rot, rot2) {
+      linha([[xa, ya], [xb, yb]]);
+      const dx = Math.sign(xb - xa), dy = Math.sign(yb - ya), tr = Object.assign({}, t2, { s: 4.0 });
+      if (dx) linha([[xb - 5 * dx, yb + 2.4], [xb, yb], [xb - 5 * dx, yb - 2.4]]); else linha([[xb - 2.4, yb - 5 * dy], [xb, yb], [xb + 2.4, yb - 5 * dy]]);
+      if (dx) { em(tr, rot, { x: (xa + xb) / 2, y: ya + 3 }); em(tr, rot2, { x: (xa + xb) / 2, y: ya - 7.5 }); }
+      else em(tr, [rot, rot2].filter(Boolean).join(' '), { x: xa + 4, y: (ya + yb) / 2 - 1.5, al: 'l' });
+    };
+    const mm = function (b) { return str(b) ? '#' + str(b) + ' mm2' : ''; };
+    const cs = lista.map(function (x) { return calcular(x.p); }), c0 = cs[0];
+    const nMod = cs.reduce(function (a, c) { return a + (c.nMod || 0); }, 0), kwp = cs.reduce(function (a, c) { return a + (c.kwp || 0); }, 0);
+    const tams = [].concat.apply([], cs.map(function (c) { return c.tam; })), difs = tams.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    const ccBit = str(pr.cc.bit), caBit = str(pr.ca.bit), tm = terraMod(pr), tb = str(pr.terraBit) || tm, lig = LIGACOES[pr.ligacao] || '', d = pr.dpsCa || {};
+    const nomeInv = function (x) { return [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' '); };
+
+    // diagrama de blocos: GERADOR FV → STRING BOX CC → INVERSOR → STRING BOX CA na 1ª linha; QGBT ← MEDIDOR ← REDE na 2ª
+    const B = BLOCOS_1F, g = 40, w = (B[2] - B[0] - 3 * g) / 4, h = 42, y1 = B[3] - 28, y2 = y1 - h - 40;
+    em(tT, 'DIAGRAMA DE BLOCOS', { x: B[0], y: B[3] - 12 });
+    const X = [0, 1, 2, 3].map(function (i) { return B[0] + i * (w + g); });
+    caixa(X[0], y1, w, h, ['GERADOR FV', nMod + ' x ' + pt(c0.w, 0) + ' Wp = ' + fx(kwp, 2, ',') + ' kWp', tams.length + (tams.length > 1 ? ' strings de ' : ' string de ') + difs.join('/') + ' módulos']);
+    caixa(X[1], y1, w, h, ['STRING BOX CC', 'DPS CC' + (str(pr.dpsCcUcpv) ? ' ' + str(pr.dpsCcUcpv) + ' V' : '') + (str(pr.sbCc) ? ' - ' + str(pr.sbCc) : ''), 'terra #' + tm + ' mm2']);
+    caixa(X[2], y1, w, h, nI > 1
+      ? ['INVERSORES', lista.map(function (x, j) { return 'INV' + (j + 1) + ' ' + pt(cs[j].kw, 2) + ' kW'; }).join(' + '), lista.map(function (x) { return maiusc(x.inv.fab); }).filter(Boolean).join(' + ')]
+      : ['INVERSOR INV1', nomeInv(lista[0]), pt(c0.kw, 2) + ' kW - ' + (triInv(lista[0].p) ? 'trifásico' : 'monofásico') + ' ' + pt(c0.vInv, 0) + ' V']);
+    const disj = lista.map(function (x, j) { return 'INV' + (j + 1) + ' ' + (str(x.p.disjCa) || '?') + ' A'; }).join(' + ');
+    caixa(X[3], y1, w, h, ['STRING BOX CA', (nI > 1 ? 'disjuntores: ' : 'disjuntor: ') + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '')]);
+    seta(X[0] + w, y1 - h / 2, X[1], y1 - h / 2, 'CC', mm(ccBit));
+    seta(X[1] + w, y1 - h / 2, X[2], y1 - h / 2, 'CC', mm(ccBit));
+    seta(X[2] + w, y1 - h / 2, X[3], y1 - h / 2, 'CA', mm(caBit));
+    caixa(X[3], y2, w, h, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da UC - ' + lig]);
+    caixa(X[2], y2, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
+    caixa(X[1], y2, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
+    seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(caBit));
+    seta(X[3], y2 - h / 2, X[2] + w, y2 - h / 2, 'entrada', mm(pr.entrada.bit));
+    seta(X[2], y2 - h / 2, X[1] + w, y2 - h / 2, 'ramal', mm(pr.ramal.bit));
+
+    // aterramento: as massas (módulos, String Box CC, inversores, String Box CA, QGBT) ligadas pelo PE ao BEP, à caixa de
+    // inspeção e à haste
+    const A = ATERR_1F, ga = 8, bw = 78, ha = 26, ya = A[3] - 26, yBus = ya - ha - 28;
+    em(tT, 'DETALHE DO ATERRAMENTO DO SISTEMA', { x: A[0], y: A[3] - 10 });
+    const itens = [['MÓDULOS E ESTRUTURA', 'molduras equipotencializadas', tm], ['STRING BOX CC', 'barra PE e DPS CC', tm],
+      [nI > 1 ? 'INVERSORES' : 'INVERSOR INV1', 'terminal PE (carcaça)', tb], ['STRING BOX CA', 'barra PE e DPS CA', tb], ['QUADRO GERAL (QGBT)', 'barra de terra / neutro', tb]];
+    const tv = Object.assign({}, t2, { s: 4.0, cor: verde, al: 'l', w: null });
+    itens.forEach(function (it, i) {
+      const x = A[0] + i * (bw + ga), xm = x + bw / 2;
+      caixa(x, ya, bw, ha, [it[0], it[1]], Object.assign({}, t1, { s: 4.6 }), Object.assign({}, t2, { s: 3.9 }));
+      linha([[xm, ya - ha], [xm, yBus]], verde); cmds.push({ t: 'ponto', x: xm, y: yBus, r: 1.3 });
+      em(tv, '#' + it[2] + ' mm2', { x: xm + 3, y: yBus + 9 });
+    });
+    const xBep = A[0] + 5 * bw + 4 * ga + 18, xH = xBep + 76;
+    linha([[A[0] + bw / 2, yBus], [xBep, yBus]], verde);
+    linha([[xBep, yBus + 3], [xBep + 50, yBus + 3], [xBep + 50, yBus - 3], [xBep, yBus - 3], [xBep, yBus + 3]]);
+    em(Object.assign({}, t1, { s: 5.0, al: 'l' }), 'BEP', { x: xBep, y: yBus + 6 });
+    em(Object.assign({}, t2, { s: 3.9, al: 'l' }), '(barramento de equipotencialização principal)', { x: xBep + 17, y: yBus + 6.5, w: A[2] - xBep - 19 });
+    const yCx = yBus - 26, yChao = yCx - 6;
+    linha([[xBep + 50, yBus], [xH, yBus], [xH, yCx]], verde);
+    em(tv, 'aterramento #' + tb + ' mm2', { x: xH + 4, y: yBus - 13 });
+    linha([[xH - 11, yCx], [xH + 11, yCx], [xH + 11, yCx - 20], [xH - 11, yCx - 20], [xH - 11, yCx]]);
+    linha([[xH - 40, yChao], [xH - 11, yChao]]); linha([[xH + 11, yChao], [xH + 40, yChao]]);
+    for (let i = 0; i < 6; i++) { const xh = xH - 38 + i * 15; if (Math.abs(xh - xH) > 12) linha([[xh, yChao], [xh - 4, yChao - 4]]); }
+    const yP = Math.max(A[1] + 4, yCx - 20 - 40);
+    linha([[xH - 1, yCx - 20], [xH - 1, yP + 5], [xH, yP], [xH + 1, yP + 5], [xH + 1, yCx - 20]]);
+    const tl = Object.assign({}, t2, { s: 3.9, al: 'l' });
+    em(tl, 'caixa de inspeção', { x: xH + 44, y: yCx - 8, w: A[2] - xH - 46 });
+    em(tl, str(pr.cxInspecao), { x: xH + 44, y: yCx - 16, w: A[2] - xH - 46 });
+    em(tl, 'haste ' + (str(pr.haste) || ''), { x: xH + 5, y: yP + 6, w: A[2] - xH - 7 });
+    const notas = ['Massas metálicas (molduras, estruturas, carcaças dos inversores e quadros) interligadas ao BEP pelo condutor de',
+      'proteção (PE), verde ou verde-amarelo - NBR 5410 e NBR 16690. Módulos #' + tm + ' mm2, terra do circuito CA #' + tb + ' mm2.'];
+    notas.forEach(function (t, i) { em(Object.assign({}, tl, { s: 4.0 }), t, { x: A[0], y: yBus - 22 - i * 9, w: xBep - A[0] - 12 }); });
+  }
+
   function desenhoMultiA(pr, campos, G, lista, folha) {
     let cmds = [];
     const preto = [0, 0, 0], roxo = [0.498, 0, 1];
@@ -1073,6 +1158,8 @@ window.App = window.App || {};
     // (até 2 inversores: o croqui e o unifilar principal limitam a largura)
     unifilaresMulti(Math.min(nI, 2));
     if (pr.ligacao === 'tri') multifilarTri(pr, lista, cmds);
+    // uma folha só: o diagrama de blocos e o detalhe do aterramento compactos nos espaços livres
+    if (!folha) compactos1F(pr, lista, cmds);
     return cmds;
 
     // número da folha no carimbo (no lugar do "1/1" do modelo)
@@ -1171,7 +1258,7 @@ window.App = window.App || {};
       // observações
       const notas = ['Todas as massas metálicas (molduras, estruturas, carcaças dos inversores e quadros) interligadas ao BEP',
         'pelo condutor de proteção (PE), na cor verde ou verde-amarela - NBR 5410 (6.4) e NBR 16690.',
-        'Bitolas: aterramento dos módulos #' + tm + ' mm2; terra do circuito CA #' + tb + ' mm2.'];
+        'Bitolas: aterramento dos módulos #' + tm + ' mm2, terra do circuito CA #' + tb + ' mm2.'];
       notas.forEach(function (t, i) { em(t2, t, { x: x0, y: Math.max(y0 + 20, yP - 22) - i * 9, w: x1 - x0 }); });
     }
     // uma linha por inversor: modelo, potência, módulos, strings e MPPTs

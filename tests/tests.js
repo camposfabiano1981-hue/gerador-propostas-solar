@@ -2422,6 +2422,17 @@
       conta(u2, 'CRMMod') === 14 && u2.soCarimbo === true && ['DIAGRAMA DE BLOCOS', 'DETALHE DO ATERRAMENTO DO SISTEMA', 'INVERSOR INV1', '2/2'].every(function (t) { return txU2.indexOf(t) >= 0; }) &&
       txU2.some(function (t) { return /^disjuntor: INV1 40 A$/.test(t); }) && conta(u0, 'CRMMod') === 14 && !u0.moverRegiao && !u0.soCarimbo,
       { mod1: conta(u1, 'CRMMod'), mod2: conta(u2, 'CRMMod'), mod0: conta(u0, 'CRMMod'), disj: txU2.filter(function (t) { return /^disjunt/.test(t); }) });
+    // uma folha só: o diagrama de blocos (acima do croqui) e o detalhe do aterramento (abaixo do detalhe de instalação) compactos;
+    // nas 2 folhas, só na folha 2
+    const tx0 = u0.filter(function (c) { return c.t === 'texto'; }), achar = function (t) { return tx0.filter(function (c) { return c.txt === t; })[0]; };
+    const tB = achar('DIAGRAMA DE BLOCOS'), tAt = achar('DETALHE DO ATERRAMENTO DO SISTEMA'), dM1 = P.desenhoStringsA(Object.assign(U.clone(prM2), { folhasA: '1' }), campM, GAm);
+    ok('uma folha só: diagrama de blocos acima do croqui e aterramento abaixo do detalhe de instalação (um e mais inversores); nas 2 folhas só na folha 2',
+      !!(tB && tAt) && tB.oc.x >= 1280 && tB.oc.y > 1440 && tAt.oc.x >= 1186 && tAt.oc.y < 205 &&
+      ['GERADOR FV', 'STRING BOX CC', 'INVERSOR INV1', 'STRING BOX CA', 'QUADRO GERAL (QGBT)', 'MEDIDOR BIDIRECIONAL', 'REDE BT DA DISTRIBUIDORA', 'BEP', 'disjuntor: INV1 40 A'].every(function (t) { return !!achar(t); }) &&
+      dM1.some(function (c) { return c.t === 'texto' && c.txt === 'INVERSORES'; }) && dM1.some(function (c) { return c.t === 'texto' && /^disjuntores: INV1 .* \+ INV2 /.test(c.txt); }) &&
+      !txU1.some(function (t) { return t === 'DIAGRAMA DE BLOCOS'; }) &&
+      u0.filter(function (c) { return c.t === 'linha'; }).every(function (c) { return c.pts.every(function (q) { return q[0] < 1862 && q[1] > 29; }); }),
+      { tB: tB && [tB.oc.x, tB.oc.y], tAt: tAt && [tAt.oc.x, tAt.oc.y] });
     const cfM = P.conferir(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { disjCa: '16', qtdMod: '40' })] })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
