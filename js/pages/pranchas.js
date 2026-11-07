@@ -15,6 +15,15 @@ window.App = window.App || {};
 
   function padroes() { const c = S.configBruta().pranchas; return (c && c.padroes) || {}; }
   const MATERIAIS = ['PVC', 'XLPE', 'EPR', 'HEPR'];
+  // classe de tensão / temperatura dos condutores (o valor já gravado que não está na lista continua disponível)
+  const CLASSES = ['450/750V - 70°C', '450/750V - 90°C', '0,6/1KV - 70°C', '0,6/1KV - 90°C'];
+  function opClasses(k, vazio) {
+    return function (st) {
+      const v = String(U.get(st, k) || '').trim();
+      const ops = (vazio ? [{ v: '', t: vazio }] : []).concat(CLASSES);
+      return v && CLASSES.indexOf(v) < 0 ? [v].concat(ops) : ops;
+    };
+  }
   const ROT_NIVEL = { erro: '⛔', aviso: '⚠', info: 'ℹ' };
 
   /** Monta a seção. o: {inst, ctx, mudou, registrar(texto)} */
@@ -45,7 +54,7 @@ window.App = window.App || {};
     }
     const pr = inst.pranchas;
     // campos que entraram depois (pranchas preparadas antes): o padrão do projetista
-    if (pr.condCA == null) pr.condCA = padroes().condCA || P.PADROES.condCA;
+    if (pr.condCA == null) pr.condCA = ''; // em branco: pela saída do inversor
     if (pr.terraMod == null) pr.terraMod = padroes().terraMod || P.PADROES.terraMod;
     if (pr.porMppt == null) pr.porMppt = '';
     if (!Array.isArray(pr.invs)) pr.invs = [];
@@ -206,13 +215,17 @@ window.App = window.App || {};
         ].concat(arranjo(j), [
           { secao: 'Circuitos do INV' + (j + 1) },
           { k: 'ccDist1', label: 'Distância CC string 1 (m)', type: 'number', placeholder: 'Igual ao INV1' }, { k: 'ccDist2', label: 'Distância CC demais strings (m)', type: 'number', placeholder: 'Igual à 1' },
-          { k: 'caBit', label: 'Cabo CA (mm²)', type: 'number', placeholder: 'Igual ao INV1' }, { k: 'caUn', label: 'Queda unitária CA (V/A·km)', placeholder: 'Igual ao INV1' },
-          { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: [{ v: '', t: 'Pela saída do inversor' }].concat(P.CONDUTORES_CA), help: 'Marcas da fiação no desenho; trifásico = 3 fases.' },
+          { k: 'caBit', label: 'Cabo CA (mm²)', type: 'number', placeholder: 'Igual ao INV1' },
+          { k: 'caMat', label: 'Isolação', type: 'select', options: [{ v: '', t: 'Igual à do INV1' }].concat(MATERIAIS) },
+          { k: 'caIso', label: 'Classe / temperatura', type: 'select', options: opClasses('caIso', 'Igual à do INV1') },
+          { k: 'caUn', label: 'Queda unitária CA (V/A·km)', placeholder: 'Igual ao INV1' },
+          { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: [{ v: '', t: 'Pela saída do inversor' }].concat(P.CONDUTORES_CA),
+            help: 'Definem o desenho (fases no multifilar e marcas no unifilar), a corrente e o disjuntor. Em branco: trifásico = 3 fases.' },
           { k: 'caDist', label: 'Distância CA (m)', type: 'number' },
           { k: 'disjCa', label: 'Disjuntor CA (A)', type: 'number', help: sugJ ? 'Sugestão: ' + sugJ + ' A (≥ 1,25 × ' + U.fmt(cj.iInv, 2) + ' A).' : '' }
         ]), x, function (k) {
           // disjuntor sugerido enquanto o projetista não digitar outro (≥ 1,25 × corrente do inversor)
-          if (k === 'kw' || k === 'tensao' || k === 'fases') {
+          if (k === 'kw' || k === 'tensao' || k === 'fases' || k === 'condCA') {
             const i = P.correnteInv(x, pr.fp), sug = i > 0 ? String(P.proxDisjuntor(1.25 * i) || '') : '';
             if (!String(x.disjCa || '').trim() || x.disjCa === x.disjSug) {
               x.disjCa = sug; x.disjSug = sug;
@@ -299,11 +312,12 @@ window.App = window.App || {};
       ], pr, function (k) { mudou(k === 'cc.bit'); }, 3),
       h('h4.secao-form', multi ? 'Circuito CA do INV1 (inversor → QGBT) — os outros no bloco de cada inversor' : 'Circuito CA (inversor → QGBT)'),
       UI.grade([
-        { k: 'ca.bit', label: 'Cabo CA (mm²)', type: 'number' }, { k: 'ca.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'ca.iso', label: 'Classe / temperatura', placeholder: '450/750V - 70°C' },
+        { k: 'ca.bit', label: 'Cabo CA (mm²)', type: 'number' }, { k: 'ca.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'ca.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('ca.iso') },
         { k: 'ca.un', label: 'Queda unitária (V/A·km)', help: ref(refCa, pr.ca.bit) },
-        { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: P.CONDUTORES_CA, help: 'Marcas da fiação no desenho e na fiação do inversor.' },
+        { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: [{ v: '', t: 'Pela saída do inversor' }].concat(P.CONDUTORES_CA),
+          help: 'Definem o desenho (fases no multifilar e marcas no unifilar), a fiação, a corrente e o disjuntor. Em branco: trifásico = 3 fases.' },
         { k: 'ca.dist', label: 'Distância (m)', type: 'number' }, { k: 'limiteCA', label: 'Limite de queda CA (%)', type: 'number' }
-      ], pr, function (k) { mudou(k === 'ca.bit'); }, 3),
+      ], pr, function (k) { mudou(k === 'ca.bit' || k === 'condCA'); }, 3),
       multi ? trechoComum() : null,
       h('p.ajuda-sec', 'ΔV = queda unitária × corrente × distância ÷ 1000; % sobre a tensão da string (CC) ou do inversor (CA). Valores calculados:'), calc));
     pintarCalc();
@@ -317,7 +331,7 @@ window.App = window.App || {};
         UI.grade([
           { k: 'caComum.bit', label: 'Cabo (mm²)', type: 'number' },
           { k: 'caComum.mat', label: 'Isolação', type: 'select', options: [{ v: '', t: 'Igual à do INV1' }].concat(MATERIAIS) },
-          { k: 'caComum.iso', label: 'Classe / temperatura', placeholder: String(pr.ca.iso || '').trim() || '450/750V - 70°C' }
+          { k: 'caComum.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('caComum.iso', 'Igual à do INV1') }
         ], pr, function () { mudou(); }, 3), ajuda);
       elTrecho.ajuda = ajuda;
       atualizarTrecho();
@@ -356,13 +370,13 @@ window.App = window.App || {};
       h('h4.secao-form', 'Ramal de ligação'),
       UI.grade([
         { k: 'ramal.cond', label: 'Condutores fase', type: 'int' }, { k: 'ramal.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'ramal.neutro', label: 'Neutro (mm²)', type: 'number' },
-        { k: 'ramal.tipo', label: 'Tipo (estilo A)', placeholder: 'XLPE- MULTIPLEX' }, { k: 'ramal.iso', label: 'Classe / temperatura', placeholder: '0,6/1KV - 90°C' }
+        { k: 'ramal.tipo', label: 'Tipo (estilo A)', placeholder: 'XLPE- MULTIPLEX' }, { k: 'ramal.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('ramal.iso') }
       ], pr, function () { mudou(); }, 5),
       h('h4.secao-form', 'Ramal de entrada (padrão → medidor)'),
-      UI.grade([{ k: 'entrada.bit', label: 'Bitola (mm²)', type: 'number', help: 'A "bitola fase" da Homologação.' }, { k: 'entrada.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'entrada.iso', label: 'Classe / temperatura' }],
+      UI.grade([{ k: 'entrada.bit', label: 'Bitola (mm²)', type: 'number', help: 'A "bitola fase" da Homologação.' }, { k: 'entrada.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'entrada.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('entrada.iso') }],
         pr, function (k) { if (k === 'entrada.bit') comp(); mudou(); }, 3),
       h('h4.secao-form', 'Ramal de saída (medidor → QGBT)'),
-      UI.grade([{ k: 'saida.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'saida.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'saida.iso', label: 'Classe / temperatura' }], pr, function () { mudou(); }, 3),
+      UI.grade([{ k: 'saida.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'saida.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'saida.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('saida.iso') }], pr, function () { mudou(); }, 3),
       UI.grade([{ k: 'terraBit', label: 'Terra do circuito CA (mm²)', type: 'number', help: 'O dos módulos fica em Circuito CC.' }], pr, function () { comp(); mudou(); }, 3)));
 
     // ---------- 6. detalhe da instalação

@@ -56,7 +56,7 @@ window.App = window.App || {};
   };
   const CHAVES_PADRAO = ['estilo', 'cc.bit', 'cc.tipo', 'cc.un', 'ca.bit', 'ca.mat', 'ca.iso', 'ca.un', 'entrada.bit', 'entrada.mat', 'entrada.iso', 'saida.bit', 'saida.mat', 'saida.iso',
     'ramal.cond', 'ramal.bit', 'ramal.neutro', 'ramal.tipo', 'ramal.iso', 'terraBit', 'disjCaKa', 'dpsCa.classe', 'dpsCa.uc', 'dpsCa.in', 'dpsCa.imax', 'dpsCa.up', 'dpsCcUcpv',
-    'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA', 'maxStr', 'condCA', 'terraMod'];
+    'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA', 'maxStr', 'terraMod'];
 
   // ------------------------------------------------------------ carregamento sob demanda
   const cache = {};
@@ -229,7 +229,7 @@ window.App = window.App || {};
       disjGeral: '', disjCa: '', disjCaKa: pad.disjCaKa, dpsCa: U.clone(pad.dpsCa), dpsCcUcpv: pad.dpsCcUcpv, sbCc: pad.sbCc,
       fia: { placas: '', inversor: '', sb: '', qgbt: pad.fia.qgbt, ramal: pad.fia.ramal }, elet: U.clone(pad.elet),
       haste: pad.haste, cxPassagem: pad.cxPassagem, cxInspecao: pad.cxInspecao,
-      telhado: '', inclinacao: pad.inclinacao, efic: pad.efic, fp: pad.fp, limiteCC: pad.limiteCC, limiteCA: pad.limiteCA, maxStr: pad.maxStr, condCA: pad.condCA, terraMod: pad.terraMod,
+      telhado: '', inclinacao: pad.inclinacao, efic: pad.efic, fp: pad.fp, limiteCC: pad.limiteCC, limiteCA: pad.limiteCA, maxStr: pad.maxStr, condCA: '', terraMod: pad.terraMod,
       assinarRt: true, atualizadoEm: new Date().toISOString()
     };
     puxarCrm(pr, inst, ctx);
@@ -247,7 +247,7 @@ window.App = window.App || {};
     pr.art = inst.art || pr.art || '';
     if (!str(pr.ruas.uc)) pr.ruas.uc = rua(cli.endereco);
     // mais de um inversor na obra: INV1 = o primeiro e INV2… em pr.invs, guardando o arranjo e o circuito já digitados de cada um
-    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caUn', 'caDist', 'condCA', 'ccDist1', 'ccDist2', 'disjCa'];
+    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caMat', 'caIso', 'caUn', 'caDist', 'condCA', 'ccDist1', 'ccDist2', 'disjCa'];
     const guarda = function (novo, velho) { ARR.forEach(function (k) { if (velho && str(velho[k])) novo[k] = velho[k]; }); return novo; };
     const invAnt = pr.inv || {}, invsAnt = Array.isArray(pr.invs) ? pr.invs : [];
     pr.mod = e.mod;
@@ -326,7 +326,7 @@ window.App = window.App || {};
     const kwp = nMod * w / 1000;
     const kw = num(iv.kw);
     const vInv = num(iv.tensao) || 220, fp = num(pr.fp) || 1;
-    const iInv = kw > 0 ? kw * 1000 / (vInv * fp * (iv.fases === 'tri' ? Math.sqrt(3) : 1)) : 0;
+    const iInv = kw > 0 ? kw * 1000 / (vInv * fp * (triInv(pr) ? Math.sqrt(3) : 1)) : 0;
     const dvCa = num(pr.ca.un) * iInv * num(pr.ca.dist) / 1000;
     const C = App.Calc;
     const prem = { tempMinima: 0, fatorVocFrio: 1.12 };
@@ -346,7 +346,17 @@ window.App = window.App || {};
   /** Condutores do circuito CA do inversor ao quadro, escolhidos pelo projetista (padrão FFT). */
   const CONDUTORES_CA = [{ v: 'FFT', t: 'F + F + T (2 fases e terra)' }, { v: 'FNT', t: 'F + N + T (fase, neutro e terra)' },
     { v: 'FFFT', t: 'F + F + F + T (3 fases e terra)' }, { v: 'FFFNT', t: 'F + F + F + N + T (3 fases, neutro e terra)' }];
-  function condCA(pr) { const c = str(pr && pr.condCA).toUpperCase(); return /^[FN]+T$/.test(c) ? c : PADROES.condCA; }
+  /**
+   * Condutores do circuito CA do inversor (até a String Box CA), escolhidos pelo projetista — valem para o desenho (fases no
+   * multifilar e no unifilar), a corrente e o disjuntor. Em branco, pela saída do inversor: trifásico F+F+F+T, monofásico até
+   * 130 V F+N+T, senão F+F+T.
+   */
+  function condCA(pr) {
+    const c = str(pr && pr.condCA).toUpperCase();
+    if (/^[FN]+T$/.test(c)) return c;
+    const iv = (pr && pr.inv) || {}, v = num(iv.tensao);
+    return iv.fases === 'tri' ? 'FFFT' : (v > 0 && v <= 130 ? 'FNT' : 'FFT');
+  }
   /** Condutores carregados do circuito CA (sem o terra), do terra para fora no desenho: fases e depois o neutro. */
   function letrasCA(pr) { const c = condCA(pr); return c.replace(/[^F]/g, '').split('').concat(c.indexOf('N') >= 0 ? ['N'] : []); }
   /** Bitola do aterramento dos módulos (campo do projetista; padrão 6 mm²). */
@@ -702,7 +712,7 @@ window.App = window.App || {};
       Kc.v.forEach(function (pv, k) {
         (k === 0 ? letrasUC(pr) : letrasInv(pr)).forEach(function (l, i) {
           const y = pv.y - i * pv.passo;
-          if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1);
+          if (l === 'N') neutroH(cmds, 0, y); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1);
         });
       });
     }
@@ -710,13 +720,20 @@ window.App = window.App || {};
 
   // ------------------------------------------------------------ fases dos circuitos CA (diagramas do estilo A)
   /** O inversor é trifásico? */
-  function triInv(p) { return !!(p && p.inv && p.inv.fases === 'tri'); }
+  function triInv(p) { return condCA(p).replace(/[^F]/g, '').length >= 3; }
+  /** O cadastro do inversor diz trifásico? (só para a conferência com os condutores escolhidos) */
+  function triCadastro(p) { return !!(p && p.inv && p.inv.fases === 'tri'); }
   /** Condutores do circuito CA de um inversor pela saída dele: trifásico com 3 fases; mono/bifásico com até 2 (o terra à parte). */
+  /**
+   * Traço do neutro no condutor vertical (unifilar), como na legenda do modelo: o traço azul-claro e a bandeirinha — no modelo o
+   * traço horizontal ("CRMTickNh") veio sem ela. Girado como o T do terra: a bandeirinha na ponta esquerda, para baixo.
+   */
+  function neutroH(cmds, dx, y) {
+    cmds.push({ t: 'forma', nome: 'CRMTickNh', m: [1, 0, 0, 1, dx, y - 1305.84], clip: null });
+    cmds.push({ t: 'linha', pts: [[917.28 + dx, y], [917.28 + dx, y - 3.6]], cor: [0, 1, 1], traco: null });
+  }
   function letrasInv(p) {
-    const l = letrasCA(p), f = l.filter(function (x) { return x === 'F'; }).length, n = l.indexOf('N') >= 0;
-    if (triInv(p) && f < 3) return ['F', 'F', 'F'].concat(n ? ['N'] : []);
-    if (!triInv(p) && f > 2) return ['F', 'F'].concat(n ? ['N'] : []);
-    return l;
+    return letrasCA(p);
   }
   /** Condutores do quadro à String Box CA: os da ligação da UC (trifásica: 3 fases). */
   function letrasUC(pr) {
@@ -838,12 +855,13 @@ window.App = window.App || {};
   /** Corrente de saída de um inversor (P ÷ V, ÷ √3 no trifásico). */
   function correnteInv(inv, fp) {
     const kw = num(inv && inv.kw), v = num(inv && inv.tensao) || 220;
-    return kw > 0 ? kw * 1000 / (v * (num(fp) || 1) * (inv.fases === 'tri' ? Math.sqrt(3) : 1)) : 0;
+    // os condutores do INV2… (condCA) ou, em branco, a saída do inversor
+    return kw > 0 ? kw * 1000 / (v * (num(fp) || 1) * (triInv({ inv: inv, condCA: inv && inv.condCA }) ? Math.sqrt(3) : 1)) : 0;
   }
   /** INV2…: os campos do arranjo e do circuito CA em branco (automáticos) e o disjuntor sugerido (≥ 1,25 × corrente). */
   function novoInversor(pr, base) {
     const x = Object.assign({ fab: '', modelo: '', kw: '', qtd: '1', fases: (pr.inv && pr.inv.fases) || 'mono', tensao: (pr.inv && pr.inv.tensao) || '220', vmaxCC: '',
-      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caUn: '', caDist: '', condCA: '', ccDist1: '', ccDist2: '', disjCa: '' }, base || {});
+      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caMat: '', caIso: '', caUn: '', caDist: '', condCA: '', ccDist1: '', ccDist2: '', disjCa: '' }, base || {});
     if (!str(x.disjCa)) { const i = correnteInv(x, pr.fp); if (i > 0) x.disjCa = String(proxDisjuntor(1.25 * i) || ''); }
     return x;
   }
@@ -876,11 +894,11 @@ window.App = window.App || {};
         invs: [], inv: Object.assign({}, x, { qtd: '1' }), mod: Object.assign({}, pr.mod, { qtd: String(ni) }), modelosDiferentes: false,
         nStrings: str(x.nStrings) || (ni > 0 ? String(Math.ceil(ni / maxS)) : ''), porString: str(x.porString), porMppt: str(x.porMppt),
         // INV1: o circuito CA e o disjuntor da prancha; INV2…: os dele (cabo e queda unitária do INV1 quando em branco)
-        ca: i === 0 ? pr.ca : Object.assign({}, pr.ca, { bit: str(x.caBit) || pr.ca.bit, un: str(x.caUn) || pr.ca.un, dist: str(x.caDist) }),
+        ca: i === 0 ? pr.ca : Object.assign({}, pr.ca, { bit: str(x.caBit) || pr.ca.bit, mat: str(x.caMat) || pr.ca.mat, iso: str(x.caIso) || pr.ca.iso, un: str(x.caUn) || pr.ca.un, dist: str(x.caDist) }),
         disjCa: i === 0 ? pr.disjCa : str(x.disjCa),
         // circuito CC e condutores CA do inversor (em branco: as distâncias CC e os condutores do INV1, ajustados à saída dele)
         cc: i === 0 || !str(x.ccDist1) ? pr.cc : Object.assign({}, pr.cc, { dist1: str(x.ccDist1), dist2: str(x.ccDist2) }),
-        condCA: i === 0 ? pr.condCA : (str(x.condCA) || pr.condCA)
+        condCA: i === 0 ? pr.condCA : str(x.condCA)
       });
       return { k: i, inv: x, p: p };
     });
@@ -1202,7 +1220,7 @@ window.App = window.App || {};
     if (Kc) {
       if (folha !== 1) letrasInv(lista[0].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1); });
       Kc.v.forEach(function (pv, k) {
-        (k === 0 ? letrasUC(pr) : letrasInv(lista[0].p)).forEach(function (l, i) { const y = pv.y - i * pv.passo; if (l === 'N') forma('CRMTickNh', 0, Kc.yN, 0, y, 1); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1); });
+        (k === 0 ? letrasUC(pr) : letrasInv(lista[0].p)).forEach(function (l, i) { const y = pv.y - i * pv.passo; if (l === 'N') neutroH(cmds, 0, y); else forma('CRMTickFh', 0, Kc.yF, 0, y, 1); });
       });
     }
 
@@ -1389,8 +1407,9 @@ window.App = window.App || {};
       regiao([906, 1183, 940, 1243], d, 0);                       // disjuntor
       linha([[S.xInv, 1256], [xInv, 1256], [xInv, 1243]]); ponto(S.xInv, 1256);
       linha([[xInv, 1183], [xInv, 1056]]);
-      regiao([926, 1137, 937, 1147], d, 0);                       // T verde
-      if (Kc) letrasInv(lista[j].p).forEach(function (l, i) { const y = Kc.v[1].y - i * Kc.v[1].passo; forma(l === 'N' ? 'CRMTickNh' : 'CRMTickFh', 0, l === 'N' ? Kc.yN : Kc.yF, d, y, 1); });
+      regiao([916.5, 1137.6, 923.4, 1144.6], d, 0);               // T verde do terra (à esquerda do condutor)
+      regiao([926, 1137, 937, 1147], d, 0);                       // "#" do cabo
+      if (Kc) letrasInv(lista[j].p).forEach(function (l, i) { const y = Kc.v[1].y - i * Kc.v[1].passo; if (l === 'N') neutroH(cmds, d, y); else forma('CRMTickFh', 0, Kc.yF, d, y, 1); });
       regiao([905, 1020, 940, 1057], d, 0);                       // símbolo do inversor
       linha([[xInv, 1020.5], [xInv, S.yBus]]);
       em(oc('disj_ca_a', 0), vj.disj_ca_a, { x: 909.2 + d });
@@ -1516,7 +1535,7 @@ window.App = window.App || {};
       }
     }
     const vInvT = num(pr.inv && pr.inv.tensao);
-    if (pr.inv && pr.inv.fases === 'tri' && vInvT > 0 && vInvT < 200) add('aviso', 'Inversor trifásico com tensão CA de ' + vInvT + ' V: informe a tensão de linha (220 ou 380 V) — a corrente sai de P ÷ (√3 × V).');
+    if (triInv(pr) && vInvT > 0 && vInvT < 200) add('aviso', 'Inversor trifásico com tensão CA de ' + vInvT + ' V: informe a tensão de linha (220 ou 380 V) — a corrente sai de P ÷ (√3 × V).');
     if (pr.modelosDiferentes) add('aviso', 'A obra tem inversores de modelos diferentes: a prancha mostra só o principal (' + [pr.inv.fab, pr.inv.modelo].filter(Boolean).join(' ') + ').');
     // proteções e cabos do lado CA
     const dca = num(pr.disjCa);
@@ -1524,7 +1543,11 @@ window.App = window.App || {};
       if (dca < c.iInv) add('erro', 'Disjuntor CA de ' + dca + ' A abaixo da corrente do inversor (' + f2(c.iInv) + ' A).');
       else if (dca < 1.25 * c.iInv - 1e-9) add('aviso', 'Disjuntor CA de ' + dca + ' A abaixo de 1,25 × a corrente do inversor (' + f2(1.25 * c.iInv) + ' A).');
     }
-    const izCa = izCabo(pr.ca.bit, pr.inv && pr.inv.fases === 'tri' ? 'tri' : 'mono');
+    if (str(pr.condCA) && pr.inv && str(pr.inv.fases) && triCadastro(pr) !== triInv(pr)) {
+      const rot = (CONDUTORES_CA.find(function (o) { return o.v === condCA(pr); }) || { t: condCA(pr) }).t;
+      add('aviso', 'Inversor ' + (triCadastro(pr) ? 'trifásico' : 'mono/bifásico') + ' no cadastro, mas os condutores escolhidos são ' + rot + ': o desenho, a corrente e o disjuntor seguem os condutores. Confira a saída do inversor.');
+    }
+    const izCa = izCabo(pr.ca.bit, triInv(pr) ? 'tri' : 'mono');
     if (dca > 0 && izCa && dca > izCa) add('aviso', 'Disjuntor CA de ' + dca + ' A acima da capacidade do cabo de ' + pr.ca.bit + ' mm² (' + izCa + ' A, NBR 5410 tab. 36, B1): o disjuntor não protege o cabo.');
     const dg = num(pr.disjGeral);
     const izSai = izCabo(pr.saida.bit, pr.ligacao), izEnt = izCabo(pr.entrada.bit, pr.ligacao);
@@ -1542,7 +1565,7 @@ window.App = window.App || {};
     const limCC = num(pr.limiteCC) || 3, limCA = num(pr.limiteCA) || 4;
     c.strings.forEach(function (s, i) { if (s.dist > 0 && s.pct > limCC) add('aviso', 'Queda de tensão na string ' + (i + 1) + ' de ' + f2(s.pct) + '% (limite adotado: ' + limCC + '%).'); });
     if (num(pr.ca.dist) > 0 && c.pctCa > limCA) add('aviso', 'Queda de tensão no circuito CA de ' + f2(c.pctCa) + '% (limite adotado: ' + limCA + '%, NBR 5410 6.2.7).');
-    const refCc = quedaRef(pr.cc.bit, false), refCa = quedaRef(pr.ca.bit, pr.inv && pr.inv.fases === 'tri');
+    const refCc = quedaRef(pr.cc.bit, false), refCa = quedaRef(pr.ca.bit, triInv(pr));
     if (refCc && num(pr.cc.un) > 0 && num(pr.cc.un) < refCc / 2) add('info', 'Queda unitária CC de ' + pr.cc.un + ' V/A·km: a referência para ' + pr.cc.bit + ' mm² (cobre a 70 °C, 2ρ/S) é ≈ ' + U.round(refCc, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
     if (refCa && num(pr.ca.un) > 0 && num(pr.ca.un) < refCa / 2) add('info', 'Queda unitária CA de ' + pr.ca.un + ' V/A·km: a referência para ' + pr.ca.bit + ' mm² é ≈ ' + U.round(refCa, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
     return out;
@@ -1712,7 +1735,7 @@ window.App = window.App || {};
     mapa: mapa, modelo: modelo, fonteTxt: fonteTxt, fonteRomans: fonteRomans, fonteArial: fonteArial,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
-    CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod,
+    CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod, triInv: triInv, condCA: condCA,
     correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,

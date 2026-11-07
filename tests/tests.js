@@ -2371,7 +2371,7 @@
     const txM = dM.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
     const descM = dM.desloc.map(function (r) { return r.y.toFixed(1) + ':' + r.dy.toFixed(2); }).join(' ');
     ok('desenho com 2 inversores: 59 módulos, 7 ramais, INV2 copiado do modelo (strings, unifilar simplificado e principal), tabela com o inversor de cada string e as seções descendo em dois degraus',
-      conta(dM, 'CRMMod') === 59 && conta(dM, 'CRMRam') === 7 && dM.filter(function (c) { return c.t === 'regiao'; }).length === 7 && conta(dM, 'CRMBaixo') === 2 &&
+      conta(dM, 'CRMMod') === 59 && conta(dM, 'CRMRam') === 7 && dM.filter(function (c) { return c.t === 'regiao'; }).length === 8 && conta(dM, 'CRMBaixo') === 2 &&
       ['INV1-STR1', 'INV1-STR3', 'INV2-STR4', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].every(function (t) { return txM.indexOf(t) >= 0; }) &&
       txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '485.4:-58.78 250.0:-73.58',
       { mod: conta(dM, 'CRMMod'), regioes: dM.filter(function (c) { return c.t === 'regiao'; }).length, desloc: descM, faltam: ['INV1-STR1', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].filter(function (t) { return txM.indexOf(t) < 0; }) });
@@ -2422,8 +2422,27 @@
       /Cabo do trecho comum \(quadro geral → String Box CA\) de 6 mm²/.test(cfCm) && !/Cabo do trecho comum/.test(P.conferir(prM2).map(function (x) { return x.texto; }).join(' | ')) &&
       P.valores(pr, 'A').cabo_inversor === pr.ca.bit + 'mm2 - ' + pr.ca.mat,
       { cm: cmA, cabo: vCm.cabo_inversor, marca: vCm.bit_ca_marca, cf: cfCm.slice(0, 300) });
-    igual('condutores pela saída de cada inversor e, no QD, pela ligação da UC', [P.letrasInv({ condCA: 'FFT', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: 'FFFNT', inv: { fases: 'mono' } }).join(''),
-      P.letrasInv({ condCA: 'FNT', inv: { fases: 'mono' } }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'tri' }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'bi' }).join('')].join('|'), 'FFF|FFN|FN|FFF|FF');
+    igual('condutores escolhidos pelo projetista valem no desenho; em branco, pela saída do inversor; no QD, pela ligação da UC', [P.letrasInv({ condCA: 'FFT', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: 'FFFNT', inv: { fases: 'mono' } }).join(''),
+      P.letrasInv({ condCA: 'FNT', inv: { fases: 'mono' } }).join(''), P.letrasInv({ condCA: '', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: '', inv: { fases: 'mono', tensao: '127' } }).join(''),
+      P.letrasInv({ condCA: '', inv: { fases: 'mono', tensao: '220' } }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'tri' }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'bi' }).join('')].join('|'), 'FF|FFFN|FN|FFF|FN|FF|FFF|FF');
+    // os condutores escolhidos definem as fases do inversor no multifilar e a corrente; aviso quando diferem do cadastro
+    const prC = Object.assign(U.clone(prM2), { ligacao: 'tri', inv: Object.assign({}, prM2.inv, { fases: 'tri' }), condCA: 'FFT',
+      invs: [Object.assign({}, prM2.invs[0], { fases: 'mono', condCA: 'FFFT', caMat: 'XLPE', caIso: '0,6/1KV - 90°C' })] });
+    const LCc = P.inversores(prC), dC = P.desenhoStringsA(prC, campM, GAm), txC = dC.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    const cfC = P.conferir(prC).map(function (x) { return x.texto; }).join(' | ');
+    const iTri = P.calcular(Object.assign(U.clone(LCc[0].p), { condCA: 'FFFT' })).iInv, iBi = P.calcular(LCc[0].p).iInv;
+    ok('condutores do projetista: INV1 F+F+T (2 fases) apesar do cadastro trifásico, INV2 F+F+F+T; isolação e classe do INV2 no multifilar; corrente pelas fases; aviso',
+      !P.triInv(LCc[0].p) && P.triInv(LCc[1].p) && Math.abs(iBi / iTri - Math.sqrt(3)) < 1e-9 &&
+      !dC.some(function (c) { return c.t === 'regiao' && c.w && Math.abs(c.dx + 20.17) < 0.05; }) && dC.some(function (c) { return c.t === 'regiao' && c.w && Math.abs(c.dx - 150) < 0.05; }) &&
+      txC.indexOf(LCc[1].p.ca.bit + 'mm2 - XLPE') >= 0 && txC.indexOf('0,6/1KV - 90°C') >= 0 &&
+      /INV1: Inversor trifásico no cadastro, mas os condutores escolhidos são F \+ F \+ T/.test(cfC) && /INV2: Inversor mono\/bifásico no cadastro, mas os condutores escolhidos são F \+ F \+ F \+ T/.test(cfC),
+      { tri: [P.triInv(LCc[0].p), P.triInv(LCc[1].p)], i: [iBi, iTri], cf: cfC.slice(0, 400) });
+    // neutro no unifilar (condutor vertical) com a bandeirinha da legenda; o T do terra também no INV2
+    const dN = P.desenhoStringsA(Object.assign(U.clone(prM2), { condCA: 'FNT', invs: [Object.assign({}, prM2.invs[0], { condCA: 'FFFNT' })] }), campM, GAm);
+    const nh = dN.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMTickNh'; }).length;
+    const band = dN.filter(function (c) { return c.t === 'linha' && c.cor && c.cor[0] === 0 && c.cor[1] === 1 && c.cor[2] === 1 && c.pts.length === 2 && Math.abs(c.pts[0][1] - c.pts[1][1] - 3.6) < 1e-9 && c.pts[0][0] === c.pts[1][0]; }).length;
+    const tVerde = dN.filter(function (c) { return c.t === 'regiao' && c.bb[0] === 916.5 && c.bb[2] === 923.4; }).length;
+    ok('neutro no unifilar com a bandeirinha da legenda (um por traço de neutro) e o T do terra também no INV2', nh >= 2 && band === nh && tVerde === 1, { nh: nh, band: band, tVerde: tVerde });
     const LC = P.inversores(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { ccDist1: '25', ccDist2: '28', caUn: '3,1', condCA: 'FFFNT' })] }));
     igual('INV2 com circuitos próprios: distâncias CC, queda unitária CA e condutores (o INV1 com os da prancha)',
       [LC[1].p.cc.dist1, LC[1].p.cc.dist2, LC[1].p.ca.un, LC[1].p.condCA, P.letrasInv(LC[1].p).join(''), LC[0].p.cc.dist1, LC[0].p.condCA,
