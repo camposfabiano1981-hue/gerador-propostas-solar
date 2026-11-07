@@ -2409,6 +2409,17 @@
       { cabos: cabosCA, x1: caboEm(cabosCA[0]), x2: caboEm(cabosCA[1]), ramS: ramS, nS1: nS1, xInv2: xInv2, kw2: kw2 });
     const dUm = P.desenhoStringsA(pr, campM, GAm), cab1 = dUm.filter(function (c) { return c.t === 'texto' && c.txt === pr.ca.bit + 'mm2 - ' + pr.ca.mat; });
     ok('um inversor: o cabo CA também aparece entre a String Box CA e o inversor', cab1.length === 1 && Math.abs(cab1[0].oc.y - (1056 - 0.56)) < 0.01, cab1.map(function (c) { return c.oc; }));
+    // folha 1 de 2: o multifilar vai 150 para a direita (modelo, desenho e campos), longe do unifilar; o unifilar ganha espaço
+    const fMF = P.desenhoStringsA(prM2, campM, GAm, 1);
+    const faixasMF = fMF.filter(function (c) { return c.t === 'regiao' && c.dx === 150 && c.dy === 0 && c.bb[0] === 1042; }).length;
+    const brancosIni = fMF.slice(0, 3).every(function (c) { return c.t === 'branco' && c.r[0] === 1042; });
+    const cabo1 = fMF.filter(function (c) { return c.t === 'texto' && c.txt === cabosCA[0] && Math.abs(c.oc.y - (1056 - 0.56)) < 0.01; }).map(function (c) { return c.oc.x; });
+    const ramS1 = fMF.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMRamS'; }).map(function (c) { return c.m[4] + c.m[0] * uS.x; });
+    ok('folha 1 de 2: multifilar deslocado 150 para a direita (faixas do modelo, desenho e campos) e as strings do unifilar mais espaçadas',
+      faixasMF === 3 && brancosIni && fMF.moverMF && fMF.moverMF.length === 3 && fMF.moverMF.every(function (m) { return m.tx === 150 && m.k === 1; }) &&
+      cabo1.some(function (x) { return Math.abs(x - (1172.6 + 3.8 + 13.8 + 150)) < 0.01; }) && !dM.moverMF &&
+      (ramS1[1] - ramS1[0]) > (ramS[1] - ramS[0]) + 5,
+      { faixasMF: faixasMF, brancosIni: brancosIni, cabo1: cabo1, passo1: ramS1[1] - ramS1[0], passo: ramS[1] - ramS[0] });
     // trecho comum (quadro geral → String Box CA) com mais de um inversor: a soma das correntes, bitola sugerida ou digitada
     const cmA = P.caboComum(prM2), vCm = P.valores(prM2, 'A');
     const cmD = P.caboComum(Object.assign(U.clone(prM2), { caComum: { bit: '6', mat: 'XLPE', iso: '0,6/1kV - 90°C' } }));

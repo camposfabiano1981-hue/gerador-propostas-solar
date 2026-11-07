@@ -755,6 +755,10 @@ window.App = window.App || {};
   };
   // INV1 trifásico centrado na fase S: as 3 fases descem retas até ele (≈ −20,2); o nome dele, à esquerda, vai junto
   const DX_MF = 150; // INV2 no multifilar: à direita da String Box CA
+  // folha 1 de 2: o multifilar vai para a direita (o croqui saiu dali), afastado do unifilar simplificado; o modelo dele é copiado
+  // destas faixas (sem o croqui) e os campos dentro delas vão junto
+  const DX_FOLHA1 = 150;
+  const MF_FAIXAS = [[1042, 840, 1861, 1043], [1042, 1043, 1343, 1433], [1042, 1433, 1861, 1654.5]];
   const DX_INV1_TRI = MF.xS - (INV_TRI.bb[0] + (INV_TRI.bb[2] - INV_TRI.bb[0]) * INV_TRI.k / 2);
   /** Deslocamento do lado CC (strings) de um inversor trifásico no multifilar, para descer do centro do bloco ampliado. */
   function dcTri(pr, p, j, xInvV) { return pr.ligacao === 'tri' && triInv(p) ? (j === 0 ? MF.xS : MF.xT) - xInvV : 0; }
@@ -1199,7 +1203,8 @@ window.App = window.App || {};
     return { x0: 398, x1: Math.max.apply(null, xs) + 6, y0: Math.min.apply(null, ys.concat(y0s)) - 22, y1: Math.max.apply(null, ys.concat(y0s)) + F.alt * s + 16 };
     }
 
-    const Kc = G.condutores;
+    const Kc = G.condutores, dxMF = folha === 1 ? DX_FOLHA1 : 0;
+    let iMF = null;
     if (folha === 2) return folhaStrings();
     if (folha === 1) {
       // folha 1 de 2: sem o desenho das strings (vai para a folha 2); no lugar, a indicação da folha e o resumo dos inversores
@@ -1230,6 +1235,17 @@ window.App = window.App || {};
     if (pr.ligacao === 'tri') multifilarTri(pr, lista, cmds);
     // cabo CA de cada inversor (String Box CA → inversor) no multifilar — depois do trifásico, que limpa o lugar do inversor
     caboCAMultifilar(pr, lista.slice(0, Math.min(nI, 2)), cmds, [0, DX_MF].slice(0, Math.min(nI, 2)));
+    // folha 1 de 2: o multifilar inteiro para a direita — o modelo dele (apagado no lugar e copiado deslocado, antes de tudo), o
+    // que o código desenhou nele e os campos dentro das faixas
+    if (dxMF && iMF != null) {
+      // ordem: apaga o lugar antigo antes de tudo (o unifilar, mais largo, desenha depois por cima); a cópia vem depois do branco
+      // do croqui (que cai na nova posição) e antes do que o código desenha no multifilar
+      const mf = transformar(cmds.splice(iMF), 1, dxMF, 0);
+      Array.prototype.unshift.apply(cmds, MF_FAIXAS.map(function (r) { return { t: 'branco', r: r }; }));
+      MF_FAIXAS.forEach(function (r) { cmds.push({ t: 'regiao', bb: r, dx: dxMF, dy: 0 }); });
+      mf.forEach(function (c) { cmds.push(c); });
+      cmds.moverMF = MF_FAIXAS.map(function (r) { return { r: r, k: 1, tx: dxMF, ty: 0 }; });
+    }
     // uma folha só: o diagrama de blocos e o detalhe do aterramento compactos nos espaços livres
     if (!folha) compactos1F(pr, lista, cmds);
     return cmds;
@@ -1376,9 +1392,9 @@ window.App = window.App || {};
     // inversor no multifilar (à direita)
     const grupos = Array.from({ length: nI }, function (_, j) { return todas.filter(function (x) { return x.j === j; }); });
     const hs = grupos.map(function (g) { return (Math.max(g.length, 1) - 1) / 2; });
-    const xNomeMF = 1066.92 + (pr.ligacao === 'tri' && triInv(lista[0].p) ? DX_INV1_TRI : 0), dMax = Math.max(66, xNomeMF - 949.6 - 4);
+    const xNomeMF = 1066.92 + (pr.ligacao === 'tri' && triInv(lista[0].p) ? DX_INV1_TRI : 0) + dxMF, dMax = Math.max(66, xNomeMF - 949.6 - 4);
     // a última string (com o barramento) para antes do nome do INV1 no multifilar, que fica na altura do barramento
-    const xMaxS = Math.min(S.max, xNomeMF - 3);
+    const xMaxS = Math.min(S.max + (dxMF ? dxMF - 30 : 0), xNomeMF - 3);
     const posicoes = function (p) { const xs = [S.xInv]; for (let j = 1; j < nI; j++) xs.push(xs[j - 1] + Math.max(66, (hs[j - 1] + hs[j] + 1) * p)); return xs; };
     let passoS = 14, xI = posicoes(14);
     for (let p = S.passo; p >= 14; p -= 0.5) {
@@ -1420,6 +1436,7 @@ window.App = window.App || {};
     }
 
     // ---- unifilar principal: o INV1 no lugar do desenho; os outros à direita, com o disjuntor na mesma String Box CA
+    iMF = cmds.length;
     const V = G.uniU, cf = campos.campo_fv || [], uc = campos._uU_campo || [];
     // o 2º inversor fica à direita da String Box CA (o croqui começa em x ≈ 1400 nessa altura)
     const tri2 = pr.ligacao === 'tri' && nI > 1 && triInv(lista[1].p), DX = DX_MF, xBoxD = Math.max(1295.4, 1190.64 + DX * (nI - 1) + 32 + (tri2 ? MF.d : 0));
