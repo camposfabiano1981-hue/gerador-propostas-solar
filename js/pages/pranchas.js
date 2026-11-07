@@ -55,7 +55,8 @@ window.App = window.App || {};
       pr.inv.qtd = '1';
     }
     const multi = pr.invs.length > 0;
-    const mudou = function (redesenho) { pr.atualizadoEm = new Date().toISOString(); o.mudou(); pintarResumo(); pintarCalc(); if (redesenho) desenhar(box, o); };
+    let elTrecho = null; // bloco do trecho comum (com mais de um inversor), atualizado a cada mudança
+    const mudou = function (redesenho) { pr.atualizadoEm = new Date().toISOString(); o.mudou(); pintarResumo(); pintarCalc(); atualizarTrecho(); if (redesenho) desenhar(box, o); };
     // campo compartilhado com a Homologação: grava lá também
     const comp = function () { if (inst.homologacao) P.gravarCompartilhados(pr, inst.homologacao); };
 
@@ -303,8 +304,33 @@ window.App = window.App || {};
         { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: P.CONDUTORES_CA, help: 'Marcas da fiação no desenho e na fiação do inversor.' },
         { k: 'ca.dist', label: 'Distância (m)', type: 'number' }, { k: 'limiteCA', label: 'Limite de queda CA (%)', type: 'number' }
       ], pr, function (k) { mudou(k === 'ca.bit'); }, 3),
+      multi ? trechoComum() : null,
       h('p.ajuda-sec', 'ΔV = queda unitária × corrente × distância ÷ 1000; % sobre a tensão da string (CC) ou do inversor (CA). Valores calculados:'), calc));
     pintarCalc();
+
+    // trecho comum (quadro geral → String Box CA) com mais de um inversor: leva a soma das correntes; em branco, a bitola sugerida
+    function trechoComum() {
+      if (!pr.caComum) pr.caComum = { bit: '', mat: '', iso: '' };
+      const ajuda = h('p.ajuda-sec');
+      elTrecho = h('div',
+        h('h4.secao-form', 'Trecho comum (quadro geral → String Box CA) — leva a soma das correntes dos inversores'),
+        UI.grade([
+          { k: 'caComum.bit', label: 'Cabo (mm²)', type: 'number' },
+          { k: 'caComum.mat', label: 'Isolação', type: 'select', options: [{ v: '', t: 'Igual à do INV1' }].concat(MATERIAIS) },
+          { k: 'caComum.iso', label: 'Classe / temperatura', placeholder: String(pr.ca.iso || '').trim() || '450/750V - 70°C' }
+        ], pr, function () { mudou(); }, 3), ajuda);
+      elTrecho.ajuda = ajuda;
+      atualizarTrecho();
+      return elTrecho;
+    }
+    // sugestão do trecho comum (muda com a potência e a tensão de cada inversor): "Auto" no campo e a conta embaixo
+    function atualizarTrecho() {
+      if (!elTrecho) return;
+      const cm = P.caboComum(pr), campo = elTrecho.querySelector('[data-k="caComum.bit"]');
+      if (campo) campo.placeholder = cm.sug ? 'Auto: ' + cm.sug : '';
+      elTrecho.ajuda.textContent = (cm.sug ? 'Sugestão: ' + cm.sug + ' mm² — Iz ≥ 1,25 × ' + U.fmt(cm.iTot, 2) + ' A (soma dos inversores) = ' + U.fmt(1.25 * cm.iTot, 2) + ' A (NBR 5410, tab. 36, B1). ' : '') +
+        'Em branco, vale a sugestão. Sai no multifilar, acima da String Box CA, na marca do QD no unifilar e no diagrama de blocos.';
+    }
 
     // ---------- 4. proteções
     const sug = c0.iInv > 0 ? P.proxDisjuntor(1.25 * c0.iInv) : null;

@@ -224,6 +224,7 @@ window.App = window.App || {};
       mod: {}, inv: {}, nStrings: '', porString: '', porMppt: '', ligacao: 'bi',
       cc: { bit: pad.cc.bit, tipo: pad.cc.tipo, un: pad.cc.un, dist1: '', dist2: '' },
       ca: { bit: pad.ca.bit, mat: pad.ca.mat, iso: pad.ca.iso, un: pad.ca.un, dist: '' },
+      caComum: { bit: '', mat: '', iso: '' },   // trecho comum (quadro geral → String Box CA), com mais de um inversor
       entrada: U.clone(pad.entrada), saida: U.clone(pad.saida), ramal: U.clone(pad.ramal), terraBit: pad.terraBit,
       disjGeral: '', disjCa: '', disjCaKa: pad.disjCaKa, dpsCa: U.clone(pad.dpsCa), dpsCcUcpv: pad.dpsCcUcpv, sbCc: pad.sbCc,
       fia: { placas: '', inversor: '', sb: '', qgbt: pad.fia.qgbt, ramal: pad.fia.ramal }, elet: U.clone(pad.elet),
@@ -885,6 +886,19 @@ window.App = window.App || {};
     });
   }
 
+  /**
+   * Trecho comum (quadro geral → String Box CA) com mais de um inversor: leva a soma das correntes. Bitola digitada ou, em branco,
+   * a sugerida — a menor com Iz ≥ 1,25 × a soma (NBR 5410 tab. 36, B1, pela ligação da UC); isolação e classe as do INV1 quando
+   * em branco.
+   */
+  function caboComum(pr, lista) {
+    const L = lista || inversores(pr), x = pr.caComum || {}, fases = pr.ligacao === 'tri' ? 'tri' : 'mono';
+    const iTot = L.reduce(function (a, it) { return a + (calcular(it.p).iInv || 0); }, 0);
+    const sug = iTot > 0 ? Object.keys(IZ).map(Number).sort(function (a, b) { return a - b; }).find(function (b) { return IZ[b][fases === 'tri' ? 1 : 0] >= 1.25 * iTot - 1e-9; }) : null;
+    const bit = str(x.bit) || (sug ? String(sug) : str(pr.ca.bit));
+    return { bit: bit, mat: str(x.mat) || str(pr.ca.mat), iso: str(x.iso) || str(pr.ca.iso), iTot: iTot, sug: sug ? String(sug) : '', iz: izCabo(bit, fases), digitado: !!str(x.bit) };
+  }
+
   /** Valores do estilo A que mudam com mais de um inversor (seção 3 com todos, tabela do inversor com o INV1, legenda e totais). */
   function valoresMulti(pr, v, lista) {
     const cs = lista.map(function (x) { return calcular(x.p); });
@@ -895,7 +909,10 @@ window.App = window.App || {};
     const smax = todas.reduce(function (a, s) { return !a || s.n > a.n ? s : a; }, null);
     ['ti_nstr', 'ti_nmod', 'ti_efic', 'ti_kw', 'ti_v', 'ti_fp', 'ti_i', 'ti_cabo', 'ti_un', 'ti_dist', 'ti_dv', 'ti_pct', 'disj_ca', 'disj_ca_a', 'inv_nome_kw', 'inv_modelo', 'inv_logo', 'bit_ca_lig', 'cabo_inversor']
       .forEach(function (k) { v[k] = v1[k]; });
+    const cm = caboComum(pr, lista);
     return Object.assign(v, {
+      // trecho comum (quadro geral → String Box CA): o texto acima da String Box CA no multifilar e a marca "QD" do unifilar
+      cabo_inversor: cm.bit ? cm.bit + 'mm2 - ' + cm.mat : '', cabo_inversor_iso: cm.iso, bit_ca_marca: [v1.bit_ca_marca, cm.bit],
       inv_nome: [nomes.join(' / '), nomes.join(' + '), nomes[0]],
       inv_kw_cad: [kws.map(function (k) { return k + 'KW'; }).join(' / '), kws[0] ? kws[0] + 'KW' : '', kws[0] ? kws[0] + 'KW' : ''],
       leg_inv_kw: cs.map(function (c) { return fx(c.kw, 1) + ' KW'; }).join(' / '),
@@ -973,7 +990,7 @@ window.App = window.App || {};
     caixa(X[3], y2, w, h, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da UC - ' + lig]);
     caixa(X[2], y2, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
     caixa(X[1], y2, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
-    seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(caBit));
+    seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(nI > 1 ? caboComum(pr, lista).bit : caBit));
     seta(X[3], y2 - h / 2, X[2] + w, y2 - h / 2, 'entrada', mm(pr.entrada.bit));
     seta(X[2], y2 - h / 2, X[1] + w, y2 - h / 2, 'ramal', mm(pr.ramal.bit));
 
@@ -1239,8 +1256,8 @@ window.App = window.App || {};
       const disj = lista.slice(0, n2).map(function (x, j) { return 'INV' + (j + 1) + ' ' + (str(x.p.disjCa) || '?') + ' A'; }).join(' + ');
       const d = pr.dpsCa || {};
       caixa(cx, yCA, largM, ['STRING BOX CA', (n2 > 1 ? 'disjuntores: ' : 'disjuntor: ') + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '') + (str(d.in) ? ' - In ' + str(d.in) + ' kA' : '')]);
-      const yQ = yCA - bh - gap;
-      seta(cx, yCA - bh, yQ, 'CA');
+      const yQ = yCA - bh - gap, bitComum = nI > 1 ? caboComum(pr, lista).bit : caBit;
+      seta(cx, yCA - bh, yQ, bitComum ? 'CA #' + bitComum : 'CA');
       caixa(cx, yQ, largM, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'ligação ' + (LIGACOES[pr.ligacao] || '') + ' - entrada ' + (str(pr.entrada.bit) || '?') + ' mm2']);
       // cargas da instalação ao lado do QGBT
       const xC = cx + largM / 2 + 18 + 60;
@@ -1561,6 +1578,11 @@ window.App = window.App || {};
       const c = calcular(x.p);
       if (c.kw > 0 && c.kwp > 0 && c.kwp / c.kw > 1.5) add('aviso', 'INV' + (j + 1) + ': ' + fx(c.kwp, 2, ',') + ' kWp para ' + fx(c.kw, 2, ',') + ' kW (relação CC/CA de ' + fx(c.kwp / c.kw, 2, ',') + ').');
     });
+    const cm = caboComum(pr, lista);
+    if (cm.iTot > 0 && cm.iz && cm.iz < 1.25 * cm.iTot - 1e-9) {
+      add('aviso', 'Cabo do trecho comum (quadro geral → String Box CA) de ' + cm.bit + ' mm² (' + cm.iz + ' A, NBR 5410 tab. 36, B1) abaixo de 1,25 × a soma das correntes dos inversores (' +
+        fx(1.25 * cm.iTot, 2, ',') + ' A)' + (cm.sug ? '. Sugestão: ' + cm.sug + ' mm².' : '.'));
+    }
     if (es.indexOf('A') >= 0 && lista.length > 2) add('aviso', 'Estilo A: os unifilares desenham até 2 inversores (o croqui limita a largura); do INV3 em diante, só o desenho das strings e as tabelas.');
     if (es.indexOf('B') >= 0) add('info', 'Estilo B: a planta, a fachada e os diagramas desenham ' + DESENHO.B.modulos + ' módulos e 1 inversor; esta obra tem ' + M + ' módulos e ' + lista.length + ' inversores. Quantidades e textos saem com o inversor 1.');
     return out;
@@ -1691,7 +1713,7 @@ window.App = window.App || {};
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod,
-    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas,
+    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

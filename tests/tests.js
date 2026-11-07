@@ -2409,6 +2409,19 @@
       { cabos: cabosCA, x1: caboEm(cabosCA[0]), x2: caboEm(cabosCA[1]), ramS: ramS, nS1: nS1, xInv2: xInv2, kw2: kw2 });
     const dUm = P.desenhoStringsA(pr, campM, GAm), cab1 = dUm.filter(function (c) { return c.t === 'texto' && c.txt === pr.ca.bit + 'mm2 - ' + pr.ca.mat; });
     ok('um inversor: o cabo CA também aparece entre a String Box CA e o inversor', cab1.length === 1 && Math.abs(cab1[0].oc.y - (1056 - 0.56)) < 0.01, cab1.map(function (c) { return c.oc; }));
+    // trecho comum (quadro geral → String Box CA) com mais de um inversor: a soma das correntes, bitola sugerida ou digitada
+    const cmA = P.caboComum(prM2), vCm = P.valores(prM2, 'A');
+    const cmD = P.caboComum(Object.assign(U.clone(prM2), { caComum: { bit: '6', mat: 'XLPE', iso: '0,6/1kV - 90°C' } }));
+    const vCmD = P.valores(Object.assign(U.clone(prM2), { caComum: { bit: '6', mat: 'XLPE', iso: '0,6/1kV - 90°C' } }), 'A');
+    const cfCm = P.conferir(Object.assign(U.clone(prM2), { caComum: { bit: '6' } })).map(function (x) { return x.texto; }).join(' | ');
+    const iSoma = P.inversores(prM2).reduce(function (a, x) { return a + P.calcular(x.p).iInv; }, 0);
+    ok('trecho comum: soma das correntes, bitola sugerida (Iz ≥ 1,25 × soma) no multifilar e na marca do QD; a digitada no lugar; conferência quando não comporta',
+      Math.abs(cmA.iTot - iSoma) < 1e-9 && !cmA.digitado && cmA.bit === cmA.sug && cmA.iz >= 1.25 * cmA.iTot &&
+      vCm.cabo_inversor === cmA.bit + 'mm2 - ' + cmA.mat && vCm.bit_ca_marca[0] === String(prM2.ca.bit) && vCm.bit_ca_marca[1] === cmA.bit &&
+      cmD.digitado && vCmD.cabo_inversor === '6mm2 - XLPE' && vCmD.cabo_inversor_iso === '0,6/1kV - 90°C' && vCmD.bit_ca_marca[1] === '6' &&
+      /Cabo do trecho comum \(quadro geral → String Box CA\) de 6 mm²/.test(cfCm) && !/Cabo do trecho comum/.test(P.conferir(prM2).map(function (x) { return x.texto; }).join(' | ')) &&
+      P.valores(pr, 'A').cabo_inversor === pr.ca.bit + 'mm2 - ' + pr.ca.mat,
+      { cm: cmA, cabo: vCm.cabo_inversor, marca: vCm.bit_ca_marca, cf: cfCm.slice(0, 300) });
     igual('condutores pela saída de cada inversor e, no QD, pela ligação da UC', [P.letrasInv({ condCA: 'FFT', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: 'FFFNT', inv: { fases: 'mono' } }).join(''),
       P.letrasInv({ condCA: 'FNT', inv: { fases: 'mono' } }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'tri' }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'bi' }).join('')].join('|'), 'FFF|FFN|FN|FFF|FF');
     const LC = P.inversores(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { ccDist1: '25', ccDist2: '28', caUn: '3,1', condCA: 'FFFNT' })] }));
