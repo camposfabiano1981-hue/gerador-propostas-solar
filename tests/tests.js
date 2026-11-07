@@ -2381,9 +2381,34 @@
     const dT2 = P.desenhoStringsA(Object.assign(U.clone(prM2), { inv: Object.assign({}, prM2.inv, { fases: 'tri' }) }), campM, GAm);
     const nReg = function (d) { return d.filter(function (c) { return c.t === 'regiao'; }).length; };
     ok('UC trifásica: rede R, S, T e N, medidor e disjuntor geral com 3 polos, carga da fase R; INV2 trifásico com 3 polos; INV1 trifásico com 3º polo e 3 DPS',
-      txT.indexOf('T') >= 0 && txT.indexOf('N') >= 0 && nReg(dT) === nReg(dM) + 6 && nReg(dT2) === nReg(dT) + 6 &&
+      txT.indexOf('T') >= 0 && txT.indexOf('N') >= 0 && nReg(dT) === nReg(dM) + 6 && nReg(dT2) === nReg(dT) + 7 &&
       dT.filter(function (c) { return c.t === 'ponto'; }).length > dM.filter(function (c) { return c.t === 'ponto'; }).length + 4,
       { bi: nReg(dM), tri: nReg(dT), tri2: nReg(dT2) });
+    // organização: INV1 trifásico centrado na fase S (fases retas, sem escada), nome dele junto, lado CC e aterramento dos campos
+    // no centro do bloco; cabo CA de cada inversor no multifilar; no unifilar, cada inversor centrado sobre as suas strings
+    const linhasT2 = dT2.filter(function (c) { return c.t === 'linha'; }), topoT = 981.7 + (1020.12 - 981.7) * 1.55;
+    const retas = [1131.0, 1151.8, 1172.6].every(function (x) { return linhasT2.some(function (c) { return c.pts.length === 2 && Math.abs(c.pts[0][0] - x) < 0.01 && Math.abs(c.pts[1][0] - x) < 0.01 && Math.abs(c.pts[1][1] - topoT) < 0.01; }); });
+    const escada = linhasT2.some(function (c) { return c.pts.length === 4 && Math.abs(c.pts[3][1] - topoT) < 0.01 && c.pts[3][0] < 1200; });
+    const blocoInv1 = dT2.filter(function (c) { return c.t === 'regiao' && c.w && Math.abs(c.w - 38.8 * 1.55) < 0.01 && Math.abs(c.dx + 20.17) < 0.05; }).length;
+    const txT2 = dT2.filter(function (c) { return c.t === 'texto'; });
+    const nomeInv1 = txT2.filter(function (c) { return c.txt === 'INVERSOR' && Math.abs(c.oc.x - (1067.9 - 20.17)) < 0.05; }).length;
+    ok('multifilar: INV1 trifásico centrado na fase S, com as 3 fases retas (sem escada), o nome dele à esquerda junto e o lado CC no centro',
+      retas && !escada && blocoInv1 === 1 && nomeInv1 === 1 && (dT2.pularOc.inv_nome_kw || []).indexOf(0) >= 0 && (dT2.pularOc.inv_modelo || []).indexOf(0) >= 0,
+      { retas: retas, escada: escada, blocoInv1: blocoInv1, nomeInv1: nomeInv1, pularOc: dT2.pularOc });
+    const LMc = P.inversores(prM2), cabosCA = LMc.map(function (x) { return x.p.ca.bit + 'mm2 - ' + x.p.ca.mat; });
+    const txMf = dM.filter(function (c) { return c.t === 'texto'; });
+    const caboEm = function (t) { return txMf.filter(function (c) { return c.txt === t && Math.abs(c.oc.y - (1056 - 0.56)) < 0.01; }).map(function (c) { return c.oc.x; }); };
+    const uS = GAm.uniS, ramS = dM.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMRamS'; }).map(function (c) { return c.m[4] + c.m[0] * uS.x; });
+    const nS1 = P.calcular(LMc[0].p).tam.length, med = function (a) { return a.reduce(function (x, y) { return x + y; }, 0) / a.length; };
+    const tINV2 = txMf.filter(function (c) { return c.txt === 'INV2' && c.oc.ang === 90; })[0], xInv2 = tINV2 ? tINV2.oc.x - 895.3 + uS.xInv : null;
+    const kw2 = txMf.filter(function (c) { return /KW$/.test(c.txt) && c.oc.ang === 90 && tINV2 && Math.abs(c.oc.x - (tINV2.oc.x + 9.7)) < 0.01; }).length;
+    ok('multifilar com o cabo CA de cada inversor; unifilar com cada inversor centrado sobre as suas strings e o rótulo INV2 longe da potência',
+      caboEm(cabosCA[0]).some(function (x) { return Math.abs(x - (1172.6 + 3.8 + 13.8)) < 0.01; }) && caboEm(cabosCA[1]).some(function (x) { return Math.abs(x - (1172.6 + 150 + 3.8 + 13.8)) < 0.01; }) &&
+      Math.abs(med(ramS.slice(0, nS1)) - uS.xInv) < 0.01 && xInv2 != null && Math.abs(med(ramS.slice(nS1)) - xInv2) < 0.01 && kw2 === 1 &&
+      ramS.slice(nS1)[0] - ramS[nS1 - 1] > 0.9 * (ramS[1] - ramS[0]),
+      { cabos: cabosCA, x1: caboEm(cabosCA[0]), x2: caboEm(cabosCA[1]), ramS: ramS, nS1: nS1, xInv2: xInv2, kw2: kw2 });
+    const dUm = P.desenhoStringsA(pr, campM, GAm), cab1 = dUm.filter(function (c) { return c.t === 'texto' && c.txt === pr.ca.bit + 'mm2 - ' + pr.ca.mat; });
+    ok('um inversor: o cabo CA também aparece entre a String Box CA e o inversor', cab1.length === 1 && Math.abs(cab1[0].oc.y - (1056 - 0.56)) < 0.01, cab1.map(function (c) { return c.oc; }));
     igual('condutores pela saída de cada inversor e, no QD, pela ligação da UC', [P.letrasInv({ condCA: 'FFT', inv: { fases: 'tri' } }).join(''), P.letrasInv({ condCA: 'FFFNT', inv: { fases: 'mono' } }).join(''),
       P.letrasInv({ condCA: 'FNT', inv: { fases: 'mono' } }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'tri' }).join(''), P.letrasUC({ condCA: 'FFT', ligacao: 'bi' }).join('')].join('|'), 'FFF|FFN|FN|FFF|FF');
     const LC = P.inversores(Object.assign(U.clone(prM2), { invs: [Object.assign({}, prM2.invs[0], { ccDist1: '25', ccDist2: '28', caUn: '3,1', condCA: 'FFFNT' })] }));
