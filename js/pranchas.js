@@ -328,6 +328,68 @@ window.App = window.App || {};
     return { qtd: q, tam: tamanhos(q, nS, p.acrPorString), mod: m2, outro: m2 !== p.mod, mppt: Math.round(num(p.acrMppt)) || 0 };
   }
   function ampliacao(pr) { return !!(pr && pr.ampl && pr.ampl.ativa); }
+  // ampliação de verdade (o que é novo sai em destaque, com a nota); "misto": obra com dois modelos de módulo, sem destaque
+  function destaqueAmpl(pr) { return ampliacao(pr) && pr.ampl.tipo !== 'misto'; }
+  // campos escritos em mais de uma linha (separadas por \n): centradas na posição do campo ou a 1ª nela e as outras abaixo
+  const MULTILINHA = { leg_modulo: 'centro', leg_inv_kw: 'abaixo' };
+  const TIPOS_AMPL = [{ v: '', t: 'Ampliação: o que é novo sai em destaque' }, { v: 'misto', t: 'Obra com dois modelos de módulo (sem destaque)' }];
+  function nomeModulo(m) { return [maiusc(m && m.fab), str(m && m.modelo)].filter(Boolean).join(' - '); }
+  /** Módulos da obra (seção 1 e legendas): o da obra e, com o 2º módulo (ampliação ou obra mista) de outro modelo, ele também. */
+  function modulosDaObra(pr, lista) {
+    const L = lista || inversores(pr), out = [{ mod: pr.mod || {}, rot: '' }];
+    const a = L.map(function (x) { return acrescimo(x.p); }).filter(Boolean);
+    if (a.length && a[0].outro) {
+      const d = destaqueAmpl(pr);
+      out[0].rot = d ? ' (existente)' : '';
+      out.push({ mod: a[0].mod, rot: d ? ' (ampliação)' : '', acr: true });
+    }
+    return out;
+  }
+  /** Inversores agrupados por modelo e potência (legendas): nome, kW e os INV de cada grupo ("INV2 novo" na ampliação). */
+  function gruposInversores(pr, lista) {
+    const L = lista || inversores(pr), d = destaqueAmpl(pr), g = [];
+    L.forEach(function (x, j) {
+      const nome = [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' - '), kw = calcular(x.p).kw;
+      let e = g.find(function (o) { return o.nome === nome && Math.abs(o.kw - kw) < 1e-9; });
+      if (!e) { e = { nome: nome, kw: kw, invs: [], novo: false }; g.push(e); }
+      e.invs.push('INV' + (j + 1) + (d && x.inv.novo ? ' novo' : ''));
+      if (d && x.inv.novo) e.novo = true;
+    });
+    return g;
+  }
+  // um campo do mapa que o desenho escreve por conta própria (nesta ocorrência)
+  function pularCampo(cmds, k, i) { cmds.pularOc = cmds.pularOc || {}; cmds.pularOc[k] = (cmds.pularOc[k] || []).concat([i]); }
+  /**
+   * Legenda do estilo A (à esquerda): os módulos e os inversores um abaixo do outro, cada um com o seu traço, e a potência de cada
+   * inversor (verde) empilhada — no lugar do texto único com barra. Apaga os traços do modelo (o do módulo ficava solto, acima do
+   * começo do nome) e escreve alinhado como as outras linhas da legenda.
+   */
+  function legendaA(pr, lista, campos, cmds) {
+    // seção 1: o traço do modelo que ficava solto acima do começo do nome do módulo
+    if (campos.mod_nome && campos.mod_nome[1]) cmds.push({ t: 'branco', r: [184.4, 754.6, 191.4, 757.2] });
+    const oM = campos.mod_nome && campos.mod_nome[0], oI = campos.inv_nome && campos.inv_nome[0], oK = campos.inv_kw_cad && campos.inv_kw_cad[0];
+    const escreve = function (oc, ls, xTxt, yBase, passo, traco) {
+      ls.forEach(function (t, i) {
+        const y = yBase + ((ls.length - 1) / 2 - i) * passo;
+        if (traco) cmds.push({ t: 'linha', pts: [[traco[0], y + 3.3], [traco[1], y + 3.3]], cor: oc.cor || [0, 0, 1], traco: null });
+        if (t) cmds.push({ t: 'texto', txt: t, oc: Object.assign({}, oc, { x: xTxt, y: y, w: 395, al: 'l' }) });
+      });
+    };
+    const g = gruposInversores(pr, lista), um = (lista || []).length <= 1;
+    if (oM) {
+      cmds.push({ t: 'branco', r: [326.6, 1134.6, 333.4, 1138.2] }); pularCampo(cmds, 'mod_nome', 0);
+      escreve(oM, modulosDaObra(pr, lista).map(function (m) { return nomeModulo(m.mod) + m.rot; }), 343.4, 1133.1, 11, [327.6, 332.4]);
+    }
+    if (oI) {
+      cmds.push({ t: 'branco', r: [333.1, 1041.6, 341.6, 1045.2] }); pularCampo(cmds, 'inv_nome', 0);
+      escreve(oI, g.map(function (o) { return o.nome + (um ? (o.novo ? ' (novo)' : '') : ' (' + o.invs.join(', ') + ')'); }), oI.x, 1040.1, Math.min(11, 26 / Math.max(1, g.length - 1)), [334.1, 340.6]);
+    }
+    if (oK) {
+      pularCampo(cmds, 'inv_kw_cad', 0);
+      const n = g.length, k = n > 2 ? 0.8 : (n > 1 ? 0.9 : 1);
+      g.forEach(function (o, i) { if (o.kw > 0) cmds.push({ t: 'texto', txt: pt(o.kw, 2) + 'KW', oc: Object.assign({}, oK, { y: oK.y + (n - 1 - i) * 7.6 * k, s: oK.s * k }) }); });
+    }
+  }
 
   function calcular(pr) {
     const m = pr.mod || {}, iv = pr.inv || {};
@@ -484,6 +546,8 @@ window.App = window.App || {};
       cx_inspecao: str(pr.cxInspecao), haste: str(pr.haste), cx_passagem: str(pr.cxPassagem),
       inv_logo: fabInv
     };
+    // alimentador da String Box CA (quadro geral → String Box CA): o do projetista ou, em branco, o cabo do inversor
+    const al = caboComum(pr, [{ p: pr }]), alTxt = al.bit ? al.bit + 'mm2 - ' + al.mat : '';
     if (estilo === 'A') {
       const s1 = c.strings[0], s2 = c.strings[1];
       const linha = function (p, s) {
@@ -510,11 +574,11 @@ window.App = window.App || {};
         cabo_ramal_lig: str(pr.ramal.bit) ? str(pr.ramal.bit) + 'mm2 - ' + str(pr.ramal.tipo) : '', cabo_ramal_lig_iso: str(pr.ramal.iso),
         cabo_entrada: str(pr.entrada.bit) ? str(pr.entrada.bit) + 'mm2 - ' + str(pr.entrada.mat) : '', cabo_entrada_iso: str(pr.entrada.iso),
         cabo_saida: str(pr.saida.bit) ? str(pr.saida.bit) + 'mm2 - ' + str(pr.saida.mat) : '', cabo_saida_iso: str(pr.saida.iso),
-        cabo_inversor: str(pr.ca.bit) ? str(pr.ca.bit) + 'mm2 - ' + str(pr.ca.mat) : '', cabo_inversor_iso: str(pr.ca.iso),
+        cabo_inversor: alTxt, cabo_inversor_iso: al.iso,
         cabo_cc: str(pr.cc.bit) ? (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : str(pr.cc.bit)) + 'mm2/' + str(pr.cc.tipo) : '',
         disj_geral_a: dg ? dg + 'A' : '', disj_ca_a: dca ? dca + 'A' : '',
         campo_fv: [0, 1, 0, 1].map(function (k) { const s = c.strings[k] || c.strings[0]; return s && w ? s.n + 'x' + w + 'W' : ''; }),
-        bit_ca_marca: str(pr.ca.bit), bit_cc_marca: str(pr.cc.bit),
+        bit_ca_marca: [str(pr.ca.bit), al.bit], bit_cc_marca: str(pr.cc.bit),
         // fiação do quadro ao inversor no desenho das strings: condutores (cabo CA do inversor) e terra
         bit_ca_lig: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '', bit_terra_lig: terraCA(pr) ? '#' + terraCA(pr) : ''
       });
@@ -532,7 +596,9 @@ window.App = window.App || {};
       inv_rotulo: [fabInv, modInv].filter(Boolean).join(' | '),
       telhado: str(pr.telhado) ? 'Telhado ' + str(pr.telhado) : '', inclinacao: str(pr.inclinacao) ? 'i = ' + str(pr.inclinacao) + 'º' : '',
       cabo_cc_mm2: str(pr.cc.bit) ? str(pr.cc.bit) + ' mm2' : '', cabo_cc_solar: str(pr.cc.bit) ? str(pr.cc.bit) + ' mm2/Solar' : '',
-      cabo_inv_pvc: str(pr.ca.bit) ? str(pr.ca.bit) + ' mm2/' + str(pr.ca.mat) : '', cabo_inv_pvc_txt: str(pr.ca.bit) ? str(pr.ca.bit) + ' mm2/' + str(pr.ca.mat) : '',
+      // inversor → String Box CA (o cabo do inversor) e String Box CA → QGBT (o alimentador)
+      cabo_inv_pvc: [str(pr.ca.bit) ? str(pr.ca.bit) + ' mm2/' + str(pr.ca.mat) : '', al.bit ? al.bit + ' mm2/' + al.mat : '', al.bit ? al.bit + ' mm2/' + al.mat : ''],
+      cabo_inv_pvc_txt: [str(pr.ca.bit) ? str(pr.ca.bit) + ' mm2/' + str(pr.ca.mat) : '', al.bit ? al.bit + ' mm2/' + al.mat : ''],
       cabo_saida_xlpe_esp: str(pr.saida.bit) ? str(pr.saida.bit) + ' mm2 / ' + str(pr.saida.mat) : '', cabo_entrada_xlpe_esp: str(pr.entrada.bit) ? str(pr.entrada.bit) + ' mm2 / ' + str(pr.entrada.mat) : '',
       cabo_saida_xlpe: str(pr.saida.bit) ? str(pr.saida.bit) + ' mm2/' + str(pr.saida.mat) : '', cabo_entrada_xlpe: str(pr.entrada.bit) ? str(pr.entrada.bit) + ' mm2/' + str(pr.entrada.mat) : '',
       disj_geral_a_esp: dg ? dg + ' A' : '', disj_geral_2p: dg ? (POLOS[pr.ligacao] || '2P') + '-' + dg : '',
@@ -546,29 +612,33 @@ window.App = window.App || {};
   }
 
   /**
-   * Ampliação: os textos com os dois módulos — a seção 1 (nome, potência, Vmp e Imp "existente / acréscimo"), a legenda e o
-   * descritivo (existentes + acréscimo). Sem acréscimo, os valores ficam como estão.
+   * Segundo módulo (ampliação ou obra com dois modelos de módulo): a seção 1 com o 1º módulo (os dados do 2º, logo abaixo, são
+   * escritos pelo desenho), a legenda específica com uma linha por módulo e o descritivo com as duas quantidades. Na ampliação,
+   * "(existente)" / "(ampliação)" e o inversor novo marcado na seção 3. Sem o 2º módulo, os valores ficam como estão.
    */
   function valoresAmpl(pr, v, lista, estilo) {
     if (!ampliacao(pr)) return v;
+    const d = destaqueAmpl(pr);
+    if (estilo === 'A' && d && lista.length === 1 && lista[0].inv && lista[0].inv.novo) {
+      const ni = [].concat(v.inv_nome), um = ni[0] || '';
+      v.inv_nome = [um, (ni[1] != null ? ni[1] : um) + ' (novo)', ni[2] != null ? ni[2] : um];
+    }
     const acs = lista.map(function (x) { return acrescimo(x.p); }).filter(Boolean);
     if (!acs.length) return v;
     const m = pr.mod || {}, m2 = acs[0].mod, n1 = num(m.qtd), n2 = acs.reduce(function (a, x) { return a + x.qtd; }, 0);
     const w1 = pt(num(m.w), 1), w2 = pt(num(m2.w), 1), lig = LIGACOES[pr.ligacao] || 'bifásico', dg = str(pr.disjGeral);
-    const nome = function (x) { return [maiusc(x.fab), str(x.modelo)].filter(Boolean).join(' - '); };
-    const par = function (a, b) { return a && b && a !== b ? a + ' / ' + b : a || b; };
     v.descritivo = [
-      'O sistema é composto por ' + pad2(n1) + ' módulos de ' + w1 + ' Wp existentes e ' + pad2(n2) + ' módulos de ' + w2 + ' Wp (ampliação).',
+      d ? 'O sistema é composto por ' + pad2(n1) + ' módulos de ' + w1 + ' Wp existentes e ' + pad2(n2) + ' módulos de ' + w2 + ' Wp (ampliação).'
+        : 'O sistema é composto por ' + pad2(n1) + ' módulos de ' + w1 + ' Wp e ' + pad2(n2) + ' módulos de ' + w2 + ' Wp.',
       'A instalação elétrica da casa existente com ramal de entrada ' + lig + ' de ' + str(pr.entrada.bit) + ' mm2, disjuntor de ' + dg + ' A e',
       'ramal de saída ' + lig + ' de ' + str(pr.saida.bit) + ' mm2, disjuntor de ' + dg + ' A.'];
     const cel = function (x) { return str(x.celulas) ? str(x.celulas) + ' células ' : ''; };
-    v.leg_modulo = 'Módulos fotovoltaico ' + cel(m) + w1 + ' Wp' + (acs[0].outro ? ' / ' + cel(m2) + w2 + ' Wp (ampliação)' : '');
-    if (estilo === 'A' && acs[0].outro) {
-      const nm = nome(m) + ' + ' + nome(m2) + ' (ampliação)';
+    const mods = modulosDaObra(pr, lista);
+    // legenda específica: uma linha por módulo (sem barra)
+    v.leg_modulo = mods.map(function (o) { return 'Módulos fotovoltaico ' + cel(o.mod) + pt(num(o.mod.w), 1) + ' Wp' + o.rot; }).join('\n');
+    if (estilo === 'A' && mods.length > 1) {
+      const nm = nomeModulo(m) + mods[0].rot;
       v.mod_nome = Array.isArray(v.mod_nome) ? v.mod_nome.map(function () { return nm; }) : nm;
-      v.mod_w = par(w1, w2);
-      v.mod_vmp = par(num(m.vmp) > 0 ? pt(num(m.vmp), 2) : '', num(m2.vmp) > 0 ? pt(num(m2.vmp), 2) : '');
-      v.mod_imp = par(num(m.imp) > 0 ? pt(num(m.imp), 2) : '', num(m2.imp) > 0 ? pt(num(m2.imp), 2) : '');
     }
     return v;
   }
@@ -600,6 +670,7 @@ window.App = window.App || {};
     const c = calcular(pr), cmds = [];
     cmds.desloc = null;
     if (!G) return cmds;
+    legendaA(pr, lista, campos, cmds);
     const w = c.w > 0 ? pt(c.w, 1) : '', bit = str(pr.cc.bit), preto = [0, 0, 0];
     const forma = function (nome, ox, oy, nx, ny, s) { cmds.push({ t: 'forma', nome: nome, m: [s, 0, 0, s, nx - s * ox, ny - s * oy] }); };
     const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
@@ -991,16 +1062,17 @@ window.App = window.App || {};
   }
 
   /**
-   * Trecho comum (quadro geral → String Box CA) com mais de um inversor: leva a soma das correntes. Bitola digitada ou, em branco,
-   * a sugerida — a menor com Iz ≥ 1,25 × a soma (NBR 5410 tab. 36, B1, pela ligação da UC); isolação e classe as do INV1 quando
-   * em branco.
+   * Alimentador da String Box CA (quadro geral → String Box CA), definido pelo projetista. Com mais de um inversor é o trecho
+   * comum e leva a soma das correntes: em branco, a bitola sugerida — a menor com Iz ≥ 1,25 × a soma (NBR 5410 tab. 36, B1,
+   * pela ligação da UC). Com um inversor, em branco, o mesmo cabo do inversor (a sugestão fica só como referência). Isolação e
+   * classe as do INV1 quando em branco.
    */
   function caboComum(pr, lista) {
-    const L = lista || inversores(pr), x = pr.caComum || {}, fases = pr.ligacao === 'tri' ? 'tri' : 'mono';
+    const L = lista || inversores(pr), x = pr.caComum || {}, fases = pr.ligacao === 'tri' ? 'tri' : 'mono', unico = L.length <= 1;
     const iTot = L.reduce(function (a, it) { return a + (calcular(it.p).iInv || 0); }, 0);
     const sug = iTot > 0 ? Object.keys(IZ).map(Number).sort(function (a, b) { return a - b; }).find(function (b) { return IZ[b][fases === 'tri' ? 1 : 0] >= 1.25 * iTot - 1e-9; }) : null;
-    const bit = str(x.bit) || (sug ? String(sug) : str(pr.ca.bit));
-    return { bit: bit, mat: str(x.mat) || str(pr.ca.mat), iso: str(x.iso) || str(pr.ca.iso), iTot: iTot, sug: sug ? String(sug) : '', iz: izCabo(bit, fases), digitado: !!str(x.bit) };
+    const bit = str(x.bit) || (sug && !unico ? String(sug) : str(pr.ca.bit));
+    return { bit: bit, mat: str(x.mat) || str(pr.ca.mat), iso: str(x.iso) || str(pr.ca.iso), iTot: iTot, sug: sug ? String(sug) : '', iz: izCabo(bit, fases), digitado: !!str(x.bit), unico: unico };
   }
 
   /** Valores do estilo A que mudam com mais de um inversor (seção 3 com todos, tabela do inversor com o INV1, legenda e totais). */
@@ -1016,11 +1088,12 @@ window.App = window.App || {};
     const cm = caboComum(pr, lista);
     return Object.assign(v, {
       // trecho comum (quadro geral → String Box CA): o texto acima da String Box CA no multifilar e a marca "QD" do unifilar
-      cabo_inversor: cm.bit ? cm.bit + 'mm2 - ' + cm.mat : '', cabo_inversor_iso: cm.iso, bit_ca_marca: [v1.bit_ca_marca, cm.bit],
-      inv_nome: [nomes.join(' / '), nomes.join(' + '), nomes[0]],
-      inv_kw_cad: [kws.map(function (k) { return k + 'KW'; }).join(' / '), kws[0] ? kws[0] + 'KW' : '', kws[0] ? kws[0] + 'KW' : ''],
-      leg_inv_kw: cs.map(function (c) { return fx(c.kw, 1) + ' KW'; }).join(' / '),
-      inv_strings: cs.map(function (c) { return c.nStr; }).join(' + '), inv_kw: kws.join(' + '), n_inv: String(lista.length),
+      cabo_inversor: cm.bit ? cm.bit + 'mm2 - ' + cm.mat : '', cabo_inversor_iso: cm.iso, bit_ca_marca: [[].concat(v1.bit_ca_marca)[0], cm.bit],
+      // seção 3: o INV1 nas linhas do modelo (os outros, um abaixo do outro, o desenho escreve); a legenda (à esquerda) também
+      inv_nome: [nomes[0], 'INV1: ' + nomes[0] + (destaqueAmpl(pr) && lista[0].inv.novo ? ' (novo)' : ''), nomes[0]],
+      inv_kw_cad: [kws[0] ? kws[0] + 'KW' : '', kws[0] ? kws[0] + 'KW' : '', kws[0] ? kws[0] + 'KW' : ''],
+      leg_inv_kw: gruposInversores(pr, lista).map(function (o) { return fx(o.kw, 1) + ' KW'; }).join('\n'),
+      inv_strings: String(cs[0].nStr || ''), inv_kw: kws[0], n_inv: String(lista.length),
       str_n: smax ? String(smax.n) : '', str_p: smax ? pt(smax.p, 2) : '', str_v: smax ? pt(smax.v, 1) : ''
     });
   }
@@ -1096,7 +1169,7 @@ window.App = window.App || {};
     caixa(X[3], y2, w, h, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da UC - ' + lig]);
     caixa(X[2], y2, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
     caixa(X[1], y2, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
-    seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(nI > 1 ? caboComum(pr, lista).bit : caBit));
+    seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(caboComum(pr, lista).bit));
     seta(X[3], y2 - h / 2, X[2] + w, y2 - h / 2, 'entrada', mm(pr.entrada.bit));
     seta(X[2], y2 - h / 2, X[1] + w, y2 - h / 2, 'ramal', mm(pr.ramal.bit));
 
@@ -1192,7 +1265,7 @@ window.App = window.App || {};
     const cs = lista.map(function (x) { return calcular(x.p); });
     const c0 = cs[0], w = c0.w > 0 ? pt(c0.w, 1) : '', bit = str(pr.cc.bit);
     // ampliação: potência do módulo de cada string (o do acréscimo pode ser outro) e as marcas do que é novo
-    const amp = ampliacao(pr), wTxt = function (x) { return x && x.w > 0 ? pt(x.w, 1) : w; };
+    const amp = destaqueAmpl(pr), wTxt = function (x) { return x && x.w > 0 ? pt(x.w, 1) : w; };
     const marcar = function (z, bb, rot, ini, lado) {
       if (!amp) return;
       if (ini != null) for (let i = ini; i < cmds.length; i++) cmds[i].acr = true;
@@ -1215,22 +1288,48 @@ window.App = window.App || {};
     const N = todas.length;
     todas.forEach(function (x, i) { x.k = i; x.rot = 'STR' + (i + 1); });
 
-    // ---- coluna de textos: tabela de strings (cresce), tabela do inversor com uma linha por inversor (cresce) e o resto desce
+    // ---- coluna de textos: a seção 1 com um bloco por módulo (o 2º módulo logo abaixo do 1º) e a seção 3 com um bloco por
+    // inversor — cada bloco a mais empurra o que vem abaixo —, a tabela de strings (cresce), a tabela do inversor com uma linha
+    // por inversor (cresce) e o resto desce. Sem espaço para os blocos inteiros, cada módulo/inversor a mais vai numa linha só.
+    const mods = modulosDaObra(pr, lista), LP = T.passo, Y1 = 698, CUT3 = 352, FL_INV = [1.158, 1.082];
     const ext = T.passo * (nI - 1), req = (Math.max(N, 1) - 1) * T.passo + T.passo / 1.4 + 4.01;
-    const desce = K ? Math.max(0, Math.min(K.livre - ext, req - (T.topo - T.fundo))) : 0;
-    const fundo = T.fundo - desce, CORTE = 250;
+    const precisaT = Math.max(0, req - (T.topo - T.fundo));
+    // passo das linhas dos blocos (e da tabela de strings): 14,8 como no modelo; sem espaço, o maior que couber até 12 (as letras
+    // ficam do mesmo tamanho). Nem assim: o inversor a mais numa linha só (o módulo com o bloco inteiro); depois o módulo também;
+    // por fim os dois numa linha só e a tabela com o que sobrar
+    const gm = mods.length - 1, gi = nI - 1, nLin = gm * 4 + gi * 3;
+    let LB = LP, cMod = false, cInv = false, d1 = 0, d3 = 0;
+    if (K && nLin) {
+      const B = K.livre - ext, tab = function (p) { return Math.max(0, (Math.max(N, 1) - 1 + 1 / 1.4) * p + 4.01 - (T.topo - T.fundo)); };
+      const usa = function (cm, ci, p) { return (cm ? gm * (LP + 2) : gm * (4 * p + 4)) + (ci ? gi * (LP + 2) : gi * (3 * p + 4)) + tab(p); };
+      const passo = function (cm, ci) {
+        if (usa(cm, ci, LP) <= B + 1e-9) return LP;
+        if (usa(cm, ci, 12) > B + 1e-9) return 0;
+        let lo = 12, hi = LP; for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (usa(cm, ci, m) <= B + 1e-9) lo = m; else hi = m; }
+        return lo;
+      };
+      const op = [[false, false], [false, true], [true, false]].find(function (o) { return (!o[0] || gm) && (!o[1] || gi) && passo(o[0], o[1]) > 0; });
+      if (op) { cMod = op[0]; cInv = op[1]; LB = passo(cMod, cInv); } else { cMod = true; cInv = true; }
+      d1 = cMod ? gm * (LP + 2) : gm * (4 * LB + 4);
+      d3 = cInv ? gi * (LP + 2) : gi * (3 * LB + 4);
+    }
+    const desce = K ? Math.max(0, Math.min(K.livre - ext - d1 - d3, precisaT)) : 0;
+    const fundo = T.fundo - desce, CORTE = 250, dA = d1 + desce, dB = dA + d3, dC = dB + ext;
     const XI = [188.8, 255.6, 315.0, 374.4, 418.9, 500.6, 604.6, 678.8, 768.0, 842.2, 909.0, 983.3, 1050.1, 1117.0];
     if (K) {
-      forma('CRMSec2', 0, 0, 0, 0, 1);
-      K.xs.forEach(function (x) { linha([[x, K.topo], [x, K.cheias.indexOf(x) >= 0 ? K.total - desce : K.corpo - desce]]); });
-      forma('CRMBaixo', 0, 0, 0, -desce, 1, [100, CORTE - desce, 1200, K.corpo + 1 - desce]);
-      forma('CRMBaixo', 0, 0, 0, -desce - ext, 1, [100, 20, 1200, CORTE - desce - ext]);
-      XI.forEach(function (x) { linha([[x, CORTE - desce], [x, CORTE - desce - ext]]); });
-      cmds.desloc = [{ x: 1160, y: K.corpo + 0.6, dy: -desce }, { x: 1160, y: CORTE, dy: -desce - ext }];
+      forma('CRMSec2', 0, 0, 0, -d1, 1);
+      K.xs.forEach(function (x) { linha([[x, K.topo - d1], [x, (K.cheias.indexOf(x) >= 0 ? K.total : K.corpo) - dA]]); });
+      // o que fica abaixo da tabela de strings, em três faixas: até a seção 3 (desce dA), dela à tabela do inversor (dB) e o fim
+      // da tabela do inversor com a seção 4 (dC)
+      forma('CRMBaixo', 0, 0, 0, -dA, 1, [100, CUT3 - dA, 1200, K.corpo + 1 - dA]);
+      forma('CRMBaixo', 0, 0, 0, -dB, 1, [100, CORTE - dB, 1200, CUT3 - dB]);
+      forma('CRMBaixo', 0, 0, 0, -dC, 1, [100, 20, 1200, CORTE - dC]);
+      XI.forEach(function (x) { linha([[x, CORTE - dB], [x, CORTE - dC]]); });
+      cmds.desloc = [{ x: 1135, y: Y1, dy: -d1 }, { x: 1135, y: K.corpo + 0.6, dy: -dA }, { x: 1135, y: CUT3, dy: -dB }, { x: 1135, y: CORTE, dy: -dC }];
       // linhas do INV2… na tabela do inversor
       const ocN = um('ti_nstr');
       for (let j = 1; j < nI; j++) {
-        const y = 258.4 - desce - j * T.passo, vj = valores(lista[j].p, 'A');
+        const y = 258.4 - dB - j * T.passo, vj = valores(lista[j].p, 'A');
         em(ocN, 'INV' + (j + 1), { x: (188.8 + 255.6) / 2, y: y, w: 60 });
         ['ti_nstr', 'ti_nmod', 'ti_efic', 'ti_kw', 'ti_v', 'ti_fp', 'ti_i', 'ti_cabo', 'ti_un', 'ti_dist', 'ti_dv', 'ti_pct'].forEach(function (k) { em(um(k), vj[k], { y: y }); });
       }
@@ -1238,7 +1337,7 @@ window.App = window.App || {};
     // tabela de strings: uma linha por string, com o inversor dela
     const rotTab = um('_tab_str'), H0 = 7.48;
     const livreT = T.topo - fundo - 4, sp = N > 1 ? Math.min(T.passo, livreT / (N - 1 + 1 / 1.4)) : T.passo;
-    const st = Math.min(1, sp / 1.4 / H0), altB = (N - 1) * sp + H0 * st, baseFundo = (T.topo + fundo) / 2 - altB / 2;
+    const st = Math.min(1, sp / 1.4 / H0), altB = (N - 1) * sp + H0 * st, baseFundo = (T.topo + fundo) / 2 - altB / 2 - d1;
     todas.forEach(function (x, i) {
       const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(x.p, x.s), ini = cmds.length;
       if (rotTab) cmds.push({ t: 'texto', txt: (nI > 1 ? 'INV' + (x.j + 1) + '-' : '') + x.rot, oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
@@ -1349,10 +1448,12 @@ window.App = window.App || {};
     const Kc = G.condutores, dxMF = folha === 1 ? DX_FOLHA1 : 0;
     let iMF = null;
     if (folha === 2) return folhaStrings();
+    // legenda: módulos, inversores e potências um abaixo do outro
+    legendaA(pr, lista, campos, cmds);
     if (folha === 1) {
       // folha 1 de 2: sem o desenho das strings (vai para a folha 2); no lugar, a indicação da folha e o resumo dos inversores
       branco([398, 757, 1850, 830]); branco([440, 624, 1850, 830]); branco(DETALHE_INST);
-      cmds.pularOc = { inv_kw_cad: [1] }; cmds.pular = ['inv_logo', 'bit_ca_lig', 'bit_terra_lig']; cmds.pularRegiao = DETALHE_INST;
+      pularCampo(cmds, 'inv_kw_cad', 1); cmds.pular = ['inv_logo', 'bit_ca_lig', 'bit_terra_lig']; cmds.pularRegiao = DETALHE_INST;
       const oT = { t: 'txt', s: 12, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'c' };
       em(oT, 'LAYOUT DAS STRINGS, DIAGRAMA DE BLOCOS E DETALHES: VER PRANCHA 2/2', { x: 1140, y: 760 });
       resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.48 }), t, { x: 1140, y: 728 - i * 15 }); });
@@ -1365,6 +1466,7 @@ window.App = window.App || {};
       cmds.moverRegiao = { r: C, k: kc, tx: tcx, ty: tcy };
       folhaNum('1/2');
     } else layoutStrings(F, false);
+    blocosSecoes();
     // condutores do circuito CA do INV1 (fiação e os dois pontos do unifilar simplificado)
     if (Kc) {
       if (folha !== 1) letrasInv(lista[0].p).forEach(function (l, i) { const x = Kc.h.xF - i * Kc.h.passo; if (l === 'N') forma('CRMTickN', Kc.h.xN, 0, x, 0, 1); else forma('CRMTickF', Kc.h.xF, 0, x, 0, 1); });
@@ -1399,6 +1501,40 @@ window.App = window.App || {};
     destacar(cmds, (pr.ampl && pr.ampl.destaque) || ESTILOS_DESTAQUE[0].v);
     return cmds;
 
+    // seções 1 e 3: o 2º módulo abaixo do 1º e o INV2… abaixo do INV1, com os rótulos do modelo (a largura das letras dos rótulos
+    // é a do modelo, para os valores ficarem na mesma coluna). Depois dos brancos da folha 1, que limpam a área do layout.
+    function blocosSecoes() {
+      if (!K || !nLin) return;
+      const rot = function (o, t, x, y, fl) { if (o) em(o, t, { x: x, y: y, al: 'l', w: null, fl: fl }); };
+      const n2 = function (v, d) { return num(v) > 0 ? pt(num(v), d) : ''; };
+      // largura livre à direita: na folha única o desenho das strings começa logo depois; na folha 1, a nota do layout
+      const oNm = oc('mod_nome', 1), oW = um('mod_w'), oV = um('mod_vmp'), oIm = um('mod_imp'), wNome = folha === 1 ? 440 : 235;
+      mods.slice(1).forEach(function (o, i) {
+        const m = o.mod, nome = nomeModulo(m) + o.rot, w2 = n2(m.w, 1), v2 = n2(m.vmp, 2), i2 = n2(m.imp, 2);
+        if (cMod) {
+          em(oNm, nome + ': ' + [w2 && w2 + ' W', v2 && v2 + ' V', i2 && i2 + ' A'].filter(Boolean).join(' | '), { y: 703.9 - (i + 1) * (LP + 2), w: wNome });
+          return;
+        }
+        const y0 = 703.9 - LB - 4 - i * (4 * LB + 4);
+        em(oNm, nome, { y: y0, w: wNome });
+        rot(oW, 'Potência unitária (W):', 185.0, y0 - LB, 1.096); em(oW, w2, { y: y0 - LB });
+        rot(oV, 'Tensão unitária (V):', 185.0, y0 - 2 * LB, 1.092); em(oV, v2, { y: y0 - 2 * LB });
+        rot(oIm, 'Corrente de operação (A):', 185.0, y0 - 3 * LB, 1.09); em(oIm, i2, { y: y0 - 3 * LB });
+      });
+      const oNi = oc('inv_nome', 1), oS = um('inv_strings'), oK = um('inv_kw'), XI3 = oNi ? oNi.x : 185;
+      for (let j = 1; j < nI; j++) {
+        const x = lista[j], c = cs[j], nome = 'INV' + (j + 1) + ': ' + [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' - ') + (amp && x.inv.novo ? ' (novo)' : '');
+        const sTxt = c.nStr ? String(c.nStr) : '', kTxt = c.kw > 0 ? pt(c.kw, 2) : '';
+        if (cInv) {
+          em(oNi, nome + ' | Strings por Inversor: ' + sTxt + ' | Potência (KW): ' + kTxt, { y: 362.4 - dA - j * (LP + 2), w: 900 });
+          continue;
+        }
+        const y0 = 362.4 - dA - LB - 4 - (j - 1) * (3 * LB + 4);
+        em(oNi, nome, { y: y0 });
+        rot(oS, 'Strings por Inversor:', XI3, y0 - LB, FL_INV[0]); em(oS, sTxt, { y: y0 - LB });
+        rot(oK, 'Potência (KW):', XI3, y0 - 2 * LB, FL_INV[1]); em(oK, kTxt, { y: y0 - 2 * LB });
+      }
+    }
     // número da folha no carimbo (no lugar do "1/1" do modelo)
     function folhaNum(t) {
       branco([2280, 43.5, 2316, 64]);
@@ -1441,7 +1577,7 @@ window.App = window.App || {};
       const disj = lista.slice(0, n2).map(function (x, j) { return 'INV' + (j + 1) + ' ' + (str(x.p.disjCa) || '?') + ' A'; }).join(' + ');
       const d = pr.dpsCa || {};
       caixa(cx, yCA, largM, ['STRING BOX CA', (n2 > 1 ? 'disjuntores: ' : 'disjuntor: ') + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '') + (str(d.in) ? ' - In ' + str(d.in) + ' kA' : '')]);
-      const yQ = yCA - bh - gap, bitComum = nI > 1 ? caboComum(pr, lista).bit : caBit;
+      const yQ = yCA - bh - gap, bitComum = caboComum(pr, lista).bit;
       seta(cx, yCA - bh, yQ, bitComum ? 'CA #' + bitComum : 'CA');
       caixa(cx, yQ, largM, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'ligação ' + (LIGACOES[pr.ligacao] || '') + ' - entrada ' + (str(pr.entrada.bit) || '?') + ' mm2']);
       // cargas da instalação ao lado do QGBT
@@ -1707,8 +1843,9 @@ window.App = window.App || {};
   function conferir(pr, estilos, parte) {
     const lista = inversores(pr);
     // ampliação marcada sem nada novo
-    const semNovo = !parte && ampliacao(pr) && !lista.some(function (x) { return acrescimo(x.p) || (x.inv && x.inv.novo); })
-      ? [{ nivel: 'aviso', texto: 'Ampliação marcada, mas sem módulos acrescentados nem inversor novo: informe o acréscimo (módulos e MPPT livre) ou marque o inversor novo.' }] : [];
+    const semNovo = !parte && ampliacao(pr) && !lista.some(function (x) { return acrescimo(x.p) || (destaqueAmpl(pr) && x.inv && x.inv.novo); })
+      ? [{ nivel: 'aviso', texto: destaqueAmpl(pr) ? 'Ampliação marcada, mas sem módulos acrescentados nem inversor novo: informe o acréscimo (módulos e MPPT livre) ou marque o inversor novo.'
+        : 'Obra com dois modelos de módulo marcada, mas sem módulos do 2º modelo: informe, no inversor, os módulos do 2º modelo e o MPPT deles.' }] : [];
     if (lista.length > 1) return conferirMulti(pr, estilos, lista).concat(semNovo);
     const c = calcular(pr), out = semNovo.slice();
     const add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); };
@@ -1749,6 +1886,13 @@ window.App = window.App || {};
       if ((c.nMod && c.nMod !== D.modulos) || (c.nInv && c.nInv !== D.inversores)) {
         add('info', 'Estilo B: a planta baixa, a fachada e os diagramas desenham ' + D.modulos + ' módulos e ' + D.inversores + ' inversor; esta obra tem ' + c.nMod +
           ' módulos e ' + c.nInv + ' inversor(es). Quantidades, potências e textos saem com os valores da obra.');
+      }
+    }
+    if (!parte) {
+      const al = caboComum(pr, lista);
+      if (al.digitado && al.iTot > 0 && al.iz && al.iz < 1.25 * al.iTot - 1e-9) {
+        add('aviso', 'Cabo do alimentador (quadro geral → String Box CA) de ' + al.bit + ' mm² (' + al.iz + ' A, NBR 5410 tab. 36, B1) abaixo de 1,25 × a corrente do inversor (' +
+          fx(1.25 * al.iTot, 2, ',') + ' A)' + (al.sug ? '. Sugestão: ' + al.sug + ' mm².' : '.'));
       }
     }
     const vInvT = num(pr.inv && pr.inv.tensao);
@@ -1953,7 +2097,7 @@ window.App = window.App || {};
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod, triInv: triInv, condCA: condCA,
-    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum, terraCA: terraCA, acrescimo: acrescimo, ampliacao: ampliacao, modulosTxt: modulosTxt, dadosModulo: dadosModulo, ESTILOS_DESTAQUE: ESTILOS_DESTAQUE,
+    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum, terraCA: terraCA, acrescimo: acrescimo, ampliacao: ampliacao, destaqueAmpl: destaqueAmpl, TIPOS_AMPL: TIPOS_AMPL, MULTILINHA: MULTILINHA, modulosDaObra: modulosDaObra, gruposInversores: gruposInversores, modulosTxt: modulosTxt, dadosModulo: dadosModulo, ESTILOS_DESTAQUE: ESTILOS_DESTAQUE,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

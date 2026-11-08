@@ -2261,7 +2261,17 @@
     igual('prancha: carimbo com empresa e RT de Configurações (registro CFT com dígito, telefone sem DDD)', [vA.emp_endereco, vA.emp_contato, vA.rt_nome_mai, vA.rt_registro, vA.rt_tel, vA.cli_doc, vA.data, vA.uc_carimbo].join('|'),
       'Rua da Empresa, 1, Bairro Centro, Corumbá - MS|Fone: 67 3232-0000 / 67 90000-0000 - contato@exemplo.com|FULANO DE TAL|CFT-BR nº 1234567890-1|TEL. 90000-0000|CPF/CNPJ:123.456.789-09|15/07/2026|UC:123');
     const v10 = P.valores(Object.assign(U.clone(pr), { ca: Object.assign({}, pr.ca, { bit: '10' }), terraBit: '10' }), 'A', ctxP);
-    igual('prancha A: fiação do quadro ao inversor com a bitola do cabo CA e a do terra (não fica o #6 do desenho)', [v10.bit_ca_lig, v10.bit_terra_lig, v10.bit_ca_marca, vA.bit_ca_lig, vA.bit_terra_lig].join('|'), '#10|#10|10|#6|#6');
+    igual('prancha A: fiação do quadro ao inversor com a bitola do cabo CA e a do terra (não fica o #6 do desenho)', [v10.bit_ca_lig, v10.bit_terra_lig, [].concat(v10.bit_ca_marca)[0], vA.bit_ca_lig, vA.bit_terra_lig].join('|'), '#10|#10|10|#6|#6');
+    // alimentador da String Box CA (quadro geral → String Box CA) do projetista, também com um inversor: em branco, o cabo do inversor
+    const vAl = P.valores(Object.assign(U.clone(pr), { ca: Object.assign({}, pr.ca, { bit: '6' }), caComum: { bit: '16', mat: 'XLPE', iso: '0,6/1KV - 90°C' } }), 'A', ctxP);
+    const vAlB = P.valores(Object.assign(U.clone(pr), { estilo: 'B', ca: Object.assign({}, pr.ca, { bit: '6' }), caComum: { bit: '16', mat: 'XLPE', iso: '' } }), 'B', ctxP);
+    const vAl0 = P.valores(Object.assign(U.clone(pr), { ca: Object.assign({}, pr.ca, { bit: '6' }), caComum: { bit: '', mat: '', iso: '' } }), 'A', ctxP);
+    igual('alimentador (quadro geral → String Box CA) separado do cabo do inversor: multifilar, marca do QD, estilo B; em branco, igual ao do inversor',
+      [vAl.cabo_inversor, vAl.cabo_inversor_iso, vAl.bit_ca_marca.join('/'), vAl.bit_ca_lig, vAlB.cabo_inv_pvc.join('/'), vAlB.cabo_inv_pvc_txt.join('/'), vAl0.cabo_inversor, vAl0.bit_ca_marca.join('/'),
+        P.caboComum(Object.assign(U.clone(pr), { caComum: {} })).unico].join('|'),
+      '16mm2 - XLPE|0,6/1KV - 90°C|6/16|#6|6 mm2/PVC/16 mm2/XLPE/16 mm2/XLPE|6 mm2/PVC/16 mm2/XLPE|6mm2 - PVC|6/6|true');
+    const cfAl = P.conferir(Object.assign(U.clone(pr), { caComum: { bit: '2.5' } })).map(function (x) { return x.texto; }).join(' | ');
+    ok('conferência: alimentador digitado abaixo de 1,25 × a corrente do inversor', /Cabo do alimentador \(quadro geral → String Box CA\) de 2.5 mm²/.test(cfAl), cfAl);
     igual('prancha: fiação automática pelas strings e bitolas', [vA.fia_placas, vA.fia_placas_vem, vA.fia_inversor].join('|'), '4#6(T#6)|Vem das placas 4#6(T#6)|2#6(T#6)');
     const vB = P.valores(Object.assign({}, pr, { estilo: 'B' }), 'B', ctxP);
     igual('prancha B: textos no formato do estilo B', [vB.mod_qtd_txt, vB.mod_total_txt, vB.mod_qtd_curto, vB.inv_pot_txt, vB.inv_rotulo, vB.disj_geral_2p, vB.bit_cc_marca, vB.cabo_ramal_lig_multiplex, vB.inclinacao, vB.selo_x].join('|'),
@@ -2365,8 +2375,9 @@
         P.inversores(pr).length].join('|'), '24/3/20/5 35/4/32/12|23+36|7@6+7@6|1');
     const prM2 = Object.assign(U.clone(prM), { inv: Object.assign({}, prM.inv, { qtdMod: '23', porString: '8+8+7', porMppt: '2+1' }), invs: [Object.assign({}, prM.invs[0], { qtdMod: '36', porString: '9+9+9+9', porMppt: '2+2' })] });
     const vM = P.valores(prM2, 'A', ctxP);
-    igual('vários inversores: seção 3 com os dois, tabela do inversor com o INV1, totais e legenda', [vM.inv_nome[1], vM.inv_strings, vM.inv_kw, vM.n_inv, vM.ti_kw, vM.ti_nmod, vM.total_kwp, vM.leg_inv_kw, vM.inv_kw_cad[0], vM.str_n].join('|'),
-      'MARCA UM - U-10K + MARCA DOIS - D-15K|3 + 4|10 + 15|2|10|23|33.04|10.0 KW / 15.0 KW|10KW / 15KW|9');
+    // seção 3: o INV1 nas linhas do modelo (o INV2 logo abaixo, pelo desenho); kW da legenda específica um abaixo do outro
+    igual('vários inversores: seção 3 com o INV1 (o INV2 abaixo, no desenho), tabela do inversor com o INV1, totais e legenda sem barra', [vM.inv_nome[1], vM.inv_strings, vM.inv_kw, vM.n_inv, vM.ti_kw, vM.ti_nmod, vM.total_kwp, vM.leg_inv_kw, vM.str_n].join('|'),
+      'INV1: MARCA UM - U-10K|3|10|2|10|23|33.04|10.0 KW\n15.0 KW|9');
     igual('vários inversores: fiação das placas com as strings de todos', P.automaticos(prM2, ctxP).fiaPlacas, '14#6(T#6)');
     const GAm = Object.assign({}, GAc, { tabela: GA.tabela });
     const campM = Object.assign({}, campA, { ti_nstr: [ocT(285.35, 258.4, 7.4)], ti_kw: [ocT(463.55, 258.4, 7.4)], inv_kw_cad: [ocT(236.6, 1052.9, 5.86), ocT(556.1, 779.2, 4.4), ocT(905, 1031.9, 5.48, 90)],
@@ -2376,9 +2387,9 @@
     const txM = dM.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
     const descM = dM.desloc.map(function (r) { return r.y.toFixed(1) + ':' + r.dy.toFixed(2); }).join(' ');
     ok('desenho com 2 inversores: 59 módulos, 7 ramais, INV2 copiado do modelo (strings, unifilar simplificado e principal), tabela com o inversor de cada string e as seções descendo em dois degraus',
-      conta(dM, 'CRMMod') === 59 && conta(dM, 'CRMRam') === 7 && dM.filter(function (c) { return c.t === 'regiao'; }).length === 8 && conta(dM, 'CRMBaixo') === 2 &&
+      conta(dM, 'CRMMod') === 59 && conta(dM, 'CRMRam') === 7 && dM.filter(function (c) { return c.t === 'regiao'; }).length === 8 && conta(dM, 'CRMBaixo') === 3 &&
       ['INV1-STR1', 'INV1-STR3', 'INV2-STR4', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].every(function (t) { return txM.indexOf(t) >= 0; }) &&
-      txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '485.4:-58.78 250.0:-73.58',
+      txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '698.0:0.00 485.4:-58.78 352.0:-107.18 250.0:-121.98',
       { mod: conta(dM, 'CRMMod'), regioes: dM.filter(function (c) { return c.t === 'regiao'; }).length, desloc: descM, faltam: ['INV1-STR1', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].filter(function (t) { return txM.indexOf(t) < 0; }) });
     // UC trifásica: fase T e 3º condutor no multifilar; o INV2 trifásico com 3 condutores; marcas pelos condutores de cada um
     const prT = Object.assign(U.clone(prM2), { inv: Object.assign({}, prM2.inv, { fases: 'mono', tensao: '220' }) });
@@ -2533,9 +2544,9 @@
       aRot.filter(function (c) { return c.t === 'texto' && c.txt === 'NOVO'; }).length >= 3 && !aRot.some(function (c) { return c.t === 'linha' && ehVerm(c) && c.traco; }),
       { realce: aCor.filter(function (c) { return c.t === 'realce'; }).length, novo: aRot.filter(function (c) { return c.t === 'texto' && c.txt === 'NOVO'; }).length });
     const vAm = P.valores(prAm, 'A', ctxP), vBm = P.valores(Object.assign(U.clone(prAm), { estilo: 'B' }), 'B', ctxP);
-    ok('ampliação: seção 1 com os dois módulos ("existente / acréscimo"), legenda e descritivo com os existentes e os da ampliação',
-      /\+ OUTRA MARCA - N-610 \(ampliação\)$/.test([].concat(vAm.mod_nome)[0]) && /\/ 610$/.test(vAm.mod_w) && /\/ 45\.3$/.test(vAm.mod_vmp) && /módulos de 610 Wp \(ampliação\)/.test(vAm.descritivo[0]) &&
-      /\/ 132 células 610 Wp \(ampliação\)$/.test(vBm.leg_modulo) && P.valores(pr, 'A', ctxP).mod_w.indexOf('/') < 0, [vAm.mod_nome, vAm.mod_w, vAm.mod_vmp, vAm.descritivo[0], vBm.leg_modulo]);
+    ok('ampliação: seção 1 com o 1º módulo "(existente)" (o 2º abaixo, pelo desenho), legenda específica um módulo por linha e descritivo com os existentes e os da ampliação',
+      [].concat(vAm.mod_nome).slice(-1)[0] === 'MARCA MÓDULO - MM-620 (existente)' && vAm.mod_w === '620' && vAm.mod_vmp.indexOf('/') < 0 && /módulos de 610 Wp \(ampliação\)/.test(vAm.descritivo[0]) &&
+      vBm.leg_modulo === 'Módulos fotovoltaico 132 células 620 Wp (existente)\nMódulos fotovoltaico 132 células 610 Wp (ampliação)', [vAm.mod_nome, vAm.mod_w, vAm.mod_vmp, vAm.descritivo[0], vBm.leg_modulo]);
     // inversor novo (INV2) com 2 folhas: destacado nos diagramas da folha 1 e no layout e no diagrama de blocos da folha 2
     const prN = Object.assign(U.clone(prM2), { folhasA: '2', ampl: { ativa: true, mod: {}, destaque: 'contorno' }, invs: [Object.assign({}, prM2.invs[0], { novo: true })] });
     const n1 = P.desenhoStringsA(prN, campM, GAm, 1), n2 = P.desenhoStringsA(prN, campM, GAm, 2);
@@ -2546,6 +2557,50 @@
       { f1: txN(n1).filter(function (t) { return /NOVO|novo/.test(t); }), f2: txN(n2).filter(function (t) { return /NOVO|novo/.test(t); }) });
     const aPad = P.desenhoStringsA(Object.assign(U.clone(prAm), { ampl: Object.assign({}, prAm.ampl, { destaque: '' }) }), campM, GAm);
     ok('ampliação: o padrão (destaque em branco) é em vermelho com realce', P.ESTILOS_DESTAQUE[0].v === 'cor' && aPad.some(function (c) { return c.t === 'realce'; }) && !aPad.some(function (c) { return c.t === 'linha' && ehVerm(c) && c.traco && c.traco[0] === 5; }));
+    // seções 1 e 3 um abaixo do outro: o 2º módulo com nome, potência, tensão e corrente; o INV2 com nome, strings e potência
+    const campS = Object.assign({}, campM, { mod_nome: [ocT(329.88, 1129.1, 7.3), ocT(187.8, 748.4, 7.48)], mod_w: [ocT(354.12, 733.6, 7.4)], mod_vmp: [ocT(340.68, 718.7, 7.42)],
+      mod_imp: [ocT(382.44, 703.9, 7.34)], inv_strings: [ocT(349.44, 377.2, 7.4)], inv_kw: [ocT(298.32, 362.4, 7.32)] });
+    const achaT = function (d, t) { return d.filter(function (c) { return c.t === 'texto' && c.txt === t && c.oc.x < 400 && c.oc.y < 760; })[0]; };
+    const sA1 = P.desenhoStringsA(Object.assign(U.clone(prAm), { folhasA: '2' }), campS, GAm, 1);
+    const n2m = achaT(sA1, 'OUTRA MARCA - N-610 (ampliação)'), w2m = achaT(sA1, '610'), lbl = achaT(sA1, 'Potência unitária (W):'), v2m = achaT(sA1, '45.3'), i2m = achaT(sA1, '13.47');
+    ok('seção 1: o 2º módulo abaixo do 1º (nome, potência, tensão e corrente com os rótulos do modelo) e o resto da coluna desce o bloco',
+      !!(n2m && w2m && lbl && v2m && i2m) && Math.abs(n2m.oc.x - 187.8) < 0.01 && Math.abs(w2m.oc.x - 354.12) < 0.01 && Math.abs(lbl.oc.x - 185) < 0.01 && lbl.oc.y === w2m.oc.y &&
+      n2m.oc.y < 703.9 - 14 && Math.abs(n2m.oc.y - w2m.oc.y - 14.8) < 0.01 && Math.abs(w2m.oc.y - v2m.oc.y - 14.8) < 0.01 &&
+      Math.abs(sA1.desloc[0].y - 698) < 0.01 && Math.abs(sA1.desloc[0].dy + 63.2) < 0.01 && sA1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMSec2'; })[0].m[5] < -63,
+      { nome: n2m && [n2m.oc.x, n2m.oc.y], w: w2m && [w2m.oc.x, w2m.oc.y], lbl: lbl && [lbl.oc.x, lbl.oc.y], v: v2m && v2m.oc.y, i: !!i2m, desloc: JSON.stringify(sA1.desloc), sec2: sA1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMSec2'; })[0].m[5] });
+    const sA3 = P.desenhoStringsA(Object.assign(U.clone(prM2), { folhasA: '2' }), campS, GAm, 1);
+    const i2n = achaT(sA3, 'INV2: MARCA DOIS - D-15K'), i2s = achaT(sA3, 'Strings por Inversor:'), i2k = achaT(sA3, 'Potência (KW):');
+    ok('seção 3: o INV2 abaixo do INV1 (nome, strings e potência) e a tabela do inversor desce o bloco; um bloco por inversor',
+      !!(i2n && i2s && i2k) && i2s.oc.y < i2n.oc.y && i2k.oc.y < i2s.oc.y && sA3.some(function (c) { return c.t === 'texto' && c.txt === '4' && Math.abs(c.oc.y - i2s.oc.y) < 0.01; }) &&
+      sA3.some(function (c) { return c.t === 'texto' && c.txt === '15' && Math.abs(c.oc.y - i2k.oc.y) < 0.01; }) && conta(sA3, 'CRMBaixo') === 3,
+      { inv2: i2n && i2n.oc, desloc: sA3.desloc });
+    // sem espaço (2 inversores, 2º módulo e muitas strings): o inversor a mais numa linha só, o módulo com o bloco inteiro
+    const prApert = Object.assign(U.clone(prM2), { folhasA: '2', ampl: { ativa: true, mod: modN, destaque: 'cor' }, acrQtd: '8', inv: Object.assign({}, prM2.inv, { mppts: '3' }) });
+    const sA4 = P.desenhoStringsA(prApert, campS, GAm, 1);
+    const umaLinhaM = sA4.some(function (c) { return c.t === 'texto' && c.txt === 'OUTRA MARCA - N-610 (ampliação): 610 W | 45.3 V | 13.47 A'; });
+    const umaLinhaI = sA4.some(function (c) { return c.t === 'texto' && /^INV2: MARCA DOIS - D-15K \| Strings por Inversor: \d+ \| Potência \(KW\): 15$/.test(c.txt); });
+    ok('sem espaço: o módulo ou o inversor a mais numa linha só (dados juntos), o outro com o bloco inteiro, e tudo dentro da moldura',
+      (umaLinhaM || umaLinhaI) && !(umaLinhaM && umaLinhaI) && (umaLinhaM || !!achaT(sA4, 'Tensão unitária (V):')) && (umaLinhaI || !!achaT(sA4, 'Strings por Inversor:')) && sA4.desloc[3].dy >= -124.01,
+      { txt: sA4.filter(function (c) { return c.t === 'texto' && /^INV2:|^OUTRA/.test(c.txt); }).map(function (c) { return c.txt; }), desloc: sA4.desloc });
+    // legenda (à esquerda): um módulo e um inversor por linha, cada um com o seu traço; a potência dos inversores empilhada
+    const lg = sA3.filter(function (c) { return c.t === 'texto' && Math.abs(c.oc.x - 350) < 0.1 && c.oc.y > 1020; }).map(function (c) { return c.txt; });
+    const lgM = sA1.filter(function (c) { return c.t === 'texto' && Math.abs(c.oc.x - 343.4) < 0.1 && c.oc.y > 1100; }).map(function (c) { return c.txt; });
+    const lgU = P.desenhoStringsA(pr, campS, GAm).filter(function (c) { return c.t === 'texto' && Math.abs(c.oc.x - 343.4) < 0.1 && c.oc.y > 1100; });
+    ok('legenda sem barra: módulos e inversores um abaixo do outro (com o INV de cada um), kW empilhado; com um módulo, alinhado ao traço (sem o traço solto do modelo)',
+      lg.join('|') === 'MARCA UM - U-10K (INV1)|MARCA DOIS - D-15K (INV2)' && lgM.join('|') === 'MARCA MÓDULO - MM-620 (existente)|OUTRA MARCA - N-610 (ampliação)' &&
+      lgU.length === 1 && Math.abs(lgU[0].oc.y - 1133.1) < 0.01 && sA3.filter(function (c) { return c.t === 'texto' && /^\d+KW$/.test(c.txt) && c.oc.y > 1050; }).length === 2 &&
+      sA3.pularOc.mod_nome.indexOf(0) >= 0 && sA3.pularOc.inv_nome.indexOf(0) >= 0 && sA3.pularOc.inv_kw_cad.indexOf(0) >= 0 && sA3.pularOc.inv_kw_cad.indexOf(1) >= 0 &&
+      sA1.some(function (c) { return c.t === 'branco' && Math.abs(c.r[0] - 184.4) < 0.01; }) && P.MULTILINHA.leg_modulo === 'centro' && P.MULTILINHA.leg_inv_kw === 'abaixo',
+      { lg: lg, lgM: lgM, lgU: lgU.map(function (c) { return c.oc.y; }) });
+    // obra com dois modelos de módulo (sem ser ampliação): os dados dos dois, sem destaque, sem nota e sem "existente/ampliação"
+    const prMx = Object.assign(U.clone(prAm), { ampl: { ativa: true, tipo: 'misto', mod: modN, destaque: '' } });
+    const sMx = P.desenhoStringsA(Object.assign(U.clone(prMx), { folhasA: '2' }), campS, GAm, 1), vMx = P.valores(prMx, 'A', ctxP);
+    const cfMx = P.conferir(Object.assign(U.clone(prMx), { acrQtd: '' })).map(function (x) { return x.texto; }).join(' | ');
+    ok('obra com dois modelos de módulo: os dois módulos sem destaque, sem nota e sem "existente/ampliação"; descritivo com as duas quantidades; aviso sem os módulos do 2º modelo',
+      !!achaT(sMx, 'OUTRA MARCA - N-610') && !sMx.some(function (c) { return c.t === 'realce' || (c.t === 'texto' && /AMPLIAÇÃO|ACRÉSCIMO/.test(c.txt)); }) &&
+      /^O sistema é composto por 14 módulos de 620 Wp e 08 módulos de 610 Wp\.$/.test(vMx.descritivo[0]) && vMx.leg_modulo === 'Módulos fotovoltaico 132 células 620 Wp\nMódulos fotovoltaico 132 células 610 Wp' &&
+      /Obra com dois modelos de módulo marcada, mas sem módulos do 2º modelo/.test(cfMx) && !P.destaqueAmpl(prMx) && P.destaqueAmpl(prAm),
+      { desc: vMx.descritivo[0], leg: vMx.leg_modulo, cf: cfMx });
     const cfA = P.conferir(Object.assign(U.clone(prAm), { acrMppt: '1' })).map(function (x) { return x.texto; }).join(' | ');
     const cfA0 = P.conferir(Object.assign(U.clone(pr), { ampl: { ativa: true, mod: {} } })).map(function (x) { return x.texto; }).join(' | ');
     ok('ampliação: conferências do MPPT livre (não o das strings existentes) e da ampliação marcada sem nada novo',

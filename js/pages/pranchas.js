@@ -61,7 +61,7 @@ window.App = window.App || {};
     // ampliação (aumento de geração): módulo do acréscimo (pode ser de outro fabricante) e o estilo do destaque do que é novo
     if (!pr.ampl || typeof pr.ampl !== 'object') pr.ampl = { ativa: false, mod: {}, destaque: '' };
     if (!pr.ampl.mod || typeof pr.ampl.mod !== 'object') pr.ampl.mod = {};
-    const amp = !!pr.ampl.ativa;
+    const amp = !!pr.ampl.ativa, misto = amp && pr.ampl.tipo === 'misto'; // misto: obra com dois modelos de módulo (sem destaque)
     // quantidade > 1 no inversor (obras antigas): cada unidade vira um inversor da prancha (INV1, INV2…)
     if (!pr.invs.length && U.numOr(pr.inv.qtd, 1) > 1) {
       for (let i = 1; i < U.numOr(pr.inv.qtd, 1); i++) pr.invs.push(P.novoInversor(pr, Object.assign({}, pr.inv, { qtd: '1', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caDist: '', disjCa: '' })));
@@ -206,7 +206,12 @@ window.App = window.App || {};
     const acrescimo = function (j) {
       const cj = cs0[j] || { grupos: [], acr: null }, nEx = cj.grupos.length - (cj.acr ? 1 : 0), maxS = U.numOr(pr.maxStr, 10) || 10;
       const q = U.numOr(j === 0 ? pr.acrQtd : (pr.invs[j - 1] || {}).acrQtd, 0);
-      return [
+      return misto ? [
+        { k: 'acrQtd', label: 'Módulos do 2º modelo', type: 'int', help: 'Os do 1º modelo ficam em "Módulos"/"Quantidade".' },
+        { k: 'acrStrings', label: 'Strings do 2º modelo', type: 'int', placeholder: q > 0 ? 'Auto: ' + Math.ceil(q / maxS) : '' },
+        { k: 'acrPorString', label: 'Módulos por string (2º modelo)', placeholder: cj.acr ? 'Auto: ' + cj.acr.tam.join(' + ') : 'Ex.: 8 ou 9+8' },
+        { k: 'acrMppt', label: 'MPPT do 2º modelo (nº)', type: 'int', placeholder: 'Auto: ' + (nEx + 1), help: 'Em MPPT próprio (módulos diferentes não ficam em paralelo).' }
+      ] : [
         { k: 'acrQtd', label: 'Módulos acrescentados', type: 'int', help: 'Só os novos (os existentes ficam em "Módulos"/"Quantidade").' },
         { k: 'acrStrings', label: 'Strings do acréscimo', type: 'int', placeholder: q > 0 ? 'Auto: ' + Math.ceil(q / maxS) : '' },
         { k: 'acrPorString', label: 'Módulos por string (acréscimo)', placeholder: cj.acr ? 'Auto: ' + cj.acr.tam.join(' + ') : 'Ex.: 8 ou 9+8' },
@@ -239,7 +244,7 @@ window.App = window.App || {};
             help: 'Definem o desenho (fases no multifilar e marcas no unifilar), a corrente e o disjuntor. Em branco: trifásico = 3 fases.' },
           { k: 'caDist', label: 'Distância CA (m)', type: 'number' },
           { k: 'disjCa', label: 'Disjuntor CA (A)', type: 'number', help: sugJ ? 'Sugestão: ' + sugJ + ' A (≥ 1,25 × ' + U.fmt(cj.iInv, 2) + ' A).' : '' }
-        ], amp ? [{ secao: 'Ampliação do INV' + (j + 1) }].concat(acrescimo(j), [{ k: 'novo', label: 'Inversor novo (instalado nesta obra)', type: 'checkbox', cls: 'span2', help: 'Sai em destaque nos diagramas e no layout.' }]) : []), x, function (k) {
+        ], amp ? [{ secao: (misto ? '2º modelo de módulo no INV' : 'Ampliação do INV') + (j + 1) }].concat(acrescimo(j), misto ? [] : [{ k: 'novo', label: 'Inversor novo (instalado nesta obra)', type: 'checkbox', cls: 'span2', help: 'Sai em destaque nos diagramas e no layout.' }]) : []), x, function (k) {
           // disjuntor sugerido enquanto o projetista não digitar outro (≥ 1,25 × corrente do inversor)
           if (k === 'kw' || k === 'tensao' || k === 'fases' || k === 'condCA') {
             const i = P.correnteInv(x, pr.fp), sug = i > 0 ? String(P.proxDisjuntor(1.25 * i) || '') : '';
@@ -264,7 +269,7 @@ window.App = window.App || {};
     grupo('2. Módulos, inversor e arranjo', true, h('div',
       h('h4.secao-form', 'Módulo (datasheet do cadastro)'),
       UI.grade([
-        { k: 'mod.fab', label: 'Fabricante' }, { k: 'mod.modelo', label: 'Modelo', cls: 'span2' }, { k: 'mod.qtd', label: amp ? 'Quantidade existente' : 'Quantidade', type: 'int', help: amp ? 'Na ampliação: só os módulos já instalados.' : '' },
+        { k: 'mod.fab', label: 'Fabricante' }, { k: 'mod.modelo', label: 'Modelo', cls: 'span2' }, { k: 'mod.qtd', label: misto ? 'Quantidade (1º modelo)' : (amp ? 'Quantidade existente' : 'Quantidade'), type: 'int', help: misto ? 'Só os do 1º modelo; os do 2º ficam no inversor.' : (amp ? 'Na ampliação: só os módulos já instalados.' : '') },
         { k: 'mod.w', label: 'Potência (W)', type: 'number' }, { k: 'mod.vmp', label: 'Vmp (V)', type: 'number' }, { k: 'mod.imp', label: 'Imp (A)', type: 'number' },
         { k: 'mod.voc', label: 'Voc (V)', type: 'number' }, { k: 'mod.isc', label: 'Isc (A)', type: 'number' }, { k: 'mod.celulas', label: 'Nº de células', type: 'int' },
         { k: 'mod.coefVoc', label: 'Coef. de Voc (%/°C)', type: 'number' }
@@ -298,17 +303,18 @@ window.App = window.App || {};
     // ampliação: módulos acrescentados no MPPT livre (podem ser de outro fabricante) e/ou inversor novo, em destaque na prancha
     function blocoAmpliacao() {
       const el = h('div.prancha-ampl');
-      el.appendChild(h('h4.secao-form', 'Ampliação (aumento de geração)'));
-      el.appendChild(UI.campo({ k: 'ativa', label: 'Obra de ampliação: acréscimo de módulos e/ou inversor novo', type: 'checkbox',
-        help: 'O que é novo sai em destaque nos diagramas, na tabela de strings e no layout, com a nota da ampliação.' }, pr.ampl, function () { mudou(true); }));
+      el.appendChild(h('h4.secao-form', 'Ampliação ou dois modelos de módulo'));
+      el.appendChild(UI.campo({ k: 'ativa', label: 'Ampliação (acréscimo de módulos e/ou inversor novo) ou obra com dois modelos de módulo', type: 'checkbox',
+        help: 'Os dados de cada módulo (e de cada inversor) saem um abaixo do outro na prancha. Na ampliação, o que é novo sai em destaque, com a nota.' }, pr.ampl, function () { mudou(true); }));
       if (!amp) return el;
       el.appendChild(UI.grade([
-        { k: 'destaque', label: 'Destaque do que é novo', type: 'select', options: P.ESTILOS_DESTAQUE }
-      ], pr.ampl, function () { mudou(); }, 3));
-      // módulo do acréscimo: do cadastro ou digitado (em branco = o mesmo módulo da obra)
+        { k: 'tipo', label: 'Tipo', type: 'select', cls: 'span2', options: P.TIPOS_AMPL },
+        misto ? null : { k: 'destaque', label: 'Destaque do que é novo', type: 'select', options: P.ESTILOS_DESTAQUE }
+      ], pr.ampl, function (k) { mudou(k === 'tipo'); }, 3));
+      // módulo do acréscimo (ou o 2º modelo): do cadastro ou digitado (em branco = o mesmo módulo da obra)
       const cad = (S.list ? S.list('equipamentos') : []).filter(function (e) { return e.tipo === 'modulo' && e.ativo !== false; });
       const escolha = { id: '' };
-      el.appendChild(h('h4.secao-form', 'Módulo do acréscimo (em branco = o mesmo da obra)'));
+      el.appendChild(h('h4.secao-form', misto ? '2º modelo de módulo' : 'Módulo do acréscimo (em branco = o mesmo da obra)'));
       if (cad.length) {
         el.appendChild(UI.grade([{ k: 'id', label: 'Puxar do cadastro', type: 'select', cls: 'span2',
           options: [{ v: '', t: '— escolher um módulo cadastrado —' }].concat(cad.map(function (e) { return { v: e.id, t: [e.fabricante, e.modelo, e.potencia ? e.potencia + ' Wp' : ''].filter(Boolean).join(' ') }; })) }],
@@ -318,7 +324,7 @@ window.App = window.App || {};
           const d = P.dadosModulo(eq, null, 0); delete d.qtd;
           Object.assign(pr.ampl.mod, d);
           mudou(true);
-          UI.toast('Módulo do acréscimo: ' + [d.fab, d.modelo].filter(Boolean).join(' ') + '.', 'ok');
+          UI.toast((misto ? '2º modelo de módulo: ' : 'Módulo do acréscimo: ') + [d.fab, d.modelo].filter(Boolean).join(' ') + '.', 'ok');
         }, 3));
       }
       el.appendChild(UI.grade([
@@ -327,9 +333,9 @@ window.App = window.App || {};
         { k: 'voc', label: 'Voc (V)', type: 'number' }, { k: 'isc', label: 'Isc (A)', type: 'number' }, { k: 'celulas', label: 'Nº de células', type: 'int' },
         { k: 'coefVoc', label: 'Coef. de Voc (%/°C)', type: 'number' }
       ], pr.ampl.mod, function () { mudou(); }, 4));
-      el.appendChild(h('h4.secao-form', multi ? 'Acréscimo do INV1' : 'Acréscimo do inversor'));
-      el.appendChild(UI.grade(acrescimo(0).concat([{ k: 'inv.novo', label: multi ? 'INV1 novo (instalado nesta obra)' : 'Inversor novo ou trocado por um maior (instalado nesta obra)', type: 'checkbox', cls: 'span2', help: 'Sai em destaque nos diagramas e no layout.' }]), pr, function () { mudou(); }, 4));
-      if (multi) el.appendChild(h('small.ajuda', 'O acréscimo e o "inversor novo" do INV2… ficam no bloco de cada inversor, acima.'));
+      el.appendChild(h('h4.secao-form', misto ? (multi ? '2º modelo no INV1' : '2º modelo no inversor') : (multi ? 'Acréscimo do INV1' : 'Acréscimo do inversor')));
+      el.appendChild(UI.grade(acrescimo(0).concat(misto ? [] : [{ k: 'inv.novo', label: multi ? 'INV1 novo (instalado nesta obra)' : 'Inversor novo ou trocado por um maior (instalado nesta obra)', type: 'checkbox', cls: 'span2', help: 'Sai em destaque nos diagramas e no layout.' }]), pr, function () { mudou(); }, 4));
+      if (multi) el.appendChild(h('small.ajuda', misto ? 'Os módulos do 2º modelo do INV2… ficam no bloco de cada inversor, acima.' : 'O acréscimo e o "inversor novo" do INV2… ficam no bloco de cada inversor, acima.'));
       return el;
     }
 
@@ -375,20 +381,21 @@ window.App = window.App || {};
           help: 'Condutor de proteção do inversor ao quadro. Em branco, pela fase (NBR 5410, tab. 58: até 16 mm² igual à fase; 25–35 → 16; acima, a metade).' },
         { k: 'ca.dist', label: 'Distância (m)', type: 'number' }, { k: 'limiteCA', label: 'Limite de queda CA (%)', type: 'number' }
       ], pr, function (k) { mudou(k === 'ca.bit' || k === 'condCA' || k === 'caTerra'); }, 3),
-      multi ? trechoComum() : null,
+      trechoComum(),
       h('p.ajuda-sec', 'ΔV = queda unitária × corrente × distância ÷ 1000; % sobre a tensão da string (CC) ou do inversor (CA). Valores calculados:'), calc));
     pintarCalc();
 
-    // trecho comum (quadro geral → String Box CA) com mais de um inversor: leva a soma das correntes; em branco, a bitola sugerida
+    // alimentador da String Box CA (quadro geral → String Box CA), do projetista. Com mais de um inversor é o trecho comum e leva a
+    // soma das correntes (em branco, a bitola sugerida); com um inversor, em branco, o mesmo cabo do inversor
     function trechoComum() {
       if (!pr.caComum) pr.caComum = { bit: '', mat: '', iso: '' };
-      const ajuda = h('p.ajuda-sec');
-      elTrecho = h('div',
-        h('h4.secao-form', 'Trecho comum (quadro geral → String Box CA) — leva a soma das correntes dos inversores'),
+      const ajuda = h('p.ajuda-sec'), igual = multi ? 'Igual à do INV1' : 'Igual à do inversor';
+      elTrecho = h('div.prancha-alimentador',
+        h('h4.secao-form', multi ? 'Trecho comum (quadro geral → String Box CA) — leva a soma das correntes dos inversores' : 'Alimentador da String Box CA (quadro geral → String Box CA)'),
         UI.grade([
           { k: 'caComum.bit', label: 'Cabo (mm²)', type: 'number' },
-          { k: 'caComum.mat', label: 'Isolação', type: 'select', options: [{ v: '', t: 'Igual à do INV1' }].concat(MATERIAIS) },
-          { k: 'caComum.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('caComum.iso', 'Igual à do INV1') }
+          { k: 'caComum.mat', label: 'Isolação', type: 'select', options: [{ v: '', t: igual }].concat(MATERIAIS) },
+          { k: 'caComum.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('caComum.iso', igual) }
         ], pr, function () { mudou(); }, 3), ajuda);
       elTrecho.ajuda = ajuda;
       atualizarTrecho();
@@ -398,9 +405,10 @@ window.App = window.App || {};
     function atualizarTrecho() {
       if (!elTrecho) return;
       const cm = P.caboComum(pr), campo = elTrecho.querySelector('[data-k="caComum.bit"]');
-      if (campo) campo.placeholder = cm.sug ? 'Auto: ' + cm.sug : '';
-      elTrecho.ajuda.textContent = (cm.sug ? 'Sugestão: ' + cm.sug + ' mm² — Iz ≥ 1,25 × ' + U.fmt(cm.iTot, 2) + ' A (soma dos inversores) = ' + U.fmt(1.25 * cm.iTot, 2) + ' A (NBR 5410, tab. 36, B1). ' : '') +
-        'Em branco, vale a sugestão. Sai no multifilar, acima da String Box CA, na marca do QD no unifilar e no diagrama de blocos.';
+      if (campo) campo.placeholder = cm.unico ? (String(pr.ca.bit || '').trim() ? 'Igual ao do inversor: ' + pr.ca.bit : '') : (cm.sug ? 'Auto: ' + cm.sug : '');
+      elTrecho.ajuda.textContent = (cm.sug ? 'Sugestão: ' + cm.sug + ' mm² — Iz ≥ 1,25 × ' + U.fmt(cm.iTot, 2) + ' A (' + (cm.unico ? 'corrente do inversor' : 'soma dos inversores') + ') = ' + U.fmt(1.25 * cm.iTot, 2) + ' A (NBR 5410, tab. 36, B1). ' : '') +
+        (cm.unico ? 'Em branco, igual ao cabo do inversor. ' : 'Em branco, vale a sugestão. ') +
+        'Sai no multifilar (acima da String Box CA), na marca do QD no unifilar, no diagrama de blocos e no estilo B (String Box CA → QGBT); o cabo do inversor fica só no circuito do inversor.';
     }
 
     // ---------- 4. proteções

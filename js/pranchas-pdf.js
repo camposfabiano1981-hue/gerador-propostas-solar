@@ -193,8 +193,15 @@ window.App = window.App || {};
           const regra = (Array.isArray(desloc) ? desloc : (desloc ? [desloc] : [])).filter(function (d) { return oc.x < d.x && oc.y < d.y; })
             .sort(function (a, b) { return a.y - b.y; })[0];
           if (regra) oc = Object.assign({}, oc, { y: oc.y + regra.dy });
-          if (oc.t === 'tt') desenharArial(pg, oc, s, fonte, P);
-          else desenharTracos(pg, oc, s, oc.t === 'rom' ? FR : FT, P);
+          const escreve = function (o, t) { if (o.t === 'tt') desenharArial(pg, o, t, fonte, P); else desenharTracos(pg, o, t, o.t === 'rom' ? FR : FT, P); };
+          // campo em mais de uma linha (ex.: legenda com um módulo por linha): centradas no campo ou a 1ª nele e as outras abaixo
+          const linhas = String(s).split('\n');
+          if (linhas.length > 1) {
+            const lh = oc.s * (oc.t === 'tt' ? 1.2 : 1.4), modo = (Pr.MULTILINHA || {})[cid] || 'centro';
+            linhas.forEach(function (t, i) { escreve(Object.assign({}, oc, { y: oc.y + (modo === 'abaixo' ? -i : (linhas.length - 1) / 2 - i) * lh }), t); });
+            return;
+          }
+          escreve(oc, s);
         });
       });
       const bb = Pr.ASSINATURA[e];
