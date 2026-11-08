@@ -114,6 +114,8 @@ window.App = window.App || {};
       }
       else if (c.t === 'branco') pg.drawRectangle({ x: c.r[0], y: c.r[1], width: c.r[2] - c.r[0], height: c.r[3] - c.r[1], color: P.rgb(1, 1, 1) });
       else if (c.t === 'ponto') pg.drawCircle({ x: c.x, y: c.y, size: c.r, color: P.rgb(0, 0, 0) });
+      // realce translúcido (ampliação: o que é novo)
+      else if (c.t === 'realce') pg.drawRectangle({ x: c.r[0], y: c.r[1], width: c.r[2] - c.r[0], height: c.r[3] - c.r[1], color: P.rgb(c.cor[0], c.cor[1], c.cor[2]), opacity: c.op || 0.15 });
     });
   }
 

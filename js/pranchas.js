@@ -247,7 +247,8 @@ window.App = window.App || {};
     pr.art = inst.art || pr.art || '';
     if (!str(pr.ruas.uc)) pr.ruas.uc = rua(cli.endereco);
     // mais de um inversor na obra: INV1 = o primeiro e INV2… em pr.invs, guardando o arranjo e o circuito já digitados de cada um
-    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caMat', 'caIso', 'caUn', 'caDist', 'condCA', 'ccDist1', 'ccDist2', 'disjCa'];
+    const ARR = ['qtdMod', 'nStrings', 'porString', 'porMppt', 'caBit', 'caMat', 'caIso', 'caTerra', 'caUn', 'caDist', 'condCA', 'ccDist1', 'ccDist2', 'disjCa',
+      'acrQtd', 'acrStrings', 'acrPorString', 'acrMppt', 'novo'];
     const guarda = function (novo, velho) { ARR.forEach(function (k) { if (velho && str(velho[k])) novo[k] = velho[k]; }); return novo; };
     const invAnt = pr.inv || {}, invsAnt = Array.isArray(pr.invs) ? pr.invs : [];
     pr.mod = e.mod;
@@ -255,6 +256,7 @@ window.App = window.App || {};
       pr.inv = guarda(Object.assign({}, e.unidades[0], { qtd: '1' }), invAnt);
       pr.invs = e.unidades.slice(1).map(function (u, i) { return novoInversor(pr, guarda(Object.assign({}, u, { qtd: '1' }), invsAnt[i])); });
     } else pr.inv = invsAnt.length ? guarda(Object.assign({}, e.inv, { qtd: '1' }), invAnt) : e.inv;
+    if (invAnt.novo && pr.inv && pr.inv.novo == null) pr.inv.novo = true; // ampliação: o "inversor novo" do INV1 continua marcado
     pr.modelosDiferentes = e.modelosDiferentes && !(pr.invs && pr.invs.length);
     // strings: as do dimensionamento, respeitando o máximo de módulos por string do projetista (padrão 10)
     const maxS = num(pr.maxStr) || 10, nMod = num(e.mod.qtd);
@@ -312,35 +314,69 @@ window.App = window.App || {};
     return out;
   }
 
+  /**
+   * Ampliação (aumento de geração): o acréscimo de módulos deste inversor (p = prancha de um inversor), nas strings novas do MPPT
+   * livre definido na venda, com o módulo do acréscimo (outro fabricante) ou, sem ele, o mesmo módulo. null sem acréscimo.
+   */
+  function acrescimo(p) {
+    const a = (p && p.ampl) || {};
+    if (!a.ativa) return null;
+    const q = Math.round(num(p.acrQtd));
+    if (!(q > 0)) return null;
+    const nS = Math.max(1, Math.round(num(p.acrStrings)) || Math.ceil(q / (num(p.maxStr) || 10)));
+    const m2 = a.mod && num(a.mod.w) > 0 ? a.mod : (p.mod || {});
+    return { qtd: q, tam: tamanhos(q, nS, p.acrPorString), mod: m2, outro: m2 !== p.mod, mppt: Math.round(num(p.acrMppt)) || 0 };
+  }
+  function ampliacao(pr) { return !!(pr && pr.ampl && pr.ampl.ativa); }
+
   function calcular(pr) {
     const m = pr.mod || {}, iv = pr.inv || {};
-    const nMod = num(m.qtd), nStr = num(pr.nStrings), nInv = Math.max(num(iv.qtd), iv.kw || iv.modelo ? 1 : 0);
+    const ac = acrescimo(pr);
+    const nMod0 = num(m.qtd), nStr = num(pr.nStrings), nInv = Math.max(num(iv.qtd), iv.kw || iv.modelo ? 1 : 0);
     const w = num(m.w), vmp = num(m.vmp), imp = num(m.imp) || (vmp > 0 && w > 0 ? w / vmp : 0);
-    const tam = tamanhos(nMod, nStr, pr.porString);
-    const strings = tam.map(function (n, i) {
-      const v = n * vmp, p = n * w / 1000;
+    const umaString = function (mod, n, i, acr) {
+      const w_ = num(mod.w), vmp_ = num(mod.vmp), imp_ = num(mod.imp) || (vmp_ > 0 && w_ > 0 ? w_ / vmp_ : 0);
+      const v = n * vmp_, p = n * w_ / 1000;
       const dist = num(i === 0 || !tem(pr.cc.dist2) ? pr.cc.dist1 : pr.cc.dist2); // string 2 em diante: a distância 2 ou, em branco, a 1
-      const dv = num(pr.cc.un) * imp * dist / 1000;
-      return { n: n, p: p, v: v, i: imp, dist: dist, dv: dv, pct: v > 0 ? dv / v * 100 : 0 };
-    });
-    const kwp = nMod * w / 1000;
+      const dv = num(pr.cc.un) * imp_ * dist / 1000;
+      return { n: n, p: p, v: v, i: imp_, dist: dist, dv: dv, pct: v > 0 ? dv / v * 100 : 0, w: w_, mod: mod, acr: !!acr };
+    };
+    const tam0 = tamanhos(nMod0, nStr, pr.porString);
+    // ampliação: as strings do acréscimo depois das existentes, num grupo (MPPT livre) só delas
+    const tam = ac ? tam0.concat(ac.tam) : tam0;
+    const strings = tam0.map(function (n, i) { return umaString(m, n, i, false); })
+      .concat(ac ? ac.tam.map(function (n, k) { return umaString(ac.mod, n, tam0.length + k, true); }) : []);
+    const nMod = nMod0 + (ac ? ac.qtd : 0);
+    const kwp = nMod0 * w / 1000 + (ac ? ac.qtd * num(ac.mod.w) / 1000 : 0);
     const kw = num(iv.kw);
     const vInv = num(iv.tensao) || 220, fp = num(pr.fp) || 1;
     const iInv = kw > 0 ? kw * 1000 / (vInv * fp * (triInv(pr) ? Math.sqrt(3) : 1)) : 0;
     const dvCa = num(pr.ca.un) * iInv * num(pr.ca.dist) / 1000;
     const C = App.Calc;
     const prem = { tempMinima: 0, fatorVocFrio: 1.12 };
-    const vocMod = num(m.voc);
-    const vocFrioMod = vocMod > 0 ? (C && C.vocFrio ? C.vocFrio({ voc: vocMod, coefVoc: m.coefVoc }, prem) : vocMod * 1.12) : 0;
+    const vocFrioDe = function (mod) { const voc = num(mod.voc); return voc > 0 ? (C && C.vocFrio ? C.vocFrio({ voc: voc, coefVoc: mod.coefVoc }, prem) : voc * 1.12) : 0; };
+    const vocFrioMod = vocFrioDe(m);
     const maxStr = tam.length ? Math.max.apply(null, tam) : 0;
+    const vocFrioStr = strings.reduce(function (a, x) { return Math.max(a, x.n * (x.mod === m ? vocFrioMod : vocFrioDe(x.mod))); }, 0);
+    const grupos = gruposMppt(tam0.length, iv.mppts, pr.porMppt);
+    // rótulo do MPPT de cada grupo: 1, 2… e o do acréscimo, o MPPT livre informado
+    const rotMppt = grupos.map(function (_, k) { return k + 1; });
+    if (ac) { grupos.push(ac.tam.length); rotMppt.push(ac.mppt || rotMppt.length + 1); }
     const out = {
       nMod: nMod, nStr: tam.length, nInv: nInv, tam: tam, strings: strings, maxStr: maxStr, w: w, vmp: vmp, imp: imp, kwp: kwp,
       kw: kw, vInv: vInv, fp: fp, iInv: iInv, dvCa: dvCa, pctCa: vInv > 0 ? dvCa / vInv * 100 : 0,
       strPorInv: nInv > 0 ? Math.ceil(tam.length / nInv) : tam.length, modPorInv: nInv > 0 ? Math.round(nMod / nInv) : nMod,
-      vocFrioStr: vocFrioMod * maxStr, iscStr: num(m.isc),
-      grupos: gruposMppt(tam.length, iv.mppts, pr.porMppt)
+      vocFrioStr: vocFrioStr, iscStr: Math.max(num(m.isc), ac ? num(ac.mod.isc) : 0),
+      grupos: grupos, rotMppt: rotMppt, acr: ac, nModExist: nMod0
     };
     return out;
+  }
+  // módulos do gerador por potência ("20 x 560 + 8 x 610 Wp"): os existentes e, à parte, os do acréscimo da ampliação
+  function modulosTxt(cs) {
+    const ex = [], ac = [];
+    const soma = function (g, n, w) { if (!(n > 0)) return; const e = g.find(function (x) { return Math.abs(x.w - w) < 1e-9; }); if (e) e.n += n; else g.push({ n: n, w: w }); };
+    cs.forEach(function (c) { soma(ex, c.nModExist != null ? c.nModExist : c.nMod, c.w); if (c.acr) soma(ac, c.acr.qtd, num(c.acr.mod.w)); });
+    return ex.concat(ac).map(function (x) { return x.n + ' x ' + pt(x.w, 0); }).join(' + ') + ' Wp';
   }
 
   /** Condutores do circuito CA do inversor ao quadro, escolhidos pelo projetista (padrão FFT). */
@@ -359,6 +395,22 @@ window.App = window.App || {};
   }
   /** Condutores carregados do circuito CA (sem o terra), do terra para fora no desenho: fases e depois o neutro. */
   function letrasCA(pr) { const c = condCA(pr); return c.replace(/[^F]/g, '').split('').concat(c.indexOf('N') >= 0 ? ['N'] : []); }
+  /**
+   * Condutor de proteção (terra) do circuito CA do inversor: o do projetista ou, em branco, pela fase (NBR 5410, tab. 58) — até
+   * 16 mm² igual à fase; de 25 a 35 mm², 16 mm²; acima, a metade (bitola comercial). O aterramento principal (BEP, haste, QGBT)
+   * é outro campo (terraBit).
+   */
+  const BITOLAS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
+  function terraCA(p) {
+    const t = str(p && p.caTerra);
+    if (t) return t;
+    const f = str(p && p.ca && p.ca.bit), s = num(f);
+    if (!(s > 0)) return str(p && p.terraBit);
+    if (s <= 16) return f;
+    if (s <= 35) return '16';
+    const b = BITOLAS.find(function (x) { return x >= s / 2 - 1e-9; });
+    return String(b || s / 2);
+  }
   /** Bitola do aterramento dos módulos (campo do projetista; padrão 6 mm²). */
   function terraMod(pr) { return str(pr && pr.terraMod) || PADROES.terraMod; }
 
@@ -383,7 +435,7 @@ window.App = window.App || {};
       rtRegistro: reg ? [str(emp.registroTipo) || 'CFT-BR', 'nº', regFmt].join(' ') : '', rtTel: telRt ? 'TEL. ' + telRt.replace(/^\(?\d{2}\)?\s+(?=9?\d{4})/, '') : '',
       fiaPlacas: c.nStr > 0 ? (2 * c.nStr) + '#' + str(pr.cc.bit) + '(T#' + tm + ')' : '',
       fiaSb: (2 * Math.max(1, Math.min(c.nStr || 1, num(pr.inv && pr.inv.mppts) || 1))) + '#' + str(pr.cc.bit) + '(T#' + tm + ')',
-      fiaInversor: cond + '#' + str(pr.ca.bit) + '(T#' + str(pr.terraBit) + ')'
+      fiaInversor: cond + '#' + str(pr.ca.bit) + '(T#' + terraCA(lista[0].p) + ')'
     };
   }
   /** Valor efetivo: o digitado ou, em branco, o automático. */
@@ -464,10 +516,10 @@ window.App = window.App || {};
         campo_fv: [0, 1, 0, 1].map(function (k) { const s = c.strings[k] || c.strings[0]; return s && w ? s.n + 'x' + w + 'W' : ''; }),
         bit_ca_marca: str(pr.ca.bit), bit_cc_marca: str(pr.cc.bit),
         // fiação do quadro ao inversor no desenho das strings: condutores (cabo CA do inversor) e terra
-        bit_ca_lig: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '', bit_terra_lig: str(pr.terraBit) ? '#' + str(pr.terraBit) : ''
+        bit_ca_lig: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '', bit_terra_lig: terraCA(pr) ? '#' + terraCA(pr) : ''
       });
       const lista = inversores(pr);
-      return lista.length > 1 ? valoresMulti(pr, v, lista) : v;
+      return valoresAmpl(pr, lista.length > 1 ? valoresMulti(pr, v, lista) : v, lista, 'A');
     }
     // estilo B
     Object.assign(v, {
@@ -485,11 +537,39 @@ window.App = window.App || {};
       cabo_saida_xlpe: str(pr.saida.bit) ? str(pr.saida.bit) + ' mm2/' + str(pr.saida.mat) : '', cabo_entrada_xlpe: str(pr.entrada.bit) ? str(pr.entrada.bit) + ' mm2/' + str(pr.entrada.mat) : '',
       disj_geral_a_esp: dg ? dg + ' A' : '', disj_geral_2p: dg ? (POLOS[pr.ligacao] || '2P') + '-' + dg : '',
       bit_cc_marca: str(pr.cc.bit) ? '#' + str(pr.cc.bit) : '', bit_ca_marca: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '',
-      bit_terra_ca_marca: str(pr.terraBit) ? '#' + str(pr.terraBit) : '', bit_terra_cc_marca: '#' + terraMod(pr),
+      bit_terra_ca_marca: terraCA(pr) ? '#' + terraCA(pr) : '', bit_terra_cc_marca: '#' + terraMod(pr),
       disj_ca_a: dca ? dca + 'A' : '', dps_ca_classe_mai: str(d.classe) ? 'DPS CA CLASSE ' + maiusc(d.classe) : '', dps_ca_uc_v: str(d.uc) ? str(d.uc) + ' V' : '',
       dps_ca_in_esp: str(d.in) ? 'In = ' + str(d.in) + ' kA' : '', dps_ca_imax_esp: str(d.imax) ? 'In Max = ' + str(d.imax) + ' kA' : '',
       sb_cc: str(pr.sbCc), cabo_ramal_lig_multiplex: str(pr.ramal.bit) ? str(pr.ramal.cond) + '#' + str(pr.ramal.bit) + '(' + (str(pr.ramal.neutro) || str(pr.ramal.bit)) + ') mm2' : ''
     });
+    return valoresAmpl(pr, v, inversores(pr), 'B');
+  }
+
+  /**
+   * Ampliação: os textos com os dois módulos — a seção 1 (nome, potência, Vmp e Imp "existente / acréscimo"), a legenda e o
+   * descritivo (existentes + acréscimo). Sem acréscimo, os valores ficam como estão.
+   */
+  function valoresAmpl(pr, v, lista, estilo) {
+    if (!ampliacao(pr)) return v;
+    const acs = lista.map(function (x) { return acrescimo(x.p); }).filter(Boolean);
+    if (!acs.length) return v;
+    const m = pr.mod || {}, m2 = acs[0].mod, n1 = num(m.qtd), n2 = acs.reduce(function (a, x) { return a + x.qtd; }, 0);
+    const w1 = pt(num(m.w), 1), w2 = pt(num(m2.w), 1), lig = LIGACOES[pr.ligacao] || 'bifásico', dg = str(pr.disjGeral);
+    const nome = function (x) { return [maiusc(x.fab), str(x.modelo)].filter(Boolean).join(' - '); };
+    const par = function (a, b) { return a && b && a !== b ? a + ' / ' + b : a || b; };
+    v.descritivo = [
+      'O sistema é composto por ' + pad2(n1) + ' módulos de ' + w1 + ' Wp existentes e ' + pad2(n2) + ' módulos de ' + w2 + ' Wp (ampliação).',
+      'A instalação elétrica da casa existente com ramal de entrada ' + lig + ' de ' + str(pr.entrada.bit) + ' mm2, disjuntor de ' + dg + ' A e',
+      'ramal de saída ' + lig + ' de ' + str(pr.saida.bit) + ' mm2, disjuntor de ' + dg + ' A.'];
+    const cel = function (x) { return str(x.celulas) ? str(x.celulas) + ' células ' : ''; };
+    v.leg_modulo = 'Módulos fotovoltaico ' + cel(m) + w1 + ' Wp' + (acs[0].outro ? ' / ' + cel(m2) + w2 + ' Wp (ampliação)' : '');
+    if (estilo === 'A' && acs[0].outro) {
+      const nm = nome(m) + ' + ' + nome(m2) + ' (ampliação)';
+      v.mod_nome = Array.isArray(v.mod_nome) ? v.mod_nome.map(function () { return nm; }) : nm;
+      v.mod_w = par(w1, w2);
+      v.mod_vmp = par(num(m.vmp) > 0 ? pt(num(m.vmp), 2) : '', num(m2.vmp) > 0 ? pt(num(m2.vmp), 2) : '');
+      v.mod_imp = par(num(m.imp) > 0 ? pt(num(m.imp), 2) : '', num(m2.imp) > 0 ? pt(num(m2.imp), 2) : '');
+    }
     return v;
   }
 
@@ -516,7 +596,7 @@ window.App = window.App || {};
   function desenhoStringsA(pr, campos, G, folha) {
     const lista = inversores(pr);
     // em 2 folhas (o padrão) e com mais de um inversor, o desenho vai pelo caminho de várias folhas/inversores
-    if (G && (lista.length > 1 || folha)) return desenhoMultiA(pr, campos, G, lista, folha);
+    if (G && (lista.length > 1 || folha || ampliacao(pr))) return desenhoMultiA(pr, campos, G, lista, folha);
     const c = calcular(pr), cmds = [];
     cmds.desloc = null;
     if (!G) return cmds;
@@ -865,7 +945,7 @@ window.App = window.App || {};
   /** INV2…: os campos do arranjo e do circuito CA em branco (automáticos) e o disjuntor sugerido (≥ 1,25 × corrente). */
   function novoInversor(pr, base) {
     const x = Object.assign({ fab: '', modelo: '', kw: '', qtd: '1', fases: (pr.inv && pr.inv.fases) || 'mono', tensao: (pr.inv && pr.inv.tensao) || '220', vmaxCC: '',
-      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caMat: '', caIso: '', caUn: '', caDist: '', condCA: '', ccDist1: '', ccDist2: '', disjCa: '' }, base || {});
+      mppts: '', imaxMppt: '', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caMat: '', caIso: '', caTerra: '', caUn: '', caDist: '', condCA: '', ccDist1: '', ccDist2: '', disjCa: '', acrQtd: '', acrStrings: '', acrPorString: '', acrMppt: '', novo: false }, base || {});
     if (!str(x.disjCa)) { const i = correnteInv(x, pr.fp); if (i > 0) x.disjCa = String(proxDisjuntor(1.25 * i) || ''); }
     return x;
   }
@@ -902,7 +982,9 @@ window.App = window.App || {};
         disjCa: i === 0 ? pr.disjCa : str(x.disjCa),
         // circuito CC e condutores CA do inversor (em branco: as distâncias CC e os condutores do INV1, ajustados à saída dele)
         cc: i === 0 || !str(x.ccDist1) ? pr.cc : Object.assign({}, pr.cc, { dist1: str(x.ccDist1), dist2: str(x.ccDist2) }),
-        condCA: i === 0 ? pr.condCA : str(x.condCA)
+        condCA: i === 0 ? pr.condCA : str(x.condCA), caTerra: i === 0 ? pr.caTerra : str(x.caTerra),
+        acrQtd: i === 0 ? pr.acrQtd : str(x.acrQtd), acrStrings: i === 0 ? pr.acrStrings : str(x.acrStrings),
+        acrPorString: i === 0 ? pr.acrPorString : str(x.acrPorString), acrMppt: i === 0 ? pr.acrMppt : str(x.acrMppt)
       });
       return { k: i, inv: x, p: p };
     });
@@ -957,6 +1039,7 @@ window.App = window.App || {};
       }
       if (c.t === 'branco') return Object.assign({}, c, { r: [k * c.r[0] + tx, k * c.r[1] + ty, k * c.r[2] + tx, k * c.r[3] + ty] });
       if (c.t === 'ponto') return Object.assign({}, c, { x: k * c.x + tx, y: k * c.y + ty, r: c.r * k });
+      if (c.t === 'novo') return Object.assign({}, c, { bb: [k * c.bb[0] + tx, k * c.bb[1] + ty, k * c.bb[2] + tx, k * c.bb[3] + ty] });
       return c;
     });
   }
@@ -990,16 +1073,17 @@ window.App = window.App || {};
     };
     const mm = function (b) { return str(b) ? '#' + str(b) + ' mm2' : ''; };
     const cs = lista.map(function (x) { return calcular(x.p); }), c0 = cs[0];
-    const nMod = cs.reduce(function (a, c) { return a + (c.nMod || 0); }, 0), kwp = cs.reduce(function (a, c) { return a + (c.kwp || 0); }, 0);
+    const kwp = cs.reduce(function (a, c) { return a + (c.kwp || 0); }, 0);
     const tams = [].concat.apply([], cs.map(function (c) { return c.tam; })), difs = tams.filter(function (v, i, a) { return a.indexOf(v) === i; });
     const ccBit = str(pr.cc.bit), caBit = str(pr.ca.bit), tm = terraMod(pr), tb = str(pr.terraBit) || tm, lig = LIGACOES[pr.ligacao] || '', d = pr.dpsCa || {};
+    const tInv = lista.map(function (x) { return terraCA(x.p); }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join('/') || tb;
     const nomeInv = function (x) { return [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' '); };
 
     // diagrama de blocos: GERADOR FV → STRING BOX CC → INVERSOR → STRING BOX CA na 1ª linha; QGBT ← MEDIDOR ← REDE na 2ª
     const B = BLOCOS_1F, g = 40, w = (B[2] - B[0] - 3 * g) / 4, h = 42, y1 = B[3] - 28, y2 = y1 - h - 40;
     em(tT, 'DIAGRAMA DE BLOCOS', { x: B[0], y: B[3] - 12 });
     const X = [0, 1, 2, 3].map(function (i) { return B[0] + i * (w + g); });
-    caixa(X[0], y1, w, h, ['GERADOR FV', nMod + ' x ' + pt(c0.w, 0) + ' Wp = ' + fx(kwp, 2, ',') + ' kWp', tams.length + (tams.length > 1 ? ' strings de ' : ' string de ') + difs.join('/') + ' módulos']);
+    caixa(X[0], y1, w, h, ['GERADOR FV', modulosTxt(cs) + ' = ' + fx(kwp, 2, ',') + ' kWp', tams.length + (tams.length > 1 ? ' strings de ' : ' string de ') + difs.join('/') + ' módulos']);
     caixa(X[1], y1, w, h, ['STRING BOX CC', 'DPS CC' + (str(pr.dpsCcUcpv) ? ' ' + str(pr.dpsCcUcpv) + ' V' : '') + (str(pr.sbCc) ? ' - ' + str(pr.sbCc) : ''), 'terra #' + tm + ' mm2']);
     caixa(X[2], y1, w, h, nI > 1
       ? ['INVERSORES', lista.map(function (x, j) { return 'INV' + (j + 1) + ' ' + pt(cs[j].kw, 2) + ' kW'; }).join(' + '), lista.map(function (x) { return maiusc(x.inv.fab); }).filter(Boolean).join(' + ')]
@@ -1021,7 +1105,7 @@ window.App = window.App || {};
     const A = ATERR_1F, ga = 8, bw = 78, ha = 26, ya = A[3] - 26, yBus = ya - ha - 28;
     em(tT, 'DETALHE DO ATERRAMENTO DO SISTEMA', { x: A[0], y: A[3] - 10 });
     const itens = [['MÓDULOS E ESTRUTURA', 'molduras equipotencializadas', tm], ['STRING BOX CC', 'barra PE e DPS CC', tm],
-      [nI > 1 ? 'INVERSORES' : 'INVERSOR INV1', 'terminal PE (carcaça)', tb], ['STRING BOX CA', 'barra PE e DPS CA', tb], ['QUADRO GERAL (QGBT)', 'barra de terra / neutro', tb]];
+      [nI > 1 ? 'INVERSORES' : 'INVERSOR INV1', 'terminal PE (carcaça)', tInv], ['STRING BOX CA', 'barra PE e DPS CA', tInv], ['QUADRO GERAL (QGBT)', 'barra de terra / neutro', tb]];
     const tv = Object.assign({}, t2, { s: 4.0, cor: verde, al: 'l', w: null });
     itens.forEach(function (it, i) {
       const x = A[0] + i * (bw + ga), xm = x + bw / 2;
@@ -1047,8 +1131,44 @@ window.App = window.App || {};
     em(tl, str(pr.cxInspecao), { x: xH + 44, y: yCx - 16, w: A[2] - xH - 46 });
     em(tl, 'haste ' + (str(pr.haste) || ''), { x: xH + 5, y: yP + 6, w: A[2] - xH - 7 });
     const notas = ['Massas metálicas (molduras, estruturas, carcaças dos inversores e quadros) interligadas ao BEP pelo condutor de',
-      'proteção (PE), verde ou verde-amarelo - NBR 5410 e NBR 16690. Módulos #' + tm + ' mm2, terra do circuito CA #' + tb + ' mm2.'];
+      'proteção (PE), verde ou verde-amarelo - NBR 5410 e NBR 16690. Módulos #' + tm + ' mm2, PE dos inversores #' + tInv + ' mm2, aterramento #' + tb + ' mm2.'];
     notas.forEach(function (t, i) { em(Object.assign({}, tl, { s: 4.0 }), t, { x: A[0], y: yBus - 22 - i * 9, w: xBep - A[0] - 12 }); });
+  }
+
+  // ---- ampliação: destaque do acréscimo (strings novas e inversor novo). As marcas {t:'novo', z, bb, rot} juntam-se por zona;
+  // os comandos do acréscimo vêm com acr: true. Estilos: 'contorno' (tracejado vermelho com o rótulo), 'cor' (linhas e textos
+  // em vermelho e o realce translúcido) e 'rotulo' (etiqueta NOVO em cada item).
+  const VERMELHO = [0.86, 0, 0];
+  const ESTILOS_DESTAQUE = [{ v: 'contorno', t: 'Contorno tracejado vermelho' }, { v: 'cor', t: 'Em vermelho, com realce' }, { v: 'rotulo', t: 'Etiqueta NOVO' }];
+  function destacar(cmds, estilo) {
+    const marcas = cmds.filter(function (c) { return c.t === 'novo'; });
+    for (let i = cmds.length - 1; i >= 0; i--) if (cmds[i].t === 'novo') cmds.splice(i, 1);
+    if (!marcas.length) return;
+    const tx = function (txt, x, y, extra) { cmds.push({ t: 'texto', txt: txt, oc: Object.assign({ t: 'txt', x: x, y: y, s: 5.2, fl: 0.9, ang: 0, cor: VERMELHO, al: 'l' }, extra || {}) }); };
+    if (estilo === 'cor') {
+      cmds.forEach(function (c) {
+        if (!c.acr) return;
+        if (c.t === 'linha') c.cor = VERMELHO;
+        else if (c.t === 'texto') c.oc = Object.assign({}, c.oc, { cor: VERMELHO });
+      });
+      marcas.forEach(function (m) { cmds.push({ t: 'realce', r: [m.bb[0] - 1.5, m.bb[1] - 1.5, m.bb[2] + 1.5, m.bb[3] + 1.5], cor: [1, 0.25, 0.25], op: 0.13 }); });
+      return;
+    }
+    if (estilo === 'rotulo') {
+      marcas.forEach(function (m) { if (m.lado === 'dir') tx('NOVO', m.bb[2] + 3, m.bb[1] + 1.5, { s: 4.6 }); else tx('NOVO', m.bb[0], m.bb[1] - 6.5, { s: 4.6 }); });
+      return;
+    }
+    const zonas = {};
+    marcas.forEach(function (m) {
+      const z = zonas[m.z];
+      if (!z) zonas[m.z] = { bb: m.bb.slice(), rot: m.rot, lado: m.lado };
+      else z.bb = [Math.min(z.bb[0], m.bb[0]), Math.min(z.bb[1], m.bb[1]), Math.max(z.bb[2], m.bb[2]), Math.max(z.bb[3], m.bb[3])];
+    });
+    Object.keys(zonas).forEach(function (k) {
+      const z = zonas[k], b = [z.bb[0] - 3, z.bb[1] - 3, z.bb[2] + 3, z.bb[3] + 3];
+      cmds.push({ t: 'linha', pts: [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], cor: VERMELHO, traco: [5, 2.5] });
+      if (z.lado === 'dir') tx(z.rot, b[2] + 3, b[1] + 1.5); else tx(z.rot, b[0], b[1] - 7);
+    });
   }
 
   function desenhoMultiA(pr, campos, G, lista, folha) {
@@ -1070,12 +1190,26 @@ window.App = window.App || {};
     const F = G.fileira, R = G.ramal, K = G.coluna, T = G.tabela, nI = lista.length;
     const cs = lista.map(function (x) { return calcular(x.p); });
     const c0 = cs[0], w = c0.w > 0 ? pt(c0.w, 1) : '', bit = str(pr.cc.bit);
+    // ampliação: potência do módulo de cada string (o do acréscimo pode ser outro) e as marcas do que é novo
+    const amp = ampliacao(pr), wTxt = function (x) { return x && x.w > 0 ? pt(x.w, 1) : w; };
+    const marcar = function (z, bb, rot, ini, lado) {
+      if (!amp) return;
+      if (ini != null) for (let i = ini; i < cmds.length; i++) cmds[i].acr = true;
+      cmds.push({ t: 'novo', z: z, bb: bb, rot: rot || 'ACRÉSCIMO', lado: lado || '' });
+    };
+    const invNovo = function (j) { return amp && !!(lista[j].inv && lista[j].inv.novo); };
     // strings de todas, numeradas em sequência: STR1… do INV1, depois as do INV2…
     const todas = [];
     cs.forEach(function (c, j) {
       let g = 0, ini = 0;
       const grupos = c.grupos.length ? c.grupos : [c.tam.length];
-      grupos.forEach(function (ng, m) { for (let i = 0; i < ng; i++) todas.push({ j: j, m: m, n: c.tam[ini + i], s: c.strings[ini + i], p: lista[j].p }); ini += ng; g++; });
+      grupos.forEach(function (ng, m) {
+        for (let i = 0; i < ng; i++) {
+          const st = c.strings[ini + i] || {};
+          todas.push({ j: j, m: m, n: c.tam[ini + i], s: c.strings[ini + i], p: lista[j].p, acr: !!st.acr, w: st.w, mrot: (c.rotMppt || [])[m] || m + 1 });
+        }
+        ini += ng; g++;
+      });
     });
     const N = todas.length;
     todas.forEach(function (x, i) { x.k = i; x.rot = 'STR' + (i + 1); });
@@ -1105,9 +1239,10 @@ window.App = window.App || {};
     const livreT = T.topo - fundo - 4, sp = N > 1 ? Math.min(T.passo, livreT / (N - 1 + 1 / 1.4)) : T.passo;
     const st = Math.min(1, sp / 1.4 / H0), altB = (N - 1) * sp + H0 * st, baseFundo = (T.topo + fundo) / 2 - altB / 2;
     todas.forEach(function (x, i) {
-      const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(x.p, x.s);
+      const y = baseFundo + (N - 1 - i) * sp, l = linhaTabela(x.p, x.s), ini = cmds.length;
       if (rotTab) cmds.push({ t: 'texto', txt: (nI > 1 ? 'INV' + (x.j + 1) + '-' : '') + x.rot, oc: Object.assign({}, rotTab, { y: y, s: rotTab.s * st }) });
       COLUNAS.forEach(function (k) { const o = um('t1_' + k); if (o && l[k]) cmds.push({ t: 'texto', txt: l[k], oc: Object.assign({}, o, { y: y, s: o.s * st }) }); });
+      if (x.acr) marcar('tab' + x.j, [K ? K.xs[0] : 188.8, y - 2.2 * st, K ? K.xs[K.xs.length - 1] : 975.8, y + 7.6 * st], 'ACRÉSCIMO', ini, 'dir');
     });
     // linha separando os inversores na tabela de strings
     let nAc = 0;
@@ -1131,7 +1266,7 @@ window.App = window.App || {};
       x.oy = yAt;
     });
     todas.forEach(function (x) {
-      const oy = x.oy, bitx = str(x.p.cc.bit);
+      const oy = x.oy, bitx = str(x.p.cc.bit), ini = cmds.length;
       for (let j = 0; j < x.n; j++) forma('CRMMod', F.x0, F.y0, F.x0 + j * F.passo * s, oy, s);
       forma('CRMDps', F.x0, F.y0, F.x0, oy, s);
       for (let j = 0; j < x.n - 1; j++) {
@@ -1145,6 +1280,7 @@ window.App = window.App || {};
       const yr = oy + s * (F.ret[1] - F.y0);
       linha([[F.x0 + s * (F.ret[0] - F.x0), yr], [xf + s * (F.ret[2] - xu), yr]]);
       x.ent = [F.x0 + s * (F.entrada[0] - F.x0), oy + s * (F.entrada[1] - F.y0)];
+      if (x.acr) marcar('lay' + x.j, [F.x0 - 12 * s, oy - 4 * s, xf + (F.larg + 4) * s, oy + (F.alt + 4) * s], 'ACRÉSCIMO — ' + x.n + ' x ' + wTxt(x) + ' W', ini);
     });
     // posição de cada inversor: o INV1 no lugar do desenho (na folha das strings, como os outros); os outros na altura média
     // das suas fileiras (abaixo do anterior)
@@ -1163,7 +1299,11 @@ window.App = window.App || {};
       const abaixo = minhas.filter(function (x) { return x.ent[1] < y0; }).sort(function (a, b) { return a.ent[1] - b.ent[1]; });
       const dx = Math.min(10, (xb - xa) / Math.max(acima.length, abaixo.length, 1)), db = Math.min(3, 30 / Math.max(minhas.length, 1));
       const rota = function (x, i, nivel) {
-        const e = x.ent, xp = xa + i * dx;
+        const e = x.ent, xp = xa + i * dx, ini = cmds.length;
+        rota2(x, e, xp, nivel);
+        if (x.acr && amp) for (let q = ini; q < cmds.length; q++) cmds[q].acr = true;
+      };
+      const rota2 = function (x, e, xp, nivel) {
         linha([e, [xp, e[1]], [xp, nivel], [xc, nivel], q, p0], preto, traco);
         forma('CRMRam', R.ancora[0], R.ancora[1], R.ancora[0], e[1], sg);
         texto(um('_ram_str'), x.rot, R.ancora[0], R.ancora[1], R.ancora[0], e[1], sg);
@@ -1179,8 +1319,10 @@ window.App = window.App || {};
         const yb = Math.min.apply(null, rows.map(function (x) { return x.oy; })) - 1, yt = Math.max.apply(null, rows.map(function (x) { return x.oy; })) + F.alt * s + 1, xk = F.x0 - 6;
         linha([[xk + 3, yb], [xk, yb], [xk, yt], [xk + 3, yt]]);
         const sm = Math.min(1, 1.6 * s), o = um('_ram_str') || { t: 'txt', s: 5.66, fl: 0.9, ang: 0, cor: preto, al: 'l' };
-        cmds.push({ t: 'texto', txt: 'MPPT' + (m + 1), oc: Object.assign({}, o, { x: xk - 2.2, y: (yb + yt) / 2 - 8.2 * sm, s: o.s * sm, ang: 90, al: 'l', w: null }) });
+        cmds.push({ t: 'texto', txt: 'MPPT' + ((cs[j].rotMppt || [])[m] || m + 1), oc: Object.assign({}, o, { x: xk - 2.2, y: (yb + yt) / 2 - 8.2 * sm, s: o.s * sm, ang: 90, al: 'l', w: null }) });
       });
+      // inversor novo da ampliação: em destaque no layout
+      if (invNovo(j)) marcar('invL' + j, [536, 754 + y0 - R.p0[1], 582, 792 + y0 - R.p0[1]], 'INVERSOR NOVO', null, 'dir');
       if (j === 0 && !avulso) continue;
       // INV2… (e, na folha das strings, o INV1 com o quadro): cópia do trecho do modelo (linha do quadro, T, símbolo do
       // inversor) na altura dele, ligada à linha do quadro
@@ -1213,6 +1355,7 @@ window.App = window.App || {};
       const oT = { t: 'txt', s: 12, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'c' };
       em(oT, 'LAYOUT DAS STRINGS, DIAGRAMA DE BLOCOS E DETALHES: VER PRANCHA 2/2', { x: 1140, y: 760 });
       resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.48 }), t, { x: 1140, y: 728 - i * 15 }); });
+      notaAmpliacao().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.0, cor: VERMELHO }), t, { x: 1140, y: 728 - (nI + i) * 15 - 3, w: 1300 }); });
       // croqui de localização ao lado das tabelas (no espaço do detalhe de instalação), ampliado e longe dos diagramas; os campos
       // dele (ruas e selo) vão junto
       const C = CROQUI.r, kc = CROQUI.k, tcx = CROQUI.centro[0] - kc * (C[0] + C[2]) / 2, tcy = CROQUI.centro[1] - kc * (C[1] + C[3]) / 2;
@@ -1247,7 +1390,12 @@ window.App = window.App || {};
       cmds.moverMF = MF_FAIXAS.map(function (r) { return { r: r, k: 1, tx: dxMF, ty: 0 }; });
     }
     // uma folha só: o diagrama de blocos e o detalhe do aterramento compactos nos espaços livres
-    if (!folha) compactos1F(pr, lista, cmds);
+    if (!folha) {
+      compactos1F(pr, lista, cmds);
+      // folha única: a nota da ampliação embaixo, à esquerda
+      notaAmpliacao().forEach(function (t, i) { em({ t: 'txt', s: 6.5, fl: 0.92, ang: 0, cor: VERMELHO, al: 'l', w: 1020 }, t, { x: 135, y: 44 - i * 10 }); });
+    }
+    destacar(cmds, (pr.ampl && pr.ampl.destaque) || 'contorno');
     return cmds;
 
     // número da folha no carimbo (no lugar do "1/1" do modelo)
@@ -1275,12 +1423,14 @@ window.App = window.App || {};
       const ccBit = str(pr.cc.bit), caBit = str(pr.ca.bit), tm = terraMod(pr);
       xs.forEach(function (x, j) {
         const c = cs[j], p = lista[j].p;
-        caixa(x, y, bw, ['GERADOR FV - INV' + (j + 1), c.nMod + ' x ' + pt(c.w, 0) + ' Wp = ' + fx(c.kwp, 2, ',') + ' kWp', c.nStr + ' strings (' + c.tam.join(' + ') + ')']);
+        caixa(x, y, bw, ['GERADOR FV - INV' + (j + 1), modulosTxt([c]) + ' = ' + fx(c.kwp, 2, ',') + ' kWp', c.nStr + ' strings (' + c.tam.join(' + ') + ')']);
         seta(x, y - bh, y - bh - gap, ccBit ? 'CC #' + ccBit : 'CC');
         caixa(x, y - bh - gap, bw, ['STRING BOX CC', 'DPS CC' + (str(pr.dpsCcUcpv) ? ' ' + str(pr.dpsCcUcpv) + ' V' : '') + ' - ' + (str(pr.sbCc) || ''), 'terra #' + tm + ' mm2']);
         seta(x, y - 2 * bh - gap, y - 2 * bh - 2 * gap, ccBit ? 'CC #' + ccBit : 'CC');
-        caixa(x, y - 2 * bh - 2 * gap, bw, ['INVERSOR INV' + (j + 1), [maiusc(lista[j].inv.fab), str(lista[j].inv.modelo)].filter(Boolean).join(' '),
+        const iniI = cmds.length, yI = y - 2 * bh - 2 * gap;
+        caixa(x, yI, bw, ['INVERSOR INV' + (j + 1), [maiusc(lista[j].inv.fab), str(lista[j].inv.modelo)].filter(Boolean).join(' '),
           pt(c.kw, 2) + ' kW - ' + (triInv(p) ? 'trifásico' : 'monofásico') + ' ' + pt(c.vInv, 0) + ' V']);
+        if (invNovo(j)) marcar('blkI' + j, [x - bw / 2 - 3, yI - bh - 1.5, x + bw / 2 + 3, yI + 3], 'INVERSOR NOVO', iniI, 'dir');
       });
       // os inversores se juntam na String Box CA
       const yCA = y - 3 * bh - 3 * gap, yJ = yCA + gap / 2;
@@ -1310,11 +1460,12 @@ window.App = window.App || {};
       const azul = [0, 0, 1], verde = [0, 0.62, 0], t1 = { t: 'txt', s: 5.6, fl: 0.92, ang: 0, cor: azul, al: 'l' }, t2 = Object.assign({}, t1, { s: 4.6 });
       em({ t: 'txt', s: 11, fl: 0.95, ang: 0, cor: azul, al: 'l' }, 'DETALHE DO ATERRAMENTO DO SISTEMA', { x: x0, y: y1 - 22 });
       const tm = terraMod(pr), tb = str(pr.terraBit) || tm;
+      const tInv = lista.map(function (x) { return terraCA(x.p); }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join('/') || tb;
       const itens = [
         ['MOLDURAS E ESTRUTURA DOS MÓDULOS', 'equipotencialização das molduras', '#' + tm],
         ['STRING BOX CC', 'barra PE e DPS CC', '#' + tm],
-        [(nI > 1 ? 'INVERSORES ' : 'INVERSOR ') + lista.map(function (_, j) { return 'INV' + (j + 1); }).join(' / '), 'terminal PE (carcaça)', '#' + tb],
-        ['STRING BOX CA', 'barra PE e DPS CA', '#' + tb],
+        [(nI > 1 ? 'INVERSORES ' : 'INVERSOR ') + lista.map(function (_, j) { return 'INV' + (j + 1); }).join(' / '), 'terminal PE (carcaça)', '#' + tInv],
+        ['STRING BOX CA', 'barra PE e DPS CA', '#' + tInv],
         ['QUADRO GERAL (QGBT)', 'barra de terra / neutro', '#' + tb]
       ];
       // barramento de proteção afastado da borda: os rótulos da caixa de inspeção e da haste cabem antes do detalhe de instalação
@@ -1346,14 +1497,27 @@ window.App = window.App || {};
       // observações
       const notas = ['Todas as massas metálicas (molduras, estruturas, carcaças dos inversores e quadros) interligadas ao BEP',
         'pelo condutor de proteção (PE), na cor verde ou verde-amarela - NBR 5410 (6.4) e NBR 16690.',
-        'Bitolas: aterramento dos módulos #' + tm + ' mm2, terra do circuito CA #' + tb + ' mm2.'];
+        'Bitolas: aterramento dos módulos #' + tm + ' mm2, PE dos inversores #' + tInv + ' mm2, aterramento #' + tb + ' mm2.'];
       notas.forEach(function (t, i) { em(t2, t, { x: x0, y: Math.max(y0 + 20, yP - 22) - i * 9, w: x1 - x0 }); });
+    }
+    // ampliação: o que é acréscimo (por inversor) — vai na nota, junto do resumo dos inversores
+    function notaAmpliacao() {
+      if (!amp) return [];
+      const out = [];
+      cs.forEach(function (c, j) {
+        const a = c.acr, rot = 'INV' + (j + 1);
+        const strs = todas.filter(function (x) { return x.j === j && x.acr; }).map(function (x) { return x.rot; });
+        if (a) out.push(rot + ': acréscimo de ' + a.qtd + ' módulos ' + [maiusc(a.mod.fab), str(a.mod.modelo)].filter(Boolean).join(' ') + ' de ' + pt(num(a.mod.w), 1) + ' Wp (' +
+          (strs.length > 1 ? strs[0] + ' a ' + strs[strs.length - 1] : strs[0]) + ', MPPT' + ((c.rotMppt || [])[c.grupos.length - 1] || c.grupos.length) + ')');
+        if (invNovo(j)) out.push(rot + ': inversor novo (' + [maiusc(lista[j].inv.fab), str(lista[j].inv.modelo)].filter(Boolean).join(' ') + ')');
+      });
+      return out.length ? ['AMPLIAÇÃO — em destaque, o que será instalado: ' + out.join(' | ')] : [];
     }
     // uma linha por inversor: modelo, potência, módulos, strings e MPPTs
     function resumoInversores() {
       return lista.map(function (x, j) {
         const c = cs[j];
-        return 'INV' + (j + 1) + ': ' + [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' - ') + '  |  ' + pt(c.kw, 2) + ' kW  |  ' + c.nMod + ' módulos  |  ' +
+        return 'INV' + (j + 1) + ': ' + [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' - ') + '  |  ' + pt(c.kw, 2) + ' kW  |  ' + (c.acr ? c.nModExist + ' + ' + c.acr.qtd : c.nMod) + ' módulos  |  ' +
           c.nStr + ' strings (' + c.tam.join(' + ') + ')' + (c.grupos.length > 1 ? '  |  por MPPT: ' + c.grupos.join(' + ') : '');
       });
     }
@@ -1382,7 +1546,9 @@ window.App = window.App || {};
       const oT = { t: 'txt', s: 14, fl: 0.95, ang: 0, cor: [0, 0, 1], al: 'l' }, xT = Math.max(area[0], tx + k * lim.x0);
       em(oT, 'LAYOUT DAS STRINGS', { x: xT, y: topo - 14 });
       resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 8.5 }), t, { x: xT + 2, y: topo - 36 - i * 15 }); });
+      notaAmpliacao().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.5, cor: VERMELHO }), t, { x: xT + 2, y: topo - 36 - (nI + i) * 15 - 2, w: 1700 }); });
       folhaNum('2/2');
+      destacar(cmds, (pr.ampl && pr.ampl.destaque) || 'contorno');
       return cmds;
     }
     function unifilaresMulti(nI) {
@@ -1411,13 +1577,15 @@ window.App = window.App || {};
       const xInv = xI[j], xs = minhas.map(function (_, i) { return xInv + (i - hs[j]) * p; });
       if (nj > 1 || Math.abs(xs[0] - xInv) > 0.5) linha([[Math.min(xs[0], xInv), S.yBus], [Math.max(xs[nj - 1], xInv), S.yBus]]);
       xs.forEach(function (x, i) {
-        const st = minhas[i];
+        const st = minhas[i], ini = cmds.length;
         forma('CRMRamS', S.x, S.yBus, x, S.yBus, su);
         texto(um('_uS_campo'), 'Campo Fotov.', S.x, S.yBus, x, S.yBus, su);
-        texto(cfS, w ? st.n + 'x' + w + 'W' : '', S.x, S.yBus, x, S.yBus, su);
+        texto(cfS, wTxt(st) ? st.n + 'x' + wTxt(st) + 'W' : '', S.x, S.yBus, x, S.yBus, su);
         texto(um('_uS_str'), st.rot, S.x, S.yBus, x, S.yBus, su);
         texto(um('_uS_bit'), bit ? '#' + bit : '', S.x, S.yBus, x, S.yBus, su);
+        if (st.acr) marcar('uS' + j, [x - 30 * su, 852, x + 16 * su, S.yBus - 5], 'ACRÉSCIMO', ini);
       });
+      if (invNovo(j)) marcar('invU' + j, [xInv - 36, 1015, xInv + 30, 1062], 'INVERSOR NOVO');
       if (j === 0) continue;
       const d = xInv - S.xInv, vj = valores(lista[j].p, 'A');
       regiao([906, 1183, 940, 1243], d, 0);                       // disjuntor
@@ -1455,10 +1623,12 @@ window.App = window.App || {};
       if (nj <= 2) {
         xsU = Vj.xs.slice(0, nj);
         xsU.forEach(function (x, k) {
+          const ini = cmds.length;
           forma('CRMRamU', V.xs[0], V.yForma, x, V.yForma, 1);
           linha([[x, V.yForma], [x, V.yInv]]);
           texto(uc[k], 'Campo Fotov.', 0, 0, d, 0, 1);
-          texto(cf[k === 0 ? 1 : 0], w ? minhas[k].n + 'x' + w + 'W' : '', 0, 0, d, 0, 1);
+          texto(cf[k === 0 ? 1 : 0], wTxt(minhas[k]) ? minhas[k].n + 'x' + wTxt(minhas[k]) + 'W' : '', 0, 0, d, 0, 1);
+          if (minhas[k].acr) marcar('mf' + j, k === 0 ? [x - 26, 857, x + 9, 927] : [x - 9, 857, x + 26, 927], 'ACRÉSCIMO', ini);
         });
         forma('CRMPont', 0, 0, d, 0, 1);
       } else {
@@ -1466,10 +1636,12 @@ window.App = window.App || {};
         const cx = Math.min(Vj.xInv, Vj.max - (nj - 1) * p / 2);
         xsU = minhas.map(function (_, k) { return cx + (k - (nj - 1) / 2) * p; });
         xsU.forEach(function (x, k) {
+          const ini = cmds.length;
           forma('CRMRamU', V.xs[0], V.yForma, x, V.yForma, sv);
           linha([[x, V.yForma], [x, V.yBus]]);
           texto(uc[0], 'Campo Fotov.', V.xs[0], V.yForma, x, V.yForma, sv);
-          texto(cf[1], w ? minhas[k].n + 'x' + w + 'W' : '', V.xs[0], V.yForma, x, V.yForma, sv);
+          texto(cf[1], wTxt(minhas[k]) ? minhas[k].n + 'x' + wTxt(minhas[k]) + 'W' : '', V.xs[0], V.yForma, x, V.yForma, sv);
+          if (minhas[k].acr) marcar('mf' + j, [x - 26 * sv, 857, x + 9 * sv, 927], 'ACRÉSCIMO', ini);
         });
         linha([[Math.min(xsU[0], Vj.xInv), V.yBus], [Math.max(xsU[nj - 1], Vj.xInv), V.yBus]]);
         linha([[Vj.xInv, V.yBus], [Vj.xInv, V.yInv]]);
@@ -1478,9 +1650,24 @@ window.App = window.App || {};
       }
       const x1 = xsU[0] - 1.3, xn = xsU[xsU.length - 1], mk = V.marca;
       linha([[xn + 1.9, mk[1]], [xn + 1.9, mk[0]], [x1, mk[0]], [x1, mk[1]], [xn + 10.6, mk[1]]]);
-      // o cabo CC é o mesmo: o texto vai uma vez, depois das marcas do último inversor
+      // o texto do cabo CC em cada inversor, depois das marcas dele; antes do inversor seguinte, em duas linhas (bitola/tipo) para
+      // não chegar às strings dele
       const occ = um('cabo_cc');
-      if (occ && bit && j === nI - 1) cmds.push({ t: 'texto', txt: (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : bit) + 'mm2/' + str(pr.cc.tipo), oc: Object.assign({}, occ, { x: occ.x + (xn - V.xs[1]) }) });
+      if (occ && bit) {
+        const txtCc = (tem(pr.cc.bit) ? fx(U.num(pr.cc.bit), 1) : bit) + 'mm2/' + str(pr.cc.tipo), xT = occ.x + (xn - V.xs[1]);
+        if (j === nI - 1) cmds.push({ t: 'texto', txt: txtCc, oc: Object.assign({}, occ, { x: xT }) });
+        else {
+          const lim = V.caixa[0] + DX * (j + 1) - 6 - xT, partes = txtCc.match(/^(\S+\/\S+)\s+(.+)$/);
+          if (partes) {
+            cmds.push({ t: 'texto', txt: partes[1], oc: Object.assign({}, occ, { x: xT, w: lim }) });
+            cmds.push({ t: 'texto', txt: partes[2], oc: Object.assign({}, occ, { x: xT, y: occ.y - 8, w: lim }) });
+          } else cmds.push({ t: 'texto', txt: txtCc, oc: Object.assign({}, occ, { x: xT, w: lim }) });
+        }
+      }
+      if (invNovo(j)) {
+        const triJ = pr.ligacao === 'tri' && triInv(lista[j].p), x0 = INV_TRI.bb[0] + (j === 0 ? DX_INV1_TRI : dI);
+        marcar('invM' + j, triJ ? [x0 - 4, 977, x0 + 64, 1046] : [1138 + dI, 977, 1186 + dI, 1027], 'INVERSOR NOVO');
+      }
       if (j === 0) continue;
       const vj = valores(lista[j].p, 'A');
       const XS = MF.xS, XT = MF.xT, tri = tri2 && j === 1, dl = tri ? MF.d : 0;
@@ -1516,10 +1703,13 @@ window.App = window.App || {};
 
   // ------------------------------------------------------------ conferências e pendências
   /** Conferências do projeto (avisos, não bloqueiam): [{nivel: 'erro' | 'aviso' | 'info', texto}]. */
-  function conferir(pr, estilos) {
+  function conferir(pr, estilos, parte) {
     const lista = inversores(pr);
-    if (lista.length > 1) return conferirMulti(pr, estilos, lista);
-    const c = calcular(pr), out = [];
+    // ampliação marcada sem nada novo
+    const semNovo = !parte && ampliacao(pr) && !lista.some(function (x) { return acrescimo(x.p) || (x.inv && x.inv.novo); })
+      ? [{ nivel: 'aviso', texto: 'Ampliação marcada, mas sem módulos acrescentados nem inversor novo: informe o acréscimo (módulos e MPPT livre) ou marque o inversor novo.' }] : [];
+    if (lista.length > 1) return conferirMulti(pr, estilos, lista).concat(semNovo);
+    const c = calcular(pr), out = semNovo.slice();
     const add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); };
     const f2 = function (v) { return U.fmtSmart ? U.fmtSmart(v, 2) : String(U.round(v, 2)); };
     const es = estilos || (pr.estilo === 'AB' ? ['A', 'B'] : [pr.estilo || 'A']);
@@ -1530,14 +1720,23 @@ window.App = window.App || {};
     let ini = 0;
     const imaxM = num(pr.inv && pr.inv.imaxMppt);
     c.grupos.forEach(function (g, j) {
-      const ns = c.tam.slice(ini, ini + g), rot = 'MPPT' + (j + 1);
+      // corrente do módulo da string (a do acréscimo pode ser de outro módulo)
+      const ns = c.tam.slice(ini, ini + g), rot = 'MPPT' + ((c.rotMppt || [])[j] || j + 1), im = (c.strings[ini] && c.strings[ini].i) || c.imp;
       if (g > 1 && Math.min.apply(null, ns) !== Math.max.apply(null, ns)) add('aviso', rot + ': strings em paralelo com quantidades diferentes de módulos (' + ns.join(', ') + '). Em paralelo, as strings devem ser iguais.');
-      if (imaxM > 0 && c.imp > 0 && g * c.imp > imaxM + 1e-9) add('aviso', rot + ': ' + g + ' strings em paralelo somam ' + f2(g * c.imp) + ' A, acima da corrente máxima de entrada do MPPT (' + f2(imaxM) + ' A).');
+      if (imaxM > 0 && im > 0 && g * im > imaxM + 1e-9) add('aviso', rot + ': ' + g + ' strings em paralelo somam ' + f2(g * im) + ' A, acima da corrente máxima de entrada do MPPT (' + f2(imaxM) + ' A).');
       ini += g;
     });
     const mp = Math.round(num(pr.inv && pr.inv.mppts));
+    // ampliação: o acréscimo vai num MPPT livre (nem o das strings existentes, nem além dos MPPTs do inversor)
+    if (c.acr) {
+      const nEx = c.grupos.length - 1, ma = c.acr.mppt;
+      if (ma > 0 && ma <= nEx) add('aviso', 'Ampliação: o MPPT' + ma + ' indicado para o acréscimo já recebe strings existentes (MPPT1' + (nEx > 1 ? ' a MPPT' + nEx : '') + '). Indique o MPPT livre.');
+      if (ma > 0 && mp > 0 && ma > mp) add('aviso', 'Ampliação: o acréscimo está no MPPT' + ma + ', mas o inversor tem ' + mp + ' MPPT.');
+      if (c.acr.outro && !(num(c.acr.mod.vmp) > 0)) add('aviso', 'Ampliação: informe o Vmp e o Imp do módulo do acréscimo (' + [c.acr.mod.fab, c.acr.mod.modelo].filter(Boolean).join(' ') + ') para a tabela de strings.');
+    }
     const somaG = listaNum(pr.porMppt).reduce(function (a, n) { return a + n; }, 0);
-    if (c.nStr && str(pr.porMppt) && somaG !== c.nStr) add('aviso', 'As strings por MPPT (' + str(pr.porMppt) + ') somam ' + somaG + ', mas são ' + c.nStr + ' strings.');
+    const nStrEx = c.nStr - (c.acr ? c.acr.tam.length : 0); // as do acréscimo ficam no MPPT livre, fora da divisão por MPPT
+    if (nStrEx && str(pr.porMppt) && somaG !== nStrEx) add('aviso', 'As strings por MPPT (' + str(pr.porMppt) + ') somam ' + somaG + ', mas são ' + nStrEx + ' strings' + (c.acr ? ' existentes' : '') + '.');
     if (mp > 0 && c.grupos.length > mp) add('aviso', 'São ' + c.grupos.length + ' grupos de strings, mas o inversor tem ' + mp + ' MPPT.');
     const acima = c.tam.map(function (n, i) { return n > maxS ? 'STR' + (i + 1) + ' (' + n + ')' : ''; }).filter(Boolean);
     if (acima.length) add('aviso', 'String com mais de ' + maxS + ' módulos (máximo adotado): ' + acima.join(', ') + '. Aumente o número de strings.');
@@ -1600,7 +1799,7 @@ window.App = window.App || {};
    */
   function conferirMulti(pr, estilos, lista) {
     const es = estilos || (pr.estilo === 'AB' ? ['A', 'B'] : [pr.estilo || 'A']);
-    const porInv = lista.map(function (x) { return conferir(x.p, ['A']).filter(function (m) { return !/^Estilo [AB]:/.test(m.texto); }); });
+    const porInv = lista.map(function (x) { return conferir(x.p, ['A'], true).filter(function (m) { return !/^Estilo [AB]:/.test(m.texto); }); });
     const out = [], visto = {};
     const add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); };
     porInv.forEach(function (l, j) {
@@ -1753,7 +1952,7 @@ window.App = window.App || {};
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod, triInv: triInv, condCA: condCA,
-    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum,
+    correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum, terraCA: terraCA, acrescimo: acrescimo, ampliacao: ampliacao, modulosTxt: modulosTxt, dadosModulo: dadosModulo, ESTILOS_DESTAQUE: ESTILOS_DESTAQUE,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }

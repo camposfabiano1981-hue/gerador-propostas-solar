@@ -2303,7 +2303,12 @@
       [P.letrasCA({}).join(''), P.letrasCA({ condCA: 'FNT' }).join(''), P.letrasCA({ condCA: 'FFFNT' }).join(''), P.letrasCA({ condCA: 'xx' }).join('')].join('|') === 'FF|FN|FFFN|FF');
     const auto3 = P.automaticos(Object.assign(U.clone(pr), { condCA: 'FFFNT', terraMod: '4', terraBit: '10', inv: Object.assign({}, pr.inv, { fases: 'tri' }) }), ctxP);
     igual('fiação do inversor pelos condutores escolhidos e aterramento dos módulos separado do terra CA', [auto3.fiaInversor, auto3.fiaPlacas, P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_cc_marca,
-      P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_ca_marca].join('|'), '4#6(T#10)|4#6(T#4)|#4|#10');
+      P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_ca_marca].join('|'), '4#6(T#6)|4#6(T#4)|#4|#6');
+    // terra do circuito CA do inversor: o do projetista ou, em branco, pela fase (NBR 5410, tab. 58) — não o aterramento principal
+    igual('terra do circuito CA pela fase (NBR 5410 tab. 58) ou o digitado; o aterramento principal à parte',
+      [P.terraCA({ ca: { bit: '6' }, terraBit: '10' }), P.terraCA({ ca: { bit: '16' } }), P.terraCA({ ca: { bit: '25' } }), P.terraCA({ ca: { bit: '35' } }), P.terraCA({ ca: { bit: '50' } }),
+        P.terraCA({ ca: { bit: '70' } }), P.terraCA({ ca: { bit: '95' } }), P.terraCA({ ca: { bit: '6' }, caTerra: '10' }), P.automaticos(Object.assign(U.clone(pr), { caTerra: '10' }), ctxP).fiaInversor].join('|'),
+      '6|16|16|16|25|35|50|10|2#6(T#10)');
     const d1 = P.desenhoStringsA(Object.assign(U.clone(pr), { mod: Object.assign({}, pr.mod, { qtd: '8' }), nStrings: '1' }), campA, GA);
     const rS = d1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMRamS'; })[0];
     ok('strings A (1 string): um ramo direto sob o inversor no unifilar simplificado, sem barramento', conta(d1, 'CRMMod') === 8 && conta(d1, 'CRMRamS') === 1 && Math.abs(rS.m[4] - (922.65 - 866.9)) < 0.01, rS);
@@ -2506,6 +2511,44 @@
     ok('conferências com 2 inversores: as de um inversor com o prefixo dele, as iguais uma vez só e a divisão dos módulos',
       /erro:INV2: Disjuntor CA de 16 A abaixo da corrente do inversor/.test(cfM) && /erro:Os módulos digitados por inversor somam 63, mas a obra tem 59/.test(cfM) &&
       (cfM.match(/Queda unitária CC/g) || []).length === 1 && !/INV1: Disjuntor/.test(cfM), cfM);
+    // ampliação: módulos acrescentados (de outro fabricante) no MPPT livre e inversor novo — o que é novo em destaque
+    const modN = { fab: 'Outra Marca', modelo: 'N-610', w: '610', vmp: '45,3', imp: '13,47', voc: '54,2', isc: '14,1', celulas: '132' };
+    const prAm = Object.assign(U.clone(pr), { ampl: { ativa: true, mod: modN, destaque: 'contorno' }, acrQtd: '8', acrMppt: '' });
+    const cAm = P.calcular(prAm), c0A = P.calcular(pr), uA = cAm.strings[cAm.strings.length - 1];
+    igual('ampliação: o acréscimo vira strings só dele (no MPPT livre, o seguinte quando em branco), com o módulo novo; kWp e módulos somam os dois',
+      [cAm.nMod, cAm.nModExist, cAm.tam.slice(-1)[0], uA.acr, uA.w, cAm.grupos.length - c0A.grupos.length, cAm.rotMppt.slice(-1)[0], U.round(cAm.kwp - c0A.kwp, 2), P.modulosTxt([cAm]),
+        P.calcular(Object.assign(U.clone(prAm), { ampl: { ativa: false, mod: modN } })).nMod, P.calcular(Object.assign(U.clone(prAm), { acrMppt: '4' })).rotMppt.slice(-1)[0]].join('|'),
+      [c0A.nMod + 8, c0A.nMod, 8, true, 610, 1, c0A.grupos.length + 1, 4.88, c0A.nMod + ' x ' + P.fmt.pt(c0A.w, 0) + ' + 8 x 610 Wp', c0A.nMod, 4].join('|'));
+    const ehVerm = function (c) { return c.cor && c.cor[0] > 0.8 && c.cor[1] === 0 && c.cor[2] === 0; };
+    const aC = P.desenhoStringsA(prAm, campM, GAm), aCor = P.desenhoStringsA(Object.assign(U.clone(prAm), { ampl: Object.assign({}, prAm.ampl, { destaque: 'cor' }) }), campM, GAm);
+    const aRot = P.desenhoStringsA(Object.assign(U.clone(prAm), { ampl: Object.assign({}, prAm.ampl, { destaque: 'rotulo' }) }), campM, GAm);
+    const txAm = aC.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; });
+    ok('ampliação (contorno): contornos tracejados vermelhos no que é novo (tabela, layout, unifilar e multifilar), o rótulo do acréscimo e a nota; sem marcas soltas',
+      aC.filter(function (c) { return c.t === 'linha' && ehVerm(c) && c.traco; }).length >= 4 && txAm.indexOf('ACRÉSCIMO — 8 x 610 W') >= 0 &&
+      txAm.some(function (t) { return /^AMPLIAÇÃO — em destaque, o que será instalado: INV1: acréscimo de 8 módulos OUTRA MARCA N-610 de 610 Wp \(STR\d, MPPT\d\)$/.test(t); }) &&
+      !aC.some(function (c) { return c.t === 'novo'; }) && !P.desenhoStringsA(pr, campM, GAm).some(function (c) { return (c.t === 'linha' || c.t === 'texto') && ehVerm(c.t === 'texto' ? c.oc : c); }),
+      txAm.filter(function (t) { return /AMPLIA|ACRÉ/.test(t); }));
+    ok('ampliação (cor e etiqueta): o acréscimo em vermelho com realce translúcido; ou a etiqueta NOVO ao lado de cada parte nova',
+      aCor.some(function (c) { return c.t === 'realce' && c.op > 0 && c.op < 0.5; }) && aCor.filter(function (c) { return c.t === 'forma' && c.cor && ehVerm(c); }).length + aCor.filter(function (c) { return c.t === 'linha' && ehVerm(c) && !c.traco; }).length > 0 &&
+      aRot.filter(function (c) { return c.t === 'texto' && c.txt === 'NOVO'; }).length >= 3 && !aRot.some(function (c) { return c.t === 'linha' && ehVerm(c) && c.traco; }),
+      { realce: aCor.filter(function (c) { return c.t === 'realce'; }).length, novo: aRot.filter(function (c) { return c.t === 'texto' && c.txt === 'NOVO'; }).length });
+    const vAm = P.valores(prAm, 'A', ctxP), vBm = P.valores(Object.assign(U.clone(prAm), { estilo: 'B' }), 'B', ctxP);
+    ok('ampliação: seção 1 com os dois módulos ("existente / acréscimo"), legenda e descritivo com os existentes e os da ampliação',
+      /\+ OUTRA MARCA - N-610 \(ampliação\)$/.test([].concat(vAm.mod_nome)[0]) && /\/ 610$/.test(vAm.mod_w) && /\/ 45\.3$/.test(vAm.mod_vmp) && /módulos de 610 Wp \(ampliação\)/.test(vAm.descritivo[0]) &&
+      /\/ 132 células 610 Wp \(ampliação\)$/.test(vBm.leg_modulo) && P.valores(pr, 'A', ctxP).mod_w.indexOf('/') < 0, [vAm.mod_nome, vAm.mod_w, vAm.mod_vmp, vAm.descritivo[0], vBm.leg_modulo]);
+    // inversor novo (INV2) com 2 folhas: destacado nos diagramas da folha 1 e no layout e no diagrama de blocos da folha 2
+    const prN = Object.assign(U.clone(prM2), { folhasA: '2', ampl: { ativa: true, mod: {}, destaque: 'contorno' }, invs: [Object.assign({}, prM2.invs[0], { novo: true })] });
+    const n1 = P.desenhoStringsA(prN, campM, GAm, 1), n2 = P.desenhoStringsA(prN, campM, GAm, 2);
+    const txN = function (d) { return d.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt; }); };
+    ok('ampliação com inversor novo: "INVERSOR NOVO" nos diagramas (folha 1), no layout e no diagrama de blocos (folha 2), a nota e o resumo',
+      txN(n1).filter(function (t) { return t === 'INVERSOR NOVO'; }).length >= 2 && txN(n2).filter(function (t) { return t === 'INVERSOR NOVO'; }).length >= 2 &&
+      txN(n1).some(function (t) { return /INV2: inversor novo \(MARCA DOIS D-15K\)|INV2: inversor novo/.test(t); }) && !txN(n1).some(function (t) { return /INV1: inversor novo/.test(t); }),
+      { f1: txN(n1).filter(function (t) { return /NOVO|novo/.test(t); }), f2: txN(n2).filter(function (t) { return /NOVO|novo/.test(t); }) });
+    const cfA = P.conferir(Object.assign(U.clone(prAm), { acrMppt: '1' })).map(function (x) { return x.texto; }).join(' | ');
+    const cfA0 = P.conferir(Object.assign(U.clone(pr), { ampl: { ativa: true, mod: {} } })).map(function (x) { return x.texto; }).join(' | ');
+    ok('ampliação: conferências do MPPT livre (não o das strings existentes) e da ampliação marcada sem nada novo',
+      /Ampliação: o MPPT1 indicado para o acréscimo já recebe strings existentes/.test(cfA) && /Ampliação marcada, mas sem módulos acrescentados nem inversor novo/.test(cfA0) &&
+      !/Ampliação/.test(P.conferir(prAm).map(function (x) { return x.texto; }).join(' | ')), { cfA: cfA, cfA0: cfA0 });
     const ctxM = Object.assign({}, ctxP, { equipamentos: [
       { id: 'inv-a', tipo: 'inversor', fabricante: 'Marca Um', modelo: 'U-10K', potencia: 10, fases: 'Trifásico', tensao: '380V', mppts: 2 },
       { id: 'inv-b', tipo: 'inversor', fabricante: 'Marca Dois', modelo: 'D-15K', potencia: 15, fases: 'Trifásico', tensao: '380V', mppts: 2 }] });

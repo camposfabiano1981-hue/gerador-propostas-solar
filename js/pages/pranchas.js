@@ -58,6 +58,10 @@ window.App = window.App || {};
     if (pr.terraMod == null) pr.terraMod = padroes().terraMod || P.PADROES.terraMod;
     if (pr.porMppt == null) pr.porMppt = '';
     if (!Array.isArray(pr.invs)) pr.invs = [];
+    // ampliação (aumento de geração): módulo do acréscimo (pode ser de outro fabricante) e o estilo do destaque do que é novo
+    if (!pr.ampl || typeof pr.ampl !== 'object') pr.ampl = { ativa: false, mod: {}, destaque: '' };
+    if (!pr.ampl.mod || typeof pr.ampl.mod !== 'object') pr.ampl.mod = {};
+    const amp = !!pr.ampl.ativa;
     // quantidade > 1 no inversor (obras antigas): cada unidade vira um inversor da prancha (INV1, INV2…)
     if (!pr.invs.length && U.numOr(pr.inv.qtd, 1) > 1) {
       for (let i = 1; i < U.numOr(pr.inv.qtd, 1); i++) pr.invs.push(P.novoInversor(pr, Object.assign({}, pr.inv, { qtd: '1', qtdMod: '', nStrings: '', porString: '', porMppt: '', caBit: '', caDist: '', disjCa: '' })));
@@ -198,6 +202,17 @@ window.App = window.App || {};
         { k: 'porMppt', label: 'Strings por MPPT', placeholder: cj.grupos.length ? 'Auto: ' + cj.grupos.join(' + ') : '' }
       ];
     };
+    // acréscimo de módulos de um inversor (ampliação): no MPPT livre definido na venda, em strings só deles
+    const acrescimo = function (j) {
+      const cj = cs0[j] || { grupos: [], acr: null }, nEx = cj.grupos.length - (cj.acr ? 1 : 0), maxS = U.numOr(pr.maxStr, 10) || 10;
+      const q = U.numOr(j === 0 ? pr.acrQtd : (pr.invs[j - 1] || {}).acrQtd, 0);
+      return [
+        { k: 'acrQtd', label: 'Módulos acrescentados', type: 'int', help: 'Só os novos (os existentes ficam em "Módulos"/"Quantidade").' },
+        { k: 'acrStrings', label: 'Strings do acréscimo', type: 'int', placeholder: q > 0 ? 'Auto: ' + Math.ceil(q / maxS) : '' },
+        { k: 'acrPorString', label: 'Módulos por string (acréscimo)', placeholder: cj.acr ? 'Auto: ' + cj.acr.tam.join(' + ') : 'Ex.: 8 ou 9+8' },
+        { k: 'acrMppt', label: 'MPPT livre (nº)', type: 'int', placeholder: 'Auto: ' + (nEx + 1), help: 'O MPPT livre definido na venda.' }
+      ];
+    };
     const blocoExtra = function (x, i) {
       const j = i + 1, cj = cs0[j], sugJ = cj && cj.iInv > 0 ? P.proxDisjuntor(1.25 * cj.iInv) : null;
       return h('div.prancha-inv-extra', { 'data-inv': String(j + 1) },
@@ -218,12 +233,13 @@ window.App = window.App || {};
           { k: 'caBit', label: 'Cabo CA (mm²)', type: 'number', placeholder: 'Igual ao INV1' },
           { k: 'caMat', label: 'Isolação', type: 'select', options: [{ v: '', t: 'Igual à do INV1' }].concat(MATERIAIS) },
           { k: 'caIso', label: 'Classe / temperatura', type: 'select', options: opClasses('caIso', 'Igual à do INV1') },
+          { k: 'caTerra', label: 'Terra do circuito CA (mm²)', type: 'number', placeholder: 'Pela fase (NBR 5410)' },
           { k: 'caUn', label: 'Queda unitária CA (V/A·km)', placeholder: 'Igual ao INV1' },
           { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: [{ v: '', t: 'Pela saída do inversor' }].concat(P.CONDUTORES_CA),
             help: 'Definem o desenho (fases no multifilar e marcas no unifilar), a corrente e o disjuntor. Em branco: trifásico = 3 fases.' },
           { k: 'caDist', label: 'Distância CA (m)', type: 'number' },
           { k: 'disjCa', label: 'Disjuntor CA (A)', type: 'number', help: sugJ ? 'Sugestão: ' + sugJ + ' A (≥ 1,25 × ' + U.fmt(cj.iInv, 2) + ' A).' : '' }
-        ]), x, function (k) {
+        ], amp ? [{ secao: 'Ampliação do INV' + (j + 1) }].concat(acrescimo(j), [{ k: 'novo', label: 'Inversor novo (instalado nesta obra)', type: 'checkbox', cls: 'span2', help: 'Sai em destaque nos diagramas e no layout.' }]) : []), x, function (k) {
           // disjuntor sugerido enquanto o projetista não digitar outro (≥ 1,25 × corrente do inversor)
           if (k === 'kw' || k === 'tensao' || k === 'fases' || k === 'condCA') {
             const i = P.correnteInv(x, pr.fp), sug = i > 0 ? String(P.proxDisjuntor(1.25 * i) || '') : '';
@@ -248,7 +264,7 @@ window.App = window.App || {};
     grupo('2. Módulos, inversor e arranjo', true, h('div',
       h('h4.secao-form', 'Módulo (datasheet do cadastro)'),
       UI.grade([
-        { k: 'mod.fab', label: 'Fabricante' }, { k: 'mod.modelo', label: 'Modelo', cls: 'span2' }, { k: 'mod.qtd', label: 'Quantidade', type: 'int' },
+        { k: 'mod.fab', label: 'Fabricante' }, { k: 'mod.modelo', label: 'Modelo', cls: 'span2' }, { k: 'mod.qtd', label: amp ? 'Quantidade existente' : 'Quantidade', type: 'int', help: amp ? 'Na ampliação: só os módulos já instalados.' : '' },
         { k: 'mod.w', label: 'Potência (W)', type: 'number' }, { k: 'mod.vmp', label: 'Vmp (V)', type: 'number' }, { k: 'mod.imp', label: 'Imp (A)', type: 'number' },
         { k: 'mod.voc', label: 'Voc (V)', type: 'number' }, { k: 'mod.isc', label: 'Isc (A)', type: 'number' }, { k: 'mod.celulas', label: 'Nº de células', type: 'int' },
         { k: 'mod.coefVoc', label: 'Coef. de Voc (%/°C)', type: 'number' }
@@ -276,7 +292,46 @@ window.App = window.App || {};
         if (k === 'ligacao') comp();
         if (k === 'maxStr' || k === 'mod.qtd') { const nm = U.numOr(pr.mod.qtd, 0), mx = U.numOr(pr.maxStr, 10) || 10; if (nm > 0) pr.nStrings = Math.max(U.numOr(pr.nStrings, 0), Math.ceil(nm / mx)); }
         mudou(k === 'maxStr');
-      }, 3)));
+      }, 3),
+      blocoAmpliacao()));
+
+    // ampliação: módulos acrescentados no MPPT livre (podem ser de outro fabricante) e/ou inversor novo, em destaque na prancha
+    function blocoAmpliacao() {
+      const el = h('div.prancha-ampl');
+      el.appendChild(h('h4.secao-form', 'Ampliação (aumento de geração)'));
+      el.appendChild(UI.campo({ k: 'ativa', label: 'Obra de ampliação: acréscimo de módulos e/ou inversor novo', type: 'checkbox',
+        help: 'O que é novo sai em destaque nos diagramas, na tabela de strings e no layout, com a nota da ampliação.' }, pr.ampl, function () { mudou(true); }));
+      if (!amp) return el;
+      el.appendChild(UI.grade([
+        { k: 'destaque', label: 'Destaque do que é novo', type: 'select', options: P.ESTILOS_DESTAQUE }
+      ], pr.ampl, function () { mudou(); }, 3));
+      // módulo do acréscimo: do cadastro ou digitado (em branco = o mesmo módulo da obra)
+      const cad = (S.list ? S.list('equipamentos') : []).filter(function (e) { return e.tipo === 'modulo' && e.ativo !== false; });
+      const escolha = { id: '' };
+      el.appendChild(h('h4.secao-form', 'Módulo do acréscimo (em branco = o mesmo da obra)'));
+      if (cad.length) {
+        el.appendChild(UI.grade([{ k: 'id', label: 'Puxar do cadastro', type: 'select', cls: 'span2',
+          options: [{ v: '', t: '— escolher um módulo cadastrado —' }].concat(cad.map(function (e) { return { v: e.id, t: [e.fabricante, e.modelo, e.potencia ? e.potencia + ' Wp' : ''].filter(Boolean).join(' ') }; })) }],
+        escolha, function () {
+          const eq = cad.find(function (e) { return e.id === escolha.id; });
+          if (!eq) return;
+          const d = P.dadosModulo(eq, null, 0); delete d.qtd;
+          Object.assign(pr.ampl.mod, d);
+          mudou(true);
+          UI.toast('Módulo do acréscimo: ' + [d.fab, d.modelo].filter(Boolean).join(' ') + '.', 'ok');
+        }, 3));
+      }
+      el.appendChild(UI.grade([
+        { k: 'fab', label: 'Fabricante', placeholder: pr.mod.fab || '' }, { k: 'modelo', label: 'Modelo', cls: 'span2', placeholder: pr.mod.modelo || '' },
+        { k: 'w', label: 'Potência (W)', type: 'number', placeholder: pr.mod.w || '' }, { k: 'vmp', label: 'Vmp (V)', type: 'number' }, { k: 'imp', label: 'Imp (A)', type: 'number' },
+        { k: 'voc', label: 'Voc (V)', type: 'number' }, { k: 'isc', label: 'Isc (A)', type: 'number' }, { k: 'celulas', label: 'Nº de células', type: 'int' },
+        { k: 'coefVoc', label: 'Coef. de Voc (%/°C)', type: 'number' }
+      ], pr.ampl.mod, function () { mudou(); }, 4));
+      el.appendChild(h('h4.secao-form', multi ? 'Acréscimo do INV1' : 'Acréscimo do inversor'));
+      el.appendChild(UI.grade(acrescimo(0).concat([{ k: 'inv.novo', label: multi ? 'INV1 novo (instalado nesta obra)' : 'Inversor novo ou trocado por um maior (instalado nesta obra)', type: 'checkbox', cls: 'span2', help: 'Sai em destaque nos diagramas e no layout.' }]), pr, function () { mudou(); }, 4));
+      if (multi) el.appendChild(h('small.ajuda', 'O acréscimo e o "inversor novo" do INV2… ficam no bloco de cada inversor, acima.'));
+      return el;
+    }
 
     // ---------- 3. circuitos e quedas de tensão
     const calc = h('div.tabela-rolagem');
@@ -316,8 +371,10 @@ window.App = window.App || {};
         { k: 'ca.un', label: 'Queda unitária (V/A·km)', help: ref(refCa, pr.ca.bit) },
         { k: 'condCA', label: 'Condutores (inversor → quadro)', type: 'select', options: [{ v: '', t: 'Pela saída do inversor' }].concat(P.CONDUTORES_CA),
           help: 'Definem o desenho (fases no multifilar e marcas no unifilar), a fiação, a corrente e o disjuntor. Em branco: trifásico = 3 fases.' },
+        { k: 'caTerra', label: 'Terra do circuito CA (mm²)', type: 'number', placeholder: 'Auto: ' + (P.terraCA({ ca: pr.ca, terraBit: pr.terraBit }) || '—'),
+          help: 'Condutor de proteção do inversor ao quadro. Em branco, pela fase (NBR 5410, tab. 58: até 16 mm² igual à fase; 25–35 → 16; acima, a metade).' },
         { k: 'ca.dist', label: 'Distância (m)', type: 'number' }, { k: 'limiteCA', label: 'Limite de queda CA (%)', type: 'number' }
-      ], pr, function (k) { mudou(k === 'ca.bit' || k === 'condCA'); }, 3),
+      ], pr, function (k) { mudou(k === 'ca.bit' || k === 'condCA' || k === 'caTerra'); }, 3),
       multi ? trechoComum() : null,
       h('p.ajuda-sec', 'ΔV = queda unitária × corrente × distância ÷ 1000; % sobre a tensão da string (CC) ou do inversor (CA). Valores calculados:'), calc));
     pintarCalc();
@@ -377,7 +434,7 @@ window.App = window.App || {};
         pr, function (k) { if (k === 'entrada.bit') comp(); mudou(); }, 3),
       h('h4.secao-form', 'Ramal de saída (medidor → QGBT)'),
       UI.grade([{ k: 'saida.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'saida.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'saida.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('saida.iso') }], pr, function () { mudou(); }, 3),
-      UI.grade([{ k: 'terraBit', label: 'Terra do circuito CA (mm²)', type: 'number', help: 'O dos módulos fica em Circuito CC.' }], pr, function () { comp(); mudou(); }, 3)));
+      UI.grade([{ k: 'terraBit', label: 'Aterramento principal (mm²)', type: 'number', help: 'BEP, caixa de inspeção, haste e barra de terra do QGBT (o mesmo da Homologação). O terra do circuito CA de cada inversor fica no circuito dele; o dos módulos, em Circuito CC.' }], pr, function () { comp(); mudou(); }, 3)));
 
     // ---------- 6. detalhe da instalação
     grupo('6. Detalhe da instalação (fiação, eletrodutos e aterramento)', false, h('div',
