@@ -1139,7 +1139,8 @@ window.App = window.App || {};
   // os comandos do acréscimo vêm com acr: true. Estilos: 'contorno' (tracejado vermelho com o rótulo), 'cor' (linhas e textos
   // em vermelho e o realce translúcido) e 'rotulo' (etiqueta NOVO em cada item).
   const VERMELHO = [0.86, 0, 0];
-  const ESTILOS_DESTAQUE = [{ v: 'contorno', t: 'Contorno tracejado vermelho' }, { v: 'cor', t: 'Em vermelho, com realce' }, { v: 'rotulo', t: 'Etiqueta NOVO' }];
+  // destaque do que é novo na ampliação: o 1º é o padrão (em vermelho com realce: a prancha é vista na tela)
+  const ESTILOS_DESTAQUE = [{ v: 'cor', t: 'Em vermelho, com realce' }, { v: 'contorno', t: 'Contorno tracejado vermelho' }, { v: 'rotulo', t: 'Etiqueta NOVO' }];
   function destacar(cmds, estilo) {
     const marcas = cmds.filter(function (c) { return c.t === 'novo'; });
     for (let i = cmds.length - 1; i >= 0; i--) if (cmds[i].t === 'novo') cmds.splice(i, 1);
@@ -1395,7 +1396,7 @@ window.App = window.App || {};
       // folha única: a nota da ampliação embaixo, à esquerda
       notaAmpliacao().forEach(function (t, i) { em({ t: 'txt', s: 6.5, fl: 0.92, ang: 0, cor: VERMELHO, al: 'l', w: 1020 }, t, { x: 135, y: 44 - i * 10 }); });
     }
-    destacar(cmds, (pr.ampl && pr.ampl.destaque) || 'contorno');
+    destacar(cmds, (pr.ampl && pr.ampl.destaque) || ESTILOS_DESTAQUE[0].v);
     return cmds;
 
     // número da folha no carimbo (no lugar do "1/1" do modelo)
@@ -1548,7 +1549,7 @@ window.App = window.App || {};
       resumoInversores().forEach(function (t, i) { em(Object.assign({}, oT, { s: 8.5 }), t, { x: xT + 2, y: topo - 36 - i * 15 }); });
       notaAmpliacao().forEach(function (t, i) { em(Object.assign({}, oT, { s: 7.5, cor: VERMELHO }), t, { x: xT + 2, y: topo - 36 - (nI + i) * 15 - 2, w: 1700 }); });
       folhaNum('2/2');
-      destacar(cmds, (pr.ampl && pr.ampl.destaque) || 'contorno');
+      destacar(cmds, (pr.ampl && pr.ampl.destaque) || ESTILOS_DESTAQUE[0].v);
       return cmds;
     }
     function unifilaresMulti(nI) {

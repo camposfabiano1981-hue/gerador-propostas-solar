@@ -2544,6 +2544,8 @@
       txN(n1).filter(function (t) { return t === 'INVERSOR NOVO'; }).length >= 2 && txN(n2).filter(function (t) { return t === 'INVERSOR NOVO'; }).length >= 2 &&
       txN(n1).some(function (t) { return /INV2: inversor novo \(MARCA DOIS D-15K\)|INV2: inversor novo/.test(t); }) && !txN(n1).some(function (t) { return /INV1: inversor novo/.test(t); }),
       { f1: txN(n1).filter(function (t) { return /NOVO|novo/.test(t); }), f2: txN(n2).filter(function (t) { return /NOVO|novo/.test(t); }) });
+    const aPad = P.desenhoStringsA(Object.assign(U.clone(prAm), { ampl: Object.assign({}, prAm.ampl, { destaque: '' }) }), campM, GAm);
+    ok('ampliação: o padrão (destaque em branco) é em vermelho com realce', P.ESTILOS_DESTAQUE[0].v === 'cor' && aPad.some(function (c) { return c.t === 'realce'; }) && !aPad.some(function (c) { return c.t === 'linha' && ehVerm(c) && c.traco && c.traco[0] === 5; }));
     const cfA = P.conferir(Object.assign(U.clone(prAm), { acrMppt: '1' })).map(function (x) { return x.texto; }).join(' | ');
     const cfA0 = P.conferir(Object.assign(U.clone(pr), { ampl: { ativa: true, mod: {} } })).map(function (x) { return x.texto; }).join(' | ');
     ok('ampliação: conferências do MPPT livre (não o das strings existentes) e da ampliação marcada sem nada novo',
