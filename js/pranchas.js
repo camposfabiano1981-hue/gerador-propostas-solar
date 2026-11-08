@@ -357,6 +357,27 @@ window.App = window.App || {};
     });
     return g;
   }
+  /**
+   * Unifilar: a fiação do ramal de ligação (rede → medidor) e do ramal de entrada (medidor → disjuntor geral), como a marca do QD —
+   * os condutores da ligação da UC no traço (fases e neutro), o nome do trecho à esquerda e a bitola à direita.
+   */
+  const RAMAIS_UNI = { x: 839.08, xQD: 920.1, lig: 1494.6, ent: 1426.2 };
+  function ramaisUnifilar(pr, G, cmds) {
+    const Kc = G && G.condutores;
+    if (!Kc) return;
+    // condutores do ramal pela ligação da UC: monofásica F+N, bifásica F+F+N, trifásica F+F+F+N
+    const R = RAMAIS_UNI, dx = R.x - R.xQD, azul = [0, 0, 1], passo = 2.9;
+    const ls = (pr.ligacao === 'tri' ? ['F', 'F', 'F'] : pr.ligacao === 'mono' ? ['F'] : ['F', 'F']).concat(['N']);
+    [[R.lig, 'Ramal', str(pr.ramal && pr.ramal.bit)], [R.ent, 'Entrada', str(pr.entrada && pr.entrada.bit)]].forEach(function (t) {
+      const y0 = t[0] + (ls.length - 1) * passo / 2;
+      ls.forEach(function (l, i) {
+        const y = y0 - i * passo;
+        if (l === 'N') neutroH(cmds, dx, y); else cmds.push({ t: 'forma', nome: 'CRMTickFh', m: [1, 0, 0, 1, dx, y - Kc.yF], clip: null });
+      });
+      cmds.push({ t: 'texto', txt: t[1], oc: { t: 'txt', x: R.x - 4.8, y: t[0], s: 5.2, fl: 0.95, ang: 90, cor: azul, al: 'c' } });
+      if (t[2]) cmds.push({ t: 'texto', txt: '#' + t[2], oc: { t: 'txt', x: R.x + 18.1, y: t[0], s: 7.48, fl: 0.93, ang: 90, cor: azul, al: 'c' } });
+    });
+  }
   // um campo do mapa que o desenho escreve por conta própria (nesta ocorrência)
   function pularCampo(cmds, k, i) { cmds.pularOc = cmds.pularOc || {}; cmds.pularOc[k] = (cmds.pularOc[k] || []).concat([i]); }
   /**
@@ -378,11 +399,11 @@ window.App = window.App || {};
     const g = gruposInversores(pr, lista), um = (lista || []).length <= 1;
     if (oM) {
       cmds.push({ t: 'branco', r: [326.6, 1134.6, 333.4, 1138.2] }); pularCampo(cmds, 'mod_nome', 0);
-      escreve(oM, modulosDaObra(pr, lista).map(function (m) { return nomeModulo(m.mod) + m.rot; }), 343.4, 1133.1, 11, [327.6, 332.4]);
+      escreve(oM, modulosDaObra(pr, lista).map(function (m) { return nomeModulo(m.mod) + m.rot; }), 343.4, 1133.1, 16, [327.6, 332.4]);
     }
     if (oI) {
       cmds.push({ t: 'branco', r: [333.1, 1041.6, 341.6, 1045.2] }); pularCampo(cmds, 'inv_nome', 0);
-      escreve(oI, g.map(function (o) { return o.nome + (um ? (o.novo ? ' (novo)' : '') : ' (' + o.invs.join(', ') + ')'); }), oI.x, 1040.1, Math.min(11, 26 / Math.max(1, g.length - 1)), [334.1, 340.6]);
+      escreve(oI, g.map(function (o) { return o.nome + (um ? (o.novo ? ' (novo)' : '') : ' (' + o.invs.join(', ') + ')'); }), oI.x, 1040.1, Math.min(14, 28 / Math.max(1, g.length - 1)), [334.1, 340.6]);
     }
     if (oK) {
       pularCampo(cmds, 'inv_kw_cad', 0);
@@ -671,6 +692,7 @@ window.App = window.App || {};
     cmds.desloc = null;
     if (!G) return cmds;
     legendaA(pr, lista, campos, cmds);
+    ramaisUnifilar(pr, G, cmds);
     const w = c.w > 0 ? pt(c.w, 1) : '', bit = str(pr.cc.bit), preto = [0, 0, 0];
     const forma = function (nome, ox, oy, nx, ny, s) { cmds.push({ t: 'forma', nome: nome, m: [s, 0, 0, s, nx - s * ox, ny - s * oy] }); };
     const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
@@ -1169,6 +1191,15 @@ window.App = window.App || {};
     caixa(X[3], y2, w, h, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da UC - ' + lig]);
     caixa(X[2], y2, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
     caixa(X[1], y2, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
+    // ampliação (ou o 2º modelo de módulo): um bloco abaixo do gerador, ligado a ele — em destaque na ampliação
+    const acs = cs.map(function (c, j) { return c.acr ? { a: c.acr, j: j, m: (c.rotMppt || [])[c.grupos.length - 1] || c.grupos.length } : null; }).filter(Boolean);
+    if (acs.length) {
+      const dst = destaqueAmpl(pr), qA = acs.reduce(function (t, o) { return t + o.a.qtd; }, 0), wA = num(acs[0].a.mod.w), ini = cmds.length;
+      caixa(X[0], y2, w, h, [dst ? 'AMPLIAÇÃO (NOVO)' : '2º MODELO DE MÓDULO', qA + ' x ' + pt(wA, 0) + ' Wp = ' + fx(qA * wA / 1000, 2, ',') + ' kWp',
+        acs.map(function (o) { return (nI > 1 ? 'INV' + (o.j + 1) + ' ' : '') + 'MPPT' + o.m; }).join(' + ')]);
+      if (dst) { for (let i = ini; i < cmds.length; i++) cmds[i].acr = true; cmds.push({ t: 'novo', z: 'blk1F', bb: [X[0] - 3, y2 - h - 3, X[0] + w + 3, y2 + 3], rot: 'ACRÉSCIMO', lado: '' }); }
+      seta(X[0] + w / 2, y2, X[0] + w / 2, y1 - h, '', '');
+    }
     seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(caboComum(pr, lista).bit));
     seta(X[3], y2 - h / 2, X[2] + w, y2 - h / 2, 'entrada', mm(pr.entrada.bit));
     seta(X[2], y2 - h / 2, X[1] + w, y2 - h / 2, 'ramal', mm(pr.ramal.bit));
@@ -1291,7 +1322,8 @@ window.App = window.App || {};
     // ---- coluna de textos: a seção 1 com um bloco por módulo (o 2º módulo logo abaixo do 1º) e a seção 3 com um bloco por
     // inversor — cada bloco a mais empurra o que vem abaixo —, a tabela de strings (cresce), a tabela do inversor com uma linha
     // por inversor (cresce) e o resto desce. Sem espaço para os blocos inteiros, cada módulo/inversor a mais vai numa linha só.
-    const mods = modulosDaObra(pr, lista), LP = T.passo, Y1 = 698, CUT3 = 352, FL_INV = [1.158, 1.082];
+    // FG: espaço entre um bloco e outro (fração do passo); GC: o mesmo nas linhas únicas
+    const mods = modulosDaObra(pr, lista), LP = T.passo, Y1 = 698, CUT3 = 352, FL_INV = [1.158, 1.082], FG = 0.8, GC = 8;
     const ext = T.passo * (nI - 1), req = (Math.max(N, 1) - 1) * T.passo + T.passo / 1.4 + 4.01;
     const precisaT = Math.max(0, req - (T.topo - T.fundo));
     // passo das linhas dos blocos (e da tabela de strings): 14,8 como no modelo; sem espaço, o maior que couber até 12 (as letras
@@ -1301,7 +1333,7 @@ window.App = window.App || {};
     let LB = LP, cMod = false, cInv = false, d1 = 0, d3 = 0;
     if (K && nLin) {
       const B = K.livre - ext, tab = function (p) { return Math.max(0, (Math.max(N, 1) - 1 + 1 / 1.4) * p + 4.01 - (T.topo - T.fundo)); };
-      const usa = function (cm, ci, p) { return (cm ? gm * (LP + 2) : gm * (4 * p + 4)) + (ci ? gi * (LP + 2) : gi * (3 * p + 4)) + tab(p); };
+      const usa = function (cm, ci, p) { return (cm ? gm * (LP + GC) : gm * (4 + FG) * p) + (ci ? gi * (LP + GC) : gi * (3 + FG) * p) + tab(p); };
       const passo = function (cm, ci) {
         if (usa(cm, ci, LP) <= B + 1e-9) return LP;
         if (usa(cm, ci, 12) > B + 1e-9) return 0;
@@ -1310,8 +1342,8 @@ window.App = window.App || {};
       };
       const op = [[false, false], [false, true], [true, false]].find(function (o) { return (!o[0] || gm) && (!o[1] || gi) && passo(o[0], o[1]) > 0; });
       if (op) { cMod = op[0]; cInv = op[1]; LB = passo(cMod, cInv); } else { cMod = true; cInv = true; }
-      d1 = cMod ? gm * (LP + 2) : gm * (4 * LB + 4);
-      d3 = cInv ? gi * (LP + 2) : gi * (3 * LB + 4);
+      d1 = cMod ? gm * (LP + GC) : gm * (4 + FG) * LB;
+      d3 = cInv ? gi * (LP + GC) : gi * (3 + FG) * LB;
     }
     const desce = K ? Math.max(0, Math.min(K.livre - ext - d1 - d3, precisaT)) : 0;
     const fundo = T.fundo - desce, CORTE = 250, dA = d1 + desce, dB = dA + d3, dC = dB + ext;
@@ -1450,6 +1482,7 @@ window.App = window.App || {};
     if (folha === 2) return folhaStrings();
     // legenda: módulos, inversores e potências um abaixo do outro
     legendaA(pr, lista, campos, cmds);
+    ramaisUnifilar(pr, G, cmds);
     if (folha === 1) {
       // folha 1 de 2: sem o desenho das strings (vai para a folha 2); no lugar, a indicação da folha e o resumo dos inversores
       branco([398, 757, 1850, 830]); branco([440, 624, 1850, 830]); branco(DETALHE_INST);
@@ -1512,10 +1545,10 @@ window.App = window.App || {};
       mods.slice(1).forEach(function (o, i) {
         const m = o.mod, nome = nomeModulo(m) + o.rot, w2 = n2(m.w, 1), v2 = n2(m.vmp, 2), i2 = n2(m.imp, 2);
         if (cMod) {
-          em(oNm, nome + ': ' + [w2 && w2 + ' W', v2 && v2 + ' V', i2 && i2 + ' A'].filter(Boolean).join(' | '), { y: 703.9 - (i + 1) * (LP + 2), w: wNome });
+          em(oNm, nome + ': ' + [w2 && w2 + ' W', v2 && v2 + ' V', i2 && i2 + ' A'].filter(Boolean).join(' | '), { y: 703.9 - (i + 1) * (LP + GC), w: wNome });
           return;
         }
-        const y0 = 703.9 - LB - 4 - i * (4 * LB + 4);
+        const y0 = 703.9 - (1 + FG) * LB - i * (4 + FG) * LB;
         em(oNm, nome, { y: y0, w: wNome });
         rot(oW, 'Potência unitária (W):', 185.0, y0 - LB, 1.096); em(oW, w2, { y: y0 - LB });
         rot(oV, 'Tensão unitária (V):', 185.0, y0 - 2 * LB, 1.092); em(oV, v2, { y: y0 - 2 * LB });
@@ -1526,10 +1559,10 @@ window.App = window.App || {};
         const x = lista[j], c = cs[j], nome = 'INV' + (j + 1) + ': ' + [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' - ') + (amp && x.inv.novo ? ' (novo)' : '');
         const sTxt = c.nStr ? String(c.nStr) : '', kTxt = c.kw > 0 ? pt(c.kw, 2) : '';
         if (cInv) {
-          em(oNi, nome + ' | Strings por Inversor: ' + sTxt + ' | Potência (KW): ' + kTxt, { y: 362.4 - dA - j * (LP + 2), w: 900 });
+          em(oNi, nome + ' | Strings por Inversor: ' + sTxt + ' | Potência (KW): ' + kTxt, { y: 362.4 - dA - j * (LP + GC), w: 900 });
           continue;
         }
-        const y0 = 362.4 - dA - LB - 4 - (j - 1) * (3 * LB + 4);
+        const y0 = 362.4 - dA - (1 + FG) * LB - (j - 1) * (3 + FG) * LB;
         em(oNi, nome, { y: y0 });
         rot(oS, 'Strings por Inversor:', XI3, y0 - LB, FL_INV[0]); em(oS, sTxt, { y: y0 - LB });
         rot(oK, 'Potência (KW):', XI3, y0 - 2 * LB, FL_INV[1]); em(oK, kTxt, { y: y0 - 2 * LB });
@@ -1560,8 +1593,23 @@ window.App = window.App || {};
       const ccBit = str(pr.cc.bit), caBit = str(pr.ca.bit), tm = terraMod(pr);
       xs.forEach(function (x, j) {
         const c = cs[j], p = lista[j].p;
-        caixa(x, y, bw, ['GERADOR FV - INV' + (j + 1), modulosTxt([c]) + ' = ' + fx(c.kwp, 2, ',') + ' kWp', c.nStr + ' strings (' + c.tam.join(' + ') + ')']);
-        seta(x, y - bh, y - bh - gap, ccBit ? 'CC #' + ccBit : 'CC');
+        if (c.acr) {
+          // gerador em duas partes: o existente (ou o 1º modelo) e a ampliação (ou o 2º modelo) — esta em destaque na ampliação;
+          // as duas descem juntas para a String Box CC
+          const a = c.acr, wE = bw / 2 - 3, xE = x - bw / 4 - 1.5, xA = x + bw / 4 + 1.5, ym = y - bh - gap / 2 + 2;
+          const nEx = c.tam.length - a.tam.length, kE = c.nModExist * c.w / 1000, kA = a.qtd * num(a.mod.w) / 1000;
+          const mA = (c.rotMppt || [])[c.grupos.length - 1] || c.grupos.length;
+          caixa(xE, y, wE, [(amp ? 'GERADOR EXISTENTE' : 'GERADOR FV') + ' - INV' + (j + 1), c.nModExist + ' x ' + pt(c.w, 0) + ' Wp = ' + fx(kE, 2, ',') + ' kWp', nEx + (nEx > 1 ? ' strings' : ' string') + ' (' + c.tam.slice(0, nEx).join(' + ') + ')']);
+          const iniA = cmds.length;
+          caixa(xA, y, wE, [(amp ? 'AMPLIAÇÃO' : '2º MODELO') + ' - INV' + (j + 1), a.qtd + ' x ' + pt(num(a.mod.w), 0) + ' Wp = ' + fx(kA, 2, ',') + ' kWp', a.tam.length + (a.tam.length > 1 ? ' strings' : ' string') + ' (' + a.tam.join(' + ') + ') - MPPT' + mA]);
+          linha([[xA, y - bh], [xA, ym]]);
+          marcar('blkG' + j, [xA - wE / 2 - 3, y - bh - 3, xA + wE / 2 + 3, y + 3], 'ACRÉSCIMO', iniA);
+          linha([[xE, y - bh], [xE, ym], [xA, ym]]);
+          seta(x, ym, y - bh - gap, ccBit ? 'CC #' + ccBit : 'CC');
+        } else {
+          caixa(x, y, bw, ['GERADOR FV - INV' + (j + 1), modulosTxt([c]) + ' = ' + fx(c.kwp, 2, ',') + ' kWp', c.nStr + ' strings (' + c.tam.join(' + ') + ')']);
+          seta(x, y - bh, y - bh - gap, ccBit ? 'CC #' + ccBit : 'CC');
+        }
         caixa(x, y - bh - gap, bw, ['STRING BOX CC', 'DPS CC' + (str(pr.dpsCcUcpv) ? ' ' + str(pr.dpsCcUcpv) + ' V' : '') + ' - ' + (str(pr.sbCc) || ''), 'terra #' + tm + ' mm2']);
         seta(x, y - 2 * bh - gap, y - 2 * bh - 2 * gap, ccBit ? 'CC #' + ccBit : 'CC');
         const iniI = cmds.length, yI = y - 2 * bh - 2 * gap;

@@ -2307,9 +2307,11 @@
       conta(d25, 'CRMMod') === 25 && conta(d25, 'CRMRamS') === 3 && conta(d25, 'CRMRamU') === 3 && conta(d25, 'CRMPont') === 0 &&
       d25.filter(function (c) { return c.t === 'texto' && /^STR\d$/.test(c.txt) && Math.abs(c.oc.x - 199.92) < 0.01; }).length === 3 &&
       fv25.join() === '9x620W,8x620W,8x620W,9x620W,8x620W,8x620W' && d25.some(function (c) { return c.t === 'linha' && c.traco; }), fv25);
+    // (sem as marcas dos ramais de ligação e de entrada, na linha principal do unifilar)
+    const semR = function (d) { return d.filter(function (c) { return !(c.t === 'forma' && /^CRMTick/.test(c.nome) && Math.abs(c.m[4] + 81.02) < 0.01); }); };
     ok('condutores CA pelo projetista: FFT (padrão) desenha só fases; FNT, fase e neutro (na fiação quadro–inversor e nos 2 pontos do unifilar)',
-      conta(d2, 'CRMTickF') + conta(d2, 'CRMTickFh') === 6 && conta(d2, 'CRMTickN') + conta(d2, 'CRMTickNh') === 0 &&
-      (function (d) { return conta(d, 'CRMTickN') === 1 && conta(d, 'CRMTickNh') === 2 && conta(d, 'CRMTickF') === 1 && conta(d, 'CRMTickFh') === 2; })(P.desenhoStringsA(Object.assign(U.clone(pr), { condCA: 'FNT' }), campA, GA)) &&
+      conta(semR(d2), 'CRMTickF') + conta(semR(d2), 'CRMTickFh') === 6 && conta(semR(d2), 'CRMTickN') + conta(semR(d2), 'CRMTickNh') === 0 &&
+      (function (d) { d = semR(d); return conta(d, 'CRMTickN') === 1 && conta(d, 'CRMTickNh') === 2 && conta(d, 'CRMTickF') === 1 && conta(d, 'CRMTickFh') === 2; })(P.desenhoStringsA(Object.assign(U.clone(pr), { condCA: 'FNT' }), campA, GA)) &&
       [P.letrasCA({}).join(''), P.letrasCA({ condCA: 'FNT' }).join(''), P.letrasCA({ condCA: 'FFFNT' }).join(''), P.letrasCA({ condCA: 'xx' }).join('')].join('|') === 'FF|FN|FFFN|FF');
     const auto3 = P.automaticos(Object.assign(U.clone(pr), { condCA: 'FFFNT', terraMod: '4', terraBit: '10', inv: Object.assign({}, pr.inv, { fases: 'tri' }) }), ctxP);
     igual('fiação do inversor pelos condutores escolhidos e aterramento dos módulos separado do terra CA', [auto3.fiaInversor, auto3.fiaPlacas, P.valores(Object.assign(U.clone(pr), { terraMod: '4', terraBit: '10', estilo: 'B' }), 'B', ctxP).bit_terra_cc_marca,
@@ -2389,7 +2391,7 @@
     ok('desenho com 2 inversores: 59 módulos, 7 ramais, INV2 copiado do modelo (strings, unifilar simplificado e principal), tabela com o inversor de cada string e as seções descendo em dois degraus',
       conta(dM, 'CRMMod') === 59 && conta(dM, 'CRMRam') === 7 && dM.filter(function (c) { return c.t === 'regiao'; }).length === 8 && conta(dM, 'CRMBaixo') === 3 &&
       ['INV1-STR1', 'INV1-STR3', 'INV2-STR4', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].every(function (t) { return txM.indexOf(t) >= 0; }) &&
-      txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '698.0:0.00 485.4:-58.78 352.0:-107.18 250.0:-121.98',
+      txM.filter(function (t) { return /^MPPT\d$/.test(t); }).join() === 'MPPT1,MPPT2,MPPT1,MPPT2' && descM === '698.0:0.00 485.4:-55.06 352.0:-109.20 250.0:-124.00',
       { mod: conta(dM, 'CRMMod'), regioes: dM.filter(function (c) { return c.t === 'regiao'; }).length, desloc: descM, faltam: ['INV1-STR1', 'INV2-STR7', 'INV2', '15KW', 'MARCA DOIS - D-15K', '32A'].filter(function (t) { return txM.indexOf(t) < 0; }) });
     // UC trifásica: fase T e 3º condutor no multifilar; o INV2 trifásico com 3 condutores; marcas pelos condutores de cada um
     const prT = Object.assign(U.clone(prM2), { inv: Object.assign({}, prM2.inv, { fases: 'mono', tensao: '220' }) });
@@ -2566,7 +2568,8 @@
     ok('seção 1: o 2º módulo abaixo do 1º (nome, potência, tensão e corrente com os rótulos do modelo) e o resto da coluna desce o bloco',
       !!(n2m && w2m && lbl && v2m && i2m) && Math.abs(n2m.oc.x - 187.8) < 0.01 && Math.abs(w2m.oc.x - 354.12) < 0.01 && Math.abs(lbl.oc.x - 185) < 0.01 && lbl.oc.y === w2m.oc.y &&
       n2m.oc.y < 703.9 - 14 && Math.abs(n2m.oc.y - w2m.oc.y - 14.8) < 0.01 && Math.abs(w2m.oc.y - v2m.oc.y - 14.8) < 0.01 &&
-      Math.abs(sA1.desloc[0].y - 698) < 0.01 && Math.abs(sA1.desloc[0].dy + 63.2) < 0.01 && sA1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMSec2'; })[0].m[5] < -63,
+      Math.abs(sA1.desloc[0].y - 698) < 0.01 && Math.abs(sA1.desloc[0].dy + 4.8 * 14.8) < 0.01 && sA1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMSec2'; })[0].m[5] < -71 &&
+      Math.abs((703.9 - n2m.oc.y) - 1.8 * 14.8) < 0.01,
       { nome: n2m && [n2m.oc.x, n2m.oc.y], w: w2m && [w2m.oc.x, w2m.oc.y], lbl: lbl && [lbl.oc.x, lbl.oc.y], v: v2m && v2m.oc.y, i: !!i2m, desloc: JSON.stringify(sA1.desloc), sec2: sA1.filter(function (c) { return c.t === 'forma' && c.nome === 'CRMSec2'; })[0].m[5] });
     const sA3 = P.desenhoStringsA(Object.assign(U.clone(prM2), { folhasA: '2' }), campS, GAm, 1);
     const i2n = achaT(sA3, 'INV2: MARCA DOIS - D-15K'), i2s = achaT(sA3, 'Strings por Inversor:'), i2k = achaT(sA3, 'Potência (KW):');
@@ -2579,8 +2582,8 @@
     const sA4 = P.desenhoStringsA(prApert, campS, GAm, 1);
     const umaLinhaM = sA4.some(function (c) { return c.t === 'texto' && c.txt === 'OUTRA MARCA - N-610 (ampliação): 610 W | 45.3 V | 13.47 A'; });
     const umaLinhaI = sA4.some(function (c) { return c.t === 'texto' && /^INV2: MARCA DOIS - D-15K \| Strings por Inversor: \d+ \| Potência \(KW\): 15$/.test(c.txt); });
-    ok('sem espaço: o módulo ou o inversor a mais numa linha só (dados juntos), o outro com o bloco inteiro, e tudo dentro da moldura',
-      (umaLinhaM || umaLinhaI) && !(umaLinhaM && umaLinhaI) && (umaLinhaM || !!achaT(sA4, 'Tensão unitária (V):')) && (umaLinhaI || !!achaT(sA4, 'Strings por Inversor:')) && sA4.desloc[3].dy >= -124.01,
+    ok('sem espaço: o módulo e/ou o inversor a mais numa linha só (dados juntos) e tudo dentro da moldura',
+      (umaLinhaM || umaLinhaI) && (umaLinhaM || !!achaT(sA4, 'Tensão unitária (V):')) && (umaLinhaI || !!achaT(sA4, 'Strings por Inversor:')) && sA4.desloc[3].dy >= -124.01,
       { txt: sA4.filter(function (c) { return c.t === 'texto' && /^INV2:|^OUTRA/.test(c.txt); }).map(function (c) { return c.txt; }), desloc: sA4.desloc });
     // legenda (à esquerda): um módulo e um inversor por linha, cada um com o seu traço; a potência dos inversores empilhada
     const lg = sA3.filter(function (c) { return c.t === 'texto' && Math.abs(c.oc.x - 350) < 0.1 && c.oc.y > 1020; }).map(function (c) { return c.txt; });
@@ -2601,6 +2604,22 @@
       /^O sistema é composto por 14 módulos de 620 Wp e 08 módulos de 610 Wp\.$/.test(vMx.descritivo[0]) && vMx.leg_modulo === 'Módulos fotovoltaico 132 células 620 Wp\nMódulos fotovoltaico 132 células 610 Wp' &&
       /Obra com dois modelos de módulo marcada, mas sem módulos do 2º modelo/.test(cfMx) && !P.destaqueAmpl(prMx) && P.destaqueAmpl(prAm),
       { desc: vMx.descritivo[0], leg: vMx.leg_modulo, cf: cfMx });
+    // unifilar: a fiação do ramal de ligação e do ramal de entrada na linha principal (condutores da UC, nome e bitola)
+    const prRam = Object.assign(U.clone(pr), { ligacao: 'bi', ramal: Object.assign({}, pr.ramal, { bit: '16' }), entrada: Object.assign({}, pr.entrada, { bit: '10' }) });
+    const dRam = P.desenhoStringsA(prRam, campA, GA), rTx = dRam.filter(function (c) { return c.t === 'texto' && Math.abs(c.oc.x - (839.08 + 18.1)) < 0.01; }).map(function (c) { return c.txt; });
+    const rTk = dRam.filter(function (c) { return c.t === 'forma' && /^CRMTick/.test(c.nome) && Math.abs(c.m[4] + 81.02) < 0.01; });
+    ok('unifilar: ramal de ligação (#16) e de entrada (#10) com os condutores da ligação (bifásica: 2 fases e neutro em cada um) e o nome do trecho',
+      rTx.join('|') === '#16|#10' && rTk.filter(function (c) { return c.nome === 'CRMTickFh'; }).length === 4 && rTk.filter(function (c) { return c.nome === 'CRMTickNh'; }).length === 2 &&
+      ['Ramal', 'Entrada'].every(function (t) { return dRam.some(function (c) { return c.t === 'texto' && c.txt === t && c.oc.ang === 90; }); }),
+      { tx: rTx, tk: rTk.map(function (c) { return c.nome; }) });
+    // diagrama de blocos: o gerador em duas partes (existente e ampliação), a ampliação em destaque; na folha única, um bloco próprio
+    const bl2 = P.desenhoStringsA(Object.assign(U.clone(prAm), { folhasA: '2', ampl: Object.assign({}, prAm.ampl, { destaque: 'cor' }) }), campS, GAm, 2);
+    const bl0 = P.desenhoStringsA(Object.assign(U.clone(prAm), { folhasA: '1', ampl: Object.assign({}, prAm.ampl, { destaque: 'cor' }) }), campS, GAm);
+    const blA = bl2.filter(function (c) { return c.t === 'texto' && c.txt === 'AMPLIAÇÃO - INV1'; })[0], bl1F = bl0.filter(function (c) { return c.t === 'texto' && c.txt === 'AMPLIAÇÃO (NOVO)'; })[0];
+    ok('diagrama de blocos: ampliação em bloco próprio e em destaque (folha 2: ao lado do gerador existente; folha única: abaixo do gerador)',
+      !!blA && ehVerm(blA.oc) && bl2.some(function (c) { return c.t === 'texto' && c.txt === 'GERADOR EXISTENTE - INV1'; }) && bl2.some(function (c) { return c.t === 'texto' && /^8 x 610 Wp = 4,88 kWp$/.test(c.txt); }) &&
+      !!bl1F && ehVerm(bl1F.oc) && bl0.some(function (c) { return c.t === 'realce' && c.r[1] > 1440; }),
+      { f2: !!blA, f1: !!bl1F });
     const cfA = P.conferir(Object.assign(U.clone(prAm), { acrMppt: '1' })).map(function (x) { return x.texto; }).join(' | ');
     const cfA0 = P.conferir(Object.assign(U.clone(pr), { ampl: { ativa: true, mod: {} } })).map(function (x) { return x.texto; }).join(' | ');
     ok('ampliação: conferências do MPPT livre (não o das strings existentes) e da ampliação marcada sem nada novo',
