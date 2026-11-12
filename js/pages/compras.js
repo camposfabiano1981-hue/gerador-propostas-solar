@@ -111,6 +111,7 @@
     c.fornecedor = Object.assign(Cp.nova().fornecedor, c.fornecedor || {});
     if (!Array.isArray(c.itens)) c.itens = [];
     if (!Array.isArray(c.anexos)) c.anexos = [];
+    if (!Array.isArray(c.entregas)) c.entregas = [];
     c.itens.forEach(function (it) { if (!it.id) it.id = 'it-' + U.uid(); });
     return c;
   }
@@ -180,7 +181,7 @@
       colForm.appendChild(el);
     }
     function desenhar(chave) { const s = secoes[chave]; s.corpo.innerHTML = ''; s.construir(s.corpo); }
-    const mudou = function () { sujo = true; atualizarTopo(); desenharResumo(); };
+    const mudou = function () { sujo = true; atualizarTopo(); desenharResumo(); if (secoes.recebimento) desenhar('recebimento'); };
 
     /* ---------- documento do fornecedor */
     const status = h('p.leitura-status', { hidden: true });
@@ -378,7 +379,7 @@
       });
       if (c.itens.length) {
         box.appendChild(h('div.tabela-rolagem', h('table.tabela.editavel.tabela-compra',
-          h('thead', h('tr', ['Código', 'Descrição', 'Marca', 'Un.', 'Qtd.', 'Preço unit.', 'Total', 'Cadastro', ''].map(function (t) { return h('th', t); }))), tb)));
+          h('thead', h('tr', ['Código', 'Descrição', 'Marca', 'Un.', 'Qtd.', 'Preço unit.', 'Total', 'Custo final', 'Cadastro', ''].map(function (t) { return h('th', t); }))), tb)));
       } else box.appendChild(h('p.ajuda-sec', 'Nenhum item ainda: carregue o documento do fornecedor acima ou adicione os itens.'));
       box.appendChild(h('div.barra-itens',
         h('button.btn.pequeno', { type: 'button', onclick: function () { c.itens.push(Cp.novoItem()); mudou(); desenhar('itens'); const ult = box.querySelector('tbody tr:last-child .compra-desc input'); if (ult) ult.focus(); } }, '+ Adicionar item'),
@@ -418,6 +419,147 @@
       pintarCustos();
       box.appendChild(totaisBox);
     });
+
+    /* ---------- conferência do recebimento */
+    secao('recebimento', 'Conferência do recebimento', function (box) {
+      const itens = c.itens.filter(function (it) { return String(it.descricao || '').trim() && U.num(it.qtd) > 0; });
+      box.appendChild(h('p.ajuda-sec', 'Quando a mercadoria chegar, confira item a item com a nota: registre o que chegou, o que faltou, o que veio trocado ',
+        'e o que veio sem ter sido pedido. A falta e a troca ficam pendentes até a próxima entrega do fornecedor (registre cada entrega).'));
+      if (!itens.length) { box.appendChild(h('p.ajuda-sec', 'Inclua os itens do pedido para conferir o recebimento.')); return; }
+      const k = Cp.conferencia(c);
+      if (k.entregas) {
+        const chip = function (n, rot, cor) { return n ? UI.badge(n + ' ' + rot, cor) : null; };
+        box.appendChild(h('div.receb-resumo', k.completo ? UI.badge('Tudo recebido certo', 'ok') : null,
+          chip(k.ok, k.ok === 1 ? 'completo' : 'completos', 'ok'), chip(k.faltando, 'faltando', 'erro'), chip(k.trocas, k.trocas === 1 ? 'trocado' : 'trocados', 'ambar'),
+          chip(k.aMais, 'a mais', 'azul'), chip(k.extrasPendentes, 'não pedido' + (k.extrasPendentes > 1 ? 's' : ''), 'ambar'),
+          k.valorFalta > 0 ? h('span.mini', 'Valor do que falta: ' + U.brl(k.valorFalta)) : null));
+        const tb = h('tbody');
+        k.linhas.forEach(function (l) {
+          const sit = Cp.SIT_ITEM[l.situacao];
+          const det = h('div');
+          if (l.falta > 0) det.appendChild(h('div.mini', 'Falta ' + U.fmtSmart(l.falta, 3) + ' ' + (l.item.unidade || 'un') + ' (' + U.brl(l.valorFalta) + ')'));
+          if (l.aMais > 0) det.appendChild(h('div.mini', 'Veio ' + U.fmtSmart(l.aMais, 3) + ' ' + (l.item.unidade || 'un') + ' a mais'));
+          l.trocas.forEach(function (t) {
+            const e = c.entregas.find(function (x) { return x.id === t.entregaId; });
+            const tr = e && e.trocas[l.item.id];
+            det.appendChild(h('div.receb-troca', h('span.mini', 'Veio ' + (t.qtd ? U.fmtSmart(t.qtd, 3) + ' ' + (l.item.unidade || 'un') + ' de ' : '') + (t.descricao || 'outro item') + ' (' + U.dataBR(t.data) + ')'),
+              h('button.btn.pequeno', { type: 'button', title: 'Ficar com o item que veio no lugar do pedido', onclick: function () { tr.status = 'aceita'; aposEntrega(); } }, 'Aceitar troca'),
+              h('button.btn.pequeno', { type: 'button', title: 'O item errado volta ao fornecedor; o pedido continua faltando até chegar o certo', onclick: function () { tr.status = 'devolvida'; aposEntrega(); } }, 'Devolvido')));
+          });
+          tb.appendChild(h('tr', h('td', h('strong', l.item.descricao), l.item.codigo ? h('div.mini', 'cód. ' + l.item.codigo) : null),
+            h('td.num', U.fmtSmart(l.pedido, 3) + ' ' + (l.item.unidade || '')), h('td.num', U.fmtSmart(l.recebido, 3)),
+            h('td', UI.badge(sit.label, sit.cor), det)));
+        });
+        k.extras.forEach(function (x) {
+          const e = c.entregas.find(function (y) { return y.id === x.entregaId; });
+          const reg = e && e.extras[x.indice];
+          tb.appendChild(h('tr', h('td', h('strong', x.descricao || 'Item sem descrição'), h('div.mini', 'Veio sem ter sido pedido · ' + U.dataBR(x.data))),
+            h('td.num', '—'), h('td.num', U.fmtSmart(x.qtd, 3) + ' ' + x.unidade),
+            h('td', x.status ? UI.badge(x.status === 'aceito' ? 'Não pedido — aceito' : 'Não pedido — devolvido', 'cinza') : h('div',
+              UI.badge('Não pedido', 'ambar'),
+              h('div.receb-troca', h('button.btn.pequeno', { type: 'button', onclick: function () { reg.status = 'aceito'; aposEntrega(); } }, 'Ficar com o item'),
+                h('button.btn.pequeno', { type: 'button', onclick: function () { reg.status = 'devolvido'; aposEntrega(); } }, 'Devolvido'))))));
+        });
+        box.appendChild(h('div.tabela-rolagem', h('table.tabela.compacta.tabela-receb',
+          h('thead', h('tr', h('th', 'Item'), h('th.num', 'Pedido'), h('th.num', 'Recebido'), h('th', 'Situação'))), tb)));
+        box.appendChild(h('ul.receb-entregas', c.entregas.map(function (e, i) {
+          const n = Object.keys(e.qtd || {}).filter(function (id) { return U.num(e.qtd[id]) > 0; }).length;
+          return h('li', h('span', '📦 Entrega ' + (i + 1) + ' — ' + U.dataBR(e.data) + (e.nf ? ' · NF ' + e.nf : '') + ' · ' + n + ' item(ns)' + (e.obs ? ' · ' + e.obs : '')),
+            h('span.cresce'),
+            h('button.btn.pequeno', { type: 'button', onclick: function () { registrarEntrega(e); } }, 'Editar'),
+            h('button.btn-icone.perigo', { type: 'button', title: 'Excluir a entrega', 'aria-label': 'Excluir a entrega', onclick: async function () {
+              if (!(await UI.confirmar('Excluir a entrega de ' + U.dataBR(e.data) + '?', 'Excluir', true))) return;
+              c.entregas.splice(i, 1); aposEntrega();
+            } }, '×'));
+        })));
+      }
+      const texto = Cp.textoDivergencias(c, (App.Calc.contexto().empresa) || {});
+      const fone = String(c.fornecedor.telefone || '').replace(/\D/g, '');
+      box.appendChild(h('div.barra-itens',
+        h('button.btn.primario.pequeno.btn-receber', { type: 'button', onclick: function () { registrarEntrega(null); } }, k.entregas ? '+ Registrar outra entrega' : '📦 Conferir o que chegou'),
+        texto ? h('button.btn.pequeno', { type: 'button', onclick: function () {
+          (navigator.clipboard ? navigator.clipboard.writeText(texto) : Promise.reject()).then(function () { UI.toast('Divergências copiadas: cole na conversa com o fornecedor.', 'ok'); },
+            function () { UI.modal({ titulo: 'Divergências do recebimento', corpo: h('textarea', { rows: 12, readonly: true }, texto), acoes: [{ label: 'Fechar' }] }); });
+        } }, '📋 Copiar divergências') : null,
+        texto ? h('a.btn.pequeno', { href: 'https://wa.me/' + (fone ? (fone.length <= 11 ? '55' + fone : fone) : '') + '?text=' + encodeURIComponent(texto), target: '_blank', rel: 'noopener' }, '💬 Enviar ao fornecedor') : null));
+    });
+
+    // depois de registrar ou resolver: a situação acompanha a conferência (recebido ou recebido com pendência)
+    function aposEntrega() {
+      c.situacao = Cp.situacaoRecebimento(c);
+      sujo = true;
+      desenhar('pedido'); desenhar('recebimento'); atualizarTopo(); desenharResumo();
+      if (c.id || String(c.fornecedor.nome || '').trim()) salvar(false);
+    }
+
+    /** Registra (ou edita) uma entrega: o que chegou de cada item, o que veio no lugar e o que veio sem ser pedido. */
+    function registrarEntrega(existente) {
+      const itens = c.itens.filter(function (it) { return String(it.descricao || '').trim() && U.num(it.qtd) > 0; });
+      const e = existente ? U.clone(existente) : Cp.novaEntrega();
+      if (!e.qtd) e.qtd = {};
+      if (!e.trocas) e.trocas = {};
+      if (!Array.isArray(e.extras)) e.extras = [];
+      // nova entrega: já vem preenchida com o que falta de cada item (é só corrigir o que não chegou)
+      if (!existente) {
+        const k = Cp.conferencia(c);
+        itens.forEach(function (it) { const l = k.linhas.find(function (x) { return x.item === it; }); const f = l ? (k.entregas ? l.falta : l.pedido) : U.num(it.qtd); e.qtd[it.id] = f > 0 ? String(f) : ''; });
+      }
+      itens.forEach(function (it) { if (!e.trocas[it.id]) e.trocas[it.id] = { descricao: '', qtd: '', status: '' }; });
+      const corpo = h('div.receb-modal');
+      const desenharModal = function () {
+        corpo.innerHTML = '';
+        corpo.appendChild(UI.grade([{ k: 'data', label: 'Data do recebimento', type: 'date' }, { k: 'nf', label: 'Nº da nota fiscal' }, { k: 'obs', label: 'Observação' }], e, null, 3));
+        corpo.appendChild(h('p.ajuda-sec', 'A quantidade que chegou já vem preenchida com o que falta: corrija o que veio a menos (ou zere). Se veio outro item no lugar, ',
+          'descreva o que veio e a quantidade — ele fica como "veio trocado" até você aceitar a troca ou devolver.'));
+        const tb = h('tbody');
+        const k = Cp.conferencia(c);
+        itens.forEach(function (it) {
+          const l = k.linhas.find(function (x) { return x.item === it; });
+          const jaRec = l && existente ? l.recebido - U.numOr(existente.qtd[it.id], 0) - (existente.trocas[it.id] && existente.trocas[it.id].status === 'aceita' ? U.numOr(existente.trocas[it.id].qtd, 0) : 0) : (l ? l.recebido : 0);
+          const cq = UI.campo({ k: it.id, type: 'number', placeholder: '0' }, e.qtd);
+          cq.classList.add('sem-rotulo');
+          const ct = UI.campo({ k: 'descricao', placeholder: 'Veio outro? Descreva' }, e.trocas[it.id]);
+          const cn = UI.campo({ k: 'qtd', type: 'number', placeholder: 'Qtd.' }, e.trocas[it.id]);
+          ct.classList.add('sem-rotulo'); cn.classList.add('sem-rotulo');
+          tb.appendChild(h('tr', { 'data-item': it.id },
+            h('td', h('strong', it.descricao), h('div.mini', (it.codigo ? 'cód. ' + it.codigo + ' · ' : '') + 'pedido ' + U.fmtSmart(U.num(it.qtd), 3) + ' ' + (it.unidade || 'un') +
+              (jaRec > 0 ? ' · já recebido ' + U.fmtSmart(jaRec, 3) : ''))),
+            h('td.receb-qtd', { 'data-rotulo': 'Chegou' }, cq),
+            h('td.receb-troca-desc', { 'data-rotulo': 'Veio no lugar' }, ct),
+            h('td.receb-troca-qtd', { 'data-rotulo': 'Qtd.' }, cn)));
+        });
+        corpo.appendChild(h('div.tabela-rolagem', h('table.tabela.compacta.editavel', h('thead', h('tr', h('th', 'Item pedido'), h('th', 'Chegou'), h('th', 'Veio outro item no lugar'), h('th', 'Qtd.'))), tb)));
+        corpo.appendChild(h('h4.secao-form', 'Veio sem ter sido pedido'));
+        const tbx = h('tbody');
+        e.extras.forEach(function (x, i) {
+          const cd = UI.campo({ k: 'descricao', placeholder: 'Descrição do item' }, x), cq = UI.campo({ k: 'qtd', type: 'number', placeholder: 'Qtd.' }, x), cu = UI.campo({ k: 'unidade', placeholder: 'un' }, x);
+          [cd, cq, cu].forEach(function (el) { el.classList.add('sem-rotulo'); });
+          tbx.appendChild(h('tr', h('td', cd), h('td', cq), h('td', cu), h('td', h('button.btn-icone.perigo', { type: 'button', 'aria-label': 'Remover', onclick: function () { e.extras.splice(i, 1); desenharModal(); } }, '×'))));
+        });
+        if (e.extras.length) corpo.appendChild(h('table.tabela.compacta.editavel', tbx));
+        corpo.appendChild(h('button.btn.pequeno.btn-extra', { type: 'button', onclick: function () { e.extras.push({ descricao: '', qtd: '', unidade: 'un', status: '' }); desenharModal(); } }, '+ Item que veio sem ser pedido'));
+      };
+      desenharModal();
+      UI.modal({
+        titulo: existente ? 'Editar a entrega de ' + U.dataBR(existente.data) : 'Conferir o que chegou', largo: true, corpo: corpo,
+        acoes: [{ label: 'Cancelar' }, {
+          label: 'Gravar a conferência', primario: true, onClick: function () {
+            // limpa as trocas vazias; troca nova com quantidade em branco = 1
+            Object.keys(e.trocas).forEach(function (id) {
+              const t = e.trocas[id];
+              if (!String(t.descricao || '').trim() && !(U.num(t.qtd) > 0)) delete e.trocas[id];
+              else if (!(U.num(t.qtd) > 0)) t.qtd = '1';
+            });
+            e.extras = e.extras.filter(function (x) { return String(x.descricao || '').trim() || U.num(x.qtd) > 0; });
+            if (existente) c.entregas[c.entregas.indexOf(existente)] = e; else c.entregas.push(e);
+            aposEntrega();
+            const k = Cp.conferencia(c);
+            UI.toast(k.completo ? 'Recebimento conferido: tudo certo.' : 'Recebimento conferido com pendências: ' + [k.faltando ? k.faltando + ' faltando' : '', k.trocas ? k.trocas + ' trocado(s)' : '',
+              k.extrasPendentes ? k.extrasPendentes + ' não pedido(s)' : ''].filter(Boolean).join(', ') + '.', k.completo ? 'ok' : 'aviso');
+          }
+        }]
+      });
+    }
 
     function unidadesDe(atual) {
       const base = App.Avulsa.UNIDADES_MATERIAL;
@@ -498,7 +640,13 @@
         kpi('Itens', String(c.itens.length), 'soma ' + U.brl(t.itens)),
         kpi('Total do pedido', U.brl(t.total), t.desconto || t.frete || t.outras ? [t.desconto ? '− ' + U.brl(t.desconto) + ' desconto' : '', t.frete ? '+ ' + U.brl(t.frete) + ' frete' : '', t.outras ? '+ ' + U.brl(t.outras) + ' despesas' : ''].filter(Boolean).join(' · ') : null),
         c.kitFechado ? kpi('Kit fechado', 'Custo do kit da obra', 'fora do cadastro de materiais')
-          : kpi('Materiais e acessórios', v.total ? v.n + ' de ' + v.total + ' no cadastro' : '—', c.cadastradoEm ? 'Lançado em ' + U.dataBR(c.cadastradoEm) : null)));
+          : kpi('Materiais e acessórios', v.total ? v.n + ' de ' + v.total + ' no cadastro' : '—', c.cadastradoEm ? 'Lançado em ' + U.dataBR(c.cadastradoEm) : null),
+        (function () {
+          const k = Cp.conferencia(c);
+          if (!k.entregas) return null;
+          return kpi('Recebimento', k.completo ? 'Tudo certo' : 'Com pendência', k.completo ? k.entregas + (k.entregas === 1 ? ' entrega' : ' entregas') :
+            [k.faltando ? k.faltando + ' faltando' : '', k.trocas ? k.trocas + ' trocado(s)' : '', k.extrasPendentes ? k.extrasPendentes + ' não pedido(s)' : ''].filter(Boolean).join(' · '));
+        })()));
       const links = [];
       const btnPdf = h('button.btn', { type: 'button', onclick: function () { gerarPdf(btnPdf); } }, '⬇ Pedido em PDF');
       links.push(h('button.btn', { type: 'button', onclick: visualizar }, '👁 Visualizar'));

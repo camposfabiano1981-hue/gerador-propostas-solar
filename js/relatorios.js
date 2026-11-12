@@ -361,7 +361,7 @@ window.App = window.App || {};
     const t = Cp.totais(c);
     const itens = (c.itens || []).filter(function (it) { return String(it.descricao || '').trim(); });
     const st = Cp.SITUACOES.find(function (s) { return s.id === c.situacao; }) || Cp.SITUACOES[0];
-    const corSt = { ok: '15803D', azul: AZUL, cinza: '475569', erro: 'DC2626' };
+    const corSt = { ok: '15803D', azul: AZUL, cinza: '475569', erro: 'DC2626', ambar: 'B45309' };
     const obra = c.instalacaoId ? (ctx.instalacoes || []).find(function (x) { return x.id === c.instalacaoId; }) : null;
     const b = [];
     b.push(faixa('PEDIDO DE COMPRA', c.numero + '  ·  emitido em ' + U.dataBR(c.data), [
@@ -405,6 +405,26 @@ window.App = window.App || {};
     tot.push(linhaTot('Total do pedido', U.brl(t.total), true));
     b.push(P([], { after: 80 }));
     b.push(TBL([5600, 2260, 1500], tot, { manterJunto: true }));
+    // conferência do recebimento: o que chegou de cada item, as faltas, as trocas e os itens não pedidos
+    const kf = Cp.conferencia(c);
+    if (kf.entregas) {
+      b.push(secao('Conferência do recebimento'));
+      b.push(pares([
+        ['Entregas', (c.entregas || []).map(function (e) { return U.dataBR(e.data) + (e.nf ? ' (NF ' + e.nf + ')' : ''); }).join('; ')],
+        ['Resultado', kf.completo ? 'Recebido completo' : [kf.faltando ? kf.faltando + ' item(ns) faltando' : '', kf.trocas ? kf.trocas + ' trocado(s)' : '',
+          kf.extrasPendentes ? kf.extrasPendentes + ' não pedido(s)' : ''].filter(Boolean).join(' · ')],
+        kf.valorFalta > 0 ? ['Valor do que falta', U.brl(kf.valorFalta)] : null
+      ]));
+      b.push(tabela([{ t: 'Item', w: 4400 }, { t: 'Pedido', w: 1000, jc: 'right' }, { t: 'Recebido', w: 1000, jc: 'right' }, { t: 'Situação', w: 2960 }],
+        kf.linhas.map(function (l) {
+          const det = l.trocas.map(function (t) { return 'veio ' + (t.qtd ? U.fmtSmart(t.qtd, 3) + ' ' + (l.item.unidade || 'un') + ' de ' : '') + (t.descricao || 'outro item'); })
+            .concat(l.falta > 0 ? ['falta ' + U.fmtSmart(l.falta, 3) + ' ' + (l.item.unidade || 'un')] : []).concat(l.aMais > 0 ? ['a mais ' + U.fmtSmart(l.aMais, 3)] : []);
+          return [(l.item.descricao || '') + (l.item.codigo ? ' (cód. ' + l.item.codigo + ')' : ''), U.fmtSmart(l.pedido, 3), U.fmtSmart(l.recebido, 3),
+            { t: Cp.SIT_ITEM[l.situacao].label + (det.length ? ' — ' + det.join('; ') : ''), b: l.situacao !== 'ok' }];
+        }).concat(kf.extras.map(function (x) {
+          return [x.descricao || 'Item sem descrição', '—', U.fmtSmart(x.qtd, 3), { t: 'Não pedido' + (x.status === 'aceito' ? ' — aceito' : (x.status === 'devolvido' ? ' — devolvido' : ' — aguardando')), b: !x.status }];
+        })), 16));
+    }
     if (String(c.observacoes || '').trim()) {
       b.push(secao('Observações'));
       b.push(quadro(c.observacoes));

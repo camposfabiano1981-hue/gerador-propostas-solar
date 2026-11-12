@@ -302,7 +302,7 @@ window.App = window.App || {};
   /** Pedidos de compra do kit da obra (com o kit, ligados à proposta ou à instalação; feitos ou recebidos). */
   function comprasDaObra(compras, p, inst) {
     return (compras || []).filter(function (c) {
-      if (!c.kitId || ['pedido', 'recebido'].indexOf(c.situacao) < 0) return false;
+      if (!c.kitId || ['pedido', 'recebido', 'pendencia'].indexOf(c.situacao) < 0) return false;
       return (p && c.propostaId === p.id) || (inst && c.instalacaoId && c.instalacaoId === inst.id);
     });
   }

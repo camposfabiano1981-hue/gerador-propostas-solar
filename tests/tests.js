@@ -949,8 +949,45 @@
       desconto: 23, frete: 10 });
     const tp = Cp.totais(pc);
     ok('compras: totais do pedido (itens − desconto + frete)', tp.itens === 460 && tp.total === 447 && Math.abs(tp.fator - 447 / 460) < 1e-9, JSON.stringify(tp));
-    ok('compras: custo unitário com rateio (e sem, quando pedido)', Cp.custoUnitario(pc, pc.itens[0]) === U.round(60 * 447 / 460 / 2, 4) && Cp.custoUnitario(pc, pc.itens[1]) === U.round(400 * 447 / 460 / 100, 4) &&
+    // rateio em centavos: desconto 23 → 3,00 + 20,00; frete 10 → 1,30 + 8,70 (a sobra do arredondamento vai para a maior fração)
+    ok('compras: custo unitário com rateio exato em centavos (e sem, quando pedido)', Cp.custoUnitario(pc, pc.itens[0]) === 29.15 && Cp.custoUnitario(pc, pc.itens[1]) === 3.887 &&
       Cp.custoUnitario(pc, pc.itens[0], false) === 30, Cp.custoUnitario(pc, pc.itens[0]) + ' ' + Cp.custoUnitario(pc, pc.itens[1]));
+    // desconto sem a linha "Desconto" (só total dos produtos e total do pedido): a diferença é o desconto, rateado em todos os itens
+    const itDesc = [[5, 4.65, 23.25], [5, 8.57, 42.85], [4, 1.75, 7], [2, 23.04, 46.08], [3, 10.10, 30.30], [1, 73.02, 73.02], [1, 16.76, 16.76], [1, 29.90, 29.90],
+      [2, 59.53, 119.06], [10, 2.19, 21.90], [1, 9.36, 9.36], [45, 5.79, 260.55], [20, 7.50, 150]].map(function (x, i) { return Cp.novoItem({ descricao: 'Item ' + (i + 1), qtd: x[0], preco: x[1], total: x[2] }); });
+    const kImp = Cp.conciliar({ itens: itDesc, totalProdutos: 830.03, totalGeral: 788.53, outras: 0, servicos: 0 });
+    const pcImp = Object.assign(Cp.nova(), { itens: itDesc, desconto: kImp.desconto, totalDocumento: kImp.totalDocumento });
+    const somaRat = itDesc.reduce(function (s2, it) { return s2 + Cp.rateio(pcImp, it).desconto; }, 0), somaCusto = itDesc.reduce(function (s2, it) { return s2 + Cp.rateio(pcImp, it).custoTotal; }, 0);
+    ok('compras: desconto implícito (total dos produtos − total do pedido) reconhecido e rateado em todos os itens, somando o desconto e o total exatos',
+      kImp.desconto === 41.5 && kImp.avisos.length === 1 && /Desconto de R\$ 41,50 identificado/.test(kImp.avisos[0]) && Math.abs(somaRat - 41.5) < 1e-9 && Math.abs(somaCusto - 788.53) < 1e-6 &&
+      itDesc.every(function (it) { return Cp.rateio(pcImp, it).desconto > 0; }) && Cp.totais(pcImp).total === 788.53, { k: kImp, somaRat: somaRat, somaCusto: somaCusto });
+    const kAcr = Cp.conciliar({ itens: itDesc, totalProdutos: 830.03, totalGeral: 850.03 });
+    ok('compras: total do pedido maior que o dos produtos sem frete impresso = acréscimo em outras despesas', kAcr.outras === 20 && !kAcr.desconto && /Acréscimo de R\$ 20,00/.test(kAcr.avisos[0]), kAcr);
+
+    // conferência do recebimento: falta, troca, a mais, item não pedido; a 2ª entrega resolve; texto ao fornecedor
+    const pr2 = Object.assign(Cp.nova(), { numero: 'PC-1', docFornecedor: '40.212', fornecedor: { nome: 'Distribuidora Exemplo', telefone: '' }, itens: [
+      Cp.novoItem({ codigo: 'A1', descricao: 'Condulete 1"', unidade: 'pç', qtd: 5, preco: 8, total: 40 }), Cp.novoItem({ codigo: 'B2', descricao: 'Disjuntor 2x40A', unidade: 'pç', qtd: 1, preco: 30, total: 30 }),
+      Cp.novoItem({ codigo: 'C3', descricao: 'Cabo 6mm preto', unidade: 'm', qtd: 20, preco: 7.5, total: 150 })] });
+    const [iA, iB, iC] = pr2.itens;
+    const k0 = Cp.conferencia(pr2);
+    const e1 = Cp.novaEntrega(); e1.data = '2026-11-12'; e1.nf = '1234';
+    e1.qtd[iA.id] = 3; e1.qtd[iC.id] = 25; e1.trocas[iB.id] = { descricao: 'Disjuntor 2x32A', qtd: 1, status: '' }; e1.extras = [{ descricao: 'Fita isolante', qtd: 2, unidade: 'pç', status: '' }];
+    pr2.entregas = [e1];
+    const k1 = Cp.conferencia(pr2), sit = function (it) { return k1.linhas.find(function (l) { return l.item === it; }); };
+    const txt = Cp.textoDivergencias(pr2, { nomeCurto: 'Empresa Exemplo' });
+    ok('recebimento: sem entrega, aguardando; 1ª entrega com falta (3 de 5), troca (2x32A no lugar de 2x40A), 5 m a mais e item não pedido → pendência',
+      k0.entregas === 0 && !k0.pendente && sit(iA).situacao === 'parcial' && sit(iA).falta === 2 && sit(iA).valorFalta === 16 && sit(iB).situacao === 'troca' && sit(iB).recebido === 0 &&
+      sit(iC).situacao === 'amais' && sit(iC).aMais === 5 && k1.extrasPendentes === 1 && k1.pendente && Cp.situacaoRecebimento(pr2) === 'pendencia' &&
+      /FALTOU: 2 pç de Condulete 1" \(cód\. A1\)/.test(txt) && /TROCADO: pedimos 1 pç de Disjuntor 2x40A \(cód\. B2\) e veio 1 pç de Disjuntor 2x32A/.test(txt) &&
+      /VEIO A MAIS: 5 m de Cabo 6mm preto/.test(txt) && /NÃO PEDIDO: 2 pç de Fita isolante/.test(txt) && /pedido PC-1 \(seu orçamento\/pedido 40\.212\)/.test(txt), { k1: k1.linhas.map(function (l) { return [l.situacao, l.recebido, l.falta]; }), txt: txt });
+    const e2 = Cp.novaEntrega(); e2.qtd[iA.id] = 2; e2.qtd[iB.id] = 1; pr2.entregas.push(e2);
+    e1.trocas[iB.id].status = 'devolvida'; e1.extras[0].status = 'devolvido';
+    const k2 = Cp.conferencia(pr2);
+    ok('recebimento: a 2ª entrega traz o que faltou e o item certo; troca e não pedido devolvidos → recebido', k2.completo && !k2.pendente && Cp.situacaoRecebimento(pr2) === 'recebido' &&
+      Cp.textoDivergencias(pr2).indexOf('FALTOU') < 0 && /VEIO A MAIS/.test(Cp.textoDivergencias(pr2)), k2);
+    e1.trocas[iB.id].status = 'aceita'; pr2.entregas.pop();
+    const k3 = Cp.conferencia(pr2);
+    ok('recebimento: troca aceita conta como recebido do item pedido', k3.linhas[1].situacao === 'ok' && k3.linhas[1].recebido === 1 && k3.linhas[0].situacao === 'parcial', k3.linhas.map(function (l) { return l.situacao; }));
     ok('compras: semelhança das descrições (condulet × condulete)', Cp.semelhanca('WETZEL BRANCO CONDULET PVC 1"', 'Condulete PVC 1" Wetzel branco') >= 0.75 && Cp.semelhanca('Disjuntor 40A', 'Cabo solar 4mm') < 0.3);
 
     // lançamento no cadastro de materiais: novo, existente (pela descrição) e o mesmo material em duas linhas

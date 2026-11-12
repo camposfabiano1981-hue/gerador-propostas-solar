@@ -232,6 +232,7 @@ dialog.modal::backdrop { background: rgba(15, 23, 42, .5); }
 .toast { background: #1F2937; color: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: 420px; transition: opacity .4s, transform .4s; }
 .toast.ok { background: #14532D; }
 .toast.erro { background: #991B1B; }
+.toast.aviso { background: #92400E; }
 .toast.saindo { opacity: 0; transform: translateY(8px); }
 
 /* ---------- proposta */
@@ -877,3 +878,21 @@ td.num.saida { color: var(--vermelho); }
 .prancha-conferencias li.aviso { color: #92400E; }
 .ok-txt { color: var(--verde); }
 @media (max-width: 700px) { .homolog-tab { min-width: 640px; } }
+
+/* conferência do recebimento do pedido de compra */
+.receb-resumo { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
+.tabela-receb td { vertical-align: top; }
+.receb-troca { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.receb-entregas { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
+.receb-entregas li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--borda); border-radius: 8px; background: #FAFBFD; flex-wrap: wrap; }
+.receb-modal .receb-qtd { width: 110px; }
+.receb-modal .receb-troca-qtd { width: 90px; }
+.receb-modal .btn-extra { margin-top: 6px; }
+@media (max-width: 640px) {
+  .receb-modal table, .receb-modal tbody { display: block; }
+  .receb-modal thead { display: none; }
+  .receb-modal tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--borda); }
+  .receb-modal tr td:first-child { grid-column: 1 / -1; }
+  .receb-modal td { display: block; padding: 0 !important; border: 0; width: auto !important; }
+  .receb-modal td[data-rotulo]::before { content: attr(data-rotulo); display: block; font-size: 11px; color: var(--muted); }
+}

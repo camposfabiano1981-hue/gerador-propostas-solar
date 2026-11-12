@@ -14,6 +14,7 @@ window.App = window.App || {};
     { id: 'cotacao', label: 'Cotação', cor: 'cinza' },
     { id: 'pedido', label: 'Pedido feito', cor: 'azul' },
     { id: 'recebido', label: 'Recebido', cor: 'ok' },
+    { id: 'pendencia', label: 'Recebido com pendência', cor: 'ambar' },
     { id: 'cancelado', label: 'Cancelado', cor: 'erro' }
   ];
 
@@ -58,7 +59,7 @@ window.App = window.App || {};
     return {
       numero: '', data: U.todayISO(), situacao: 'cotacao', fornecedor: { nome: '', cnpj: '', telefone: '', cidade: '' },
       docFornecedor: '', vendedor: '', condicao: '', prazoEntrega: '', validade: '', instalacaoId: '', propostaId: '', kitId: '', itens: [],
-      desconto: '', frete: '', outras: '', totalDocumento: '', observacoes: '', anexos: [], cadastradoEm: ''
+      desconto: '', frete: '', outras: '', totalDocumento: '', observacoes: '', anexos: [], cadastradoEm: '', entregas: []
     };
   }
 
@@ -82,12 +83,21 @@ window.App = window.App || {};
    * custo total e unitário do item.
    */
   function rateio(c, it) {
-    const t = totais(c);
+    const t = totais(c), itens = c.itens || [];
     const v = totalItem(it), q = U.numOr(it.qtd, 0);
-    const parte = function (x) { return t.itens > 0 ? arred(x * v / t.itens) : 0; };
+    // parte de cada item pelo valor, em centavos; a sobra do arredondamento vai para os itens de maior fração, para que as partes
+    // somem exatamente o desconto, o frete e as despesas do pedido
+    const parte = function (x) {
+      if (!(t.itens > 0) || !x) return 0;
+      const cent = Math.round(x * 100), bases = itens.map(function (o) { const b = cent * totalItem(o) / t.itens; return { o: o, n: Math.floor(b + 1e-9), f: b - Math.floor(b + 1e-9) }; });
+      let sobra = cent - bases.reduce(function (s, b) { return s + b.n; }, 0);
+      bases.slice().sort(function (a, b) { return b.f - a.f; }).forEach(function (b) { if (sobra > 0) { b.n++; sobra--; } });
+      const meu = bases.find(function (b) { return b.o === it; });
+      return meu ? meu.n / 100 : arred(x * v / t.itens);
+    };
     const r = { valor: v, desconto: parte(t.desconto), frete: parte(t.frete), outras: parte(t.outras) };
-    r.custoTotal = arred(v * t.fator);
-    r.custoUnit = q > 0 ? arred(v * t.fator / q, 4) : arred(U.numOr(it.preco, 0), 4);
+    r.custoTotal = arred(v - r.desconto + r.frete + r.outras);
+    r.custoUnit = q > 0 ? arred(r.custoTotal / q, 4) : arred(U.numOr(it.preco, 0), 4);
     return r;
   }
 
@@ -95,7 +105,7 @@ window.App = window.App || {};
   function custoUnitario(c, it, ratear) {
     const q = U.numOr(it.qtd, 0);
     if (!(q > 0)) return arred(U.numOr(it.preco, 0), 4);
-    return arred(totalItem(it) * (ratear === false ? 1 : totais(c).fator) / q, 4);
+    return ratear === false ? arred(totalItem(it) / q, 4) : rateio(c, it).custoUnit;
   }
 
   /* ------------------------------------------------------------ leitura do texto do PDF (linhas e células do PDF.js) */
@@ -350,8 +360,23 @@ window.App = window.App || {};
       if (d > 0) avisos.push('O desconto de ' + U.brl(d) + ' já está nos preços dos itens (a soma dos itens é igual ao total do pedido).');
       else if (f > 0 || o > 0) avisos.push('Frete e despesas já estão nos preços dos itens (a soma dos itens é igual ao total do pedido).');
       desc = 0; fre = 0; out = 0;
-    } else if (tp > 0 && !perto(soma, tp)) {
-      avisos.push('A soma dos itens lidos (' + U.brl(soma) + ') difere do total dos produtos no documento (' + U.brl(tp) + '): confira se algum item ficou de fora ou foi lido errado.');
+    } else {
+      if (tp > 0 && !perto(soma, tp)) {
+        avisos.push('A soma dos itens lidos (' + U.brl(soma) + ') difere do total dos produtos no documento (' + U.brl(tp) + '): confira se algum item ficou de fora ou foi lido errado.');
+      }
+      // o documento não traz a linha "Desconto", mas o total do pedido é menor que o dos produtos (+ frete e despesas): a diferença
+      // é o desconto concedido (ou, se maior, um acréscimo), rateado depois em todos os itens
+      const base = tp > 0 ? tp : soma, dif = arred(base + f + o - d - tg);
+      if (tg > 0 && Math.abs(dif) > 0.05) {
+        if (dif > 0) {
+          desc = arred(d + dif);
+          avisos.push('Desconto de ' + U.brl(dif) + ' identificado pela diferença entre o total dos produtos (' + U.brl(base) + ') e o total do pedido (' + U.brl(tg) + ')' +
+            (d > 0 ? ', além do desconto impresso' : ' — o documento não traz a linha "Desconto"') + '. Ele é rateado em todos os itens, na proporção do valor de cada um.');
+        } else {
+          out = arred(o - dif);
+          avisos.push('Acréscimo de ' + U.brl(-dif) + ' identificado pela diferença entre o total do pedido (' + U.brl(tg) + ') e o total dos produtos (' + U.brl(base) + '): lançado em outras despesas e rateado nos itens.');
+        }
+      }
     }
     const calc = arred(soma - desc + fre + out);
     if (tg > 0 && !perto(calc, tg)) avisos.push('O total calculado (' + U.brl(calc) + ') difere do total do documento (' + U.brl(tg) + '). Confira desconto, frete e despesas.');
@@ -369,6 +394,11 @@ window.App = window.App || {};
     if (lido.data) c.data = lido.data;
     ['vendedor', 'condicao', 'prazoEntrega'].forEach(function (x) { if (!c[x] && lido[x]) c[x] = lido[x]; });
     if (!acrescentar) { c.desconto = k.desconto; c.frete = k.frete; c.outras = k.outras; c.totalDocumento = k.totalDocumento; }
+    // itens substituídos: a conferência do recebimento feita com os itens antigos não vale mais
+    if (!acrescentar && Array.isArray(c.entregas) && c.entregas.length) {
+      c.entregas = [];
+      k.avisos.push('Os itens foram substituídos pela nova leitura: a conferência do recebimento foi apagada — registre as entregas de novo.');
+    }
     return k.avisos.concat(lido.avisos || []);
   }
 
@@ -452,11 +482,96 @@ window.App = window.App || {};
     return { registros: ordem.map(function (id) { return regs[id]; }), novos: novos, atualizados: atualizados };
   }
 
+  /* ------------------------------------------------------------ conferência do recebimento */
+
+  /**
+   * Entrega do fornecedor (um recebimento, com a nota): qtd[itemId] = quantidade que chegou do item pedido;
+   * trocas[itemId] = {descricao, qtd, status: '' (aguardando) | 'aceita' (fica no lugar do pedido) | 'devolvida'} — veio outro item
+   * no lugar; extras = [{descricao, qtd, unidade, status: '' | 'aceito' | 'devolvido'}] — veio sem ter sido pedido.
+   */
+  function novaEntrega() { return { id: 'en-' + U.uid(), data: U.todayISO(), nf: '', obs: '', qtd: {}, trocas: {}, extras: [] }; }
+
+  const SIT_ITEM = {
+    ok: { label: 'Completo', cor: 'ok' }, falta: { label: 'Faltando', cor: 'erro' }, parcial: { label: 'Parcial', cor: 'ambar' },
+    troca: { label: 'Veio trocado', cor: 'ambar' }, amais: { label: 'Veio a mais', cor: 'azul' }, aguardando: { label: 'Aguardando', cor: 'cinza' }
+  };
+
+  /**
+   * Conferência do pedido com as entregas: por item, o pedido, o recebido (as entregas e as trocas aceitas), a falta (e o seu valor,
+   * pelo custo com o rateio), o que veio a mais e as trocas aguardando solução; e os itens que vieram sem ter sido pedidos.
+   * completo: tudo chegou certo; pendente: há falta, troca ou item não pedido aguardando solução.
+   */
+  function conferencia(c) {
+    const ent = Array.isArray(c.entregas) ? c.entregas : [];
+    const itens = (c.itens || []).filter(function (it) { return String(it.descricao || '').trim() && U.numOr(it.qtd, 0) > 0; });
+    const linhas = itens.map(function (it) {
+      const ped = U.numOr(it.qtd, 0), trocas = [];
+      let rec = 0;
+      ent.forEach(function (e) {
+        rec += U.numOr(e.qtd && e.qtd[it.id], 0);
+        const tr = e.trocas && e.trocas[it.id];
+        if (tr && (String(tr.descricao || '').trim() || U.numOr(tr.qtd, 0) > 0)) {
+          const q = U.numOr(tr.qtd, 0);
+          if (tr.status === 'aceita') rec += q;
+          else if (tr.status !== 'devolvida') trocas.push({ entregaId: e.id, data: e.data, nf: e.nf, descricao: String(tr.descricao || '').trim(), qtd: q });
+        }
+      });
+      rec = arred(rec, 4);
+      const falta = Math.max(0, arred(ped - rec, 4)), aMais = Math.max(0, arred(rec - ped, 4));
+      const situacao = !ent.length ? 'aguardando' : (trocas.length ? 'troca' : (falta > 0 ? (rec > 0 ? 'parcial' : 'falta') : (aMais > 0 ? 'amais' : 'ok')));
+      return { item: it, pedido: ped, recebido: rec, falta: falta, aMais: aMais, trocas: trocas, situacao: situacao, valorFalta: arred(falta * rateio(c, it).custoUnit) };
+    });
+    const extras = [];
+    ent.forEach(function (e) {
+      (e.extras || []).forEach(function (x, i) {
+        if (!String(x.descricao || '').trim() && !(U.numOr(x.qtd, 0) > 0)) return;
+        extras.push({ entregaId: e.id, indice: i, data: e.data, nf: e.nf, descricao: String(x.descricao || '').trim(), qtd: U.numOr(x.qtd, 0), unidade: x.unidade || 'un', status: x.status || '' });
+      });
+    });
+    const conta = function (sit) { return linhas.filter(function (l) { return l.situacao === sit; }).length; };
+    const r = {
+      linhas: linhas, extras: extras, entregas: ent.length,
+      ok: conta('ok'), faltando: conta('falta') + conta('parcial'), trocas: conta('troca'), aMais: conta('amais'),
+      extrasPendentes: extras.filter(function (x) { return !x.status; }).length,
+      valorFalta: arred(linhas.reduce(function (s, l) { return s + l.valorFalta; }, 0))
+    };
+    r.completo = ent.length > 0 && linhas.length > 0 && linhas.every(function (l) { return l.situacao === 'ok' || l.situacao === 'amais'; }) && !r.extrasPendentes;
+    r.pendente = ent.length > 0 && !r.completo;
+    return r;
+  }
+
+  /** Situação do pedido pela conferência: recebido (tudo certo) ou recebido com pendência; sem entrega, a que estiver. */
+  function situacaoRecebimento(c) {
+    const k = conferencia(c);
+    if (!k.entregas) return c.situacao;
+    return k.completo ? 'recebido' : 'pendencia';
+  }
+
+  /** Texto das divergências para o fornecedor (WhatsApp ou e-mail): faltas, trocas, a mais e itens não pedidos. */
+  function textoDivergencias(c, empresa) {
+    const k = conferencia(c);
+    const q = function (n, un) { return U.fmtSmart(n, 3) + ' ' + (un || 'un'); };
+    const nome = function (it) { return String(it.descricao || '').trim() + (it.codigo ? ' (cód. ' + it.codigo + ')' : ''); };
+    const l = [];
+    k.linhas.forEach(function (x) {
+      x.trocas.forEach(function (t) { l.push('• TROCADO: pedimos ' + q(x.pedido, x.item.unidade) + ' de ' + nome(x.item) + ' e veio ' + (t.qtd ? q(t.qtd, x.item.unidade) + ' de ' : '') + (t.descricao || 'outro item') + '.'); });
+      if (x.falta > 0) l.push('• FALTOU: ' + q(x.falta, x.item.unidade) + ' de ' + nome(x.item) + (x.recebido > 0 ? ' (chegaram ' + q(x.recebido, x.item.unidade) + ' de ' + q(x.pedido, x.item.unidade) + ')' : '') + '.');
+      if (x.aMais > 0) l.push('• VEIO A MAIS: ' + q(x.aMais, x.item.unidade) + ' de ' + nome(x.item) + ' (pedimos ' + q(x.pedido, x.item.unidade) + ').');
+    });
+    k.extras.filter(function (x) { return !x.status; }).forEach(function (x) { l.push('• NÃO PEDIDO: ' + q(x.qtd, x.unidade) + ' de ' + (x.descricao || 'item sem descrição') + '.'); });
+    if (!l.length) return '';
+    const emp = empresa || {};
+    return 'Olá! Conferimos o recebimento do pedido ' + (c.numero || '') + (c.docFornecedor ? ' (seu orçamento/pedido ' + c.docFornecedor + ')' : '') +
+      (emp.nomeCurto || emp.razao ? ' da ' + (emp.nomeCurto || emp.razao) : '') + ' e encontramos estas divergências:\n\n' + l.join('\n') +
+      '\n\nPor favor, providencie o envio do que falta e a troca dos itens errados, ou o ajuste da nota fiscal. Obrigado!';
+  }
+
   function rotulo(id) { return (SITUACOES.find(function (s) { return s.id === id; }) || SITUACOES[0]).label; }
 
   App.Compra = {
     SITUACOES: SITUACOES, nova: nova, novoItem: novoItem, totalItem: totalItem, totais: totais, custoUnitario: custoUnitario, rateio: rateio,
     unidade: unidade, numero: numero, lerLinhas: lerLinhas, conciliar: conciliar, aplicarLeitura: aplicarLeitura,
-    semelhanca: semelhanca, sugerir: sugerir, paraCadastro: paraCadastro, rotulo: rotulo, semAcento: semAcento
+    semelhanca: semelhanca, sugerir: sugerir, paraCadastro: paraCadastro, rotulo: rotulo, semAcento: semAcento,
+    novaEntrega: novaEntrega, conferencia: conferencia, situacaoRecebimento: situacaoRecebimento, textoDivergencias: textoDivergencias, SIT_ITEM: SIT_ITEM
   };
 })(window.App);
