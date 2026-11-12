@@ -654,10 +654,23 @@
       })));
       if (lista) {
         const fontes = App.Materiais.fontes(S.list('propostas'), S.list('instalacoes'), p.id);
+        const aposMudar = function () { ed.redesenhar(); alterouLista(); };
+        const botoes = [];
+        if (App.Acesso.podeLer('compras')) {
+          botoes.push(h('button.btn.pequeno', {
+            type: 'button', title: 'Preenche a lista com os itens dos pedidos de compra ligados a esta proposta ou à obra dela, pelo custo final de cada item',
+            onclick: function () {
+              const pedidos = App.Materiais.pedidosDaProposta(p, S.list('compras'), S.list('instalacoes'));
+              if (pedidos.length) listaDoPedido(pedidos, aposMudar);
+              else UI.toast(p.id ? 'Nenhum pedido de compra ligado a esta proposta ou à obra dela. No pedido de compra, escolha a obra ou a proposta.' : 'Salve a proposta e ligue o pedido de compra a ela ou à obra.', 'aviso');
+            }
+          }, '🧾 Atualizar pelo pedido de compra da obra'));
+        }
+        if (fontes.length) botoes.push(h('button.btn.pequeno', { type: 'button', onclick: function () { copiarLista(fontes, aposMudar); } }, '📋 Copiar de outra obra ou proposta'));
         const ed = App.Materiais.editor(p.materiaisCA, {
           equipamentos: ctx.equipamentos, modo: 'proposta',
           vazio: 'Monte a lista com os materiais CA desta obra. O custo de cada material vem do cadastro (última compra lançada pelos pedidos de compra); dá para digitar o que não estiver cadastrado.',
-          botoes: fontes.length ? [h('button.btn.pequeno', { type: 'button', onclick: function () { copiarLista(fontes, function () { ed.redesenhar(); alterouLista(); }); } }, '📋 Copiar de outra obra ou proposta')] : null
+          botoes: botoes.length ? botoes : null
         }, alterouLista);
         box.appendChild(ed);
       } else {
@@ -693,6 +706,78 @@
       if (p.materiaisCA.length) acoes.push({ label: 'Somar à lista atual', onClick: function () { aplicar(false); } });
       acoes.push({ label: p.materiaisCA.length ? 'Substituir a lista' : 'Copiar', primario: true, onClick: function () { aplicar(true); } });
       UI.modal({ titulo: 'Copiar lista de materiais CA', corpo: corpo, acoes: acoes });
+    }
+
+    /**
+     * Lista de materiais CA pelos pedidos de compra da obra: escolhe os pedidos e os itens (módulos, inversores e materiais do kit
+     * solar vêm desmarcados), com a quantidade e o custo final do pedido (desconto, frete e outras despesas rateados).
+     */
+    function listaDoPedido(pedidos, aoAplicar) {
+      const Cp = App.Compra, M = App.Materiais;
+      const usar = {}, marcas = {};
+      pedidos.forEach(function (c) { usar[c.id] = true; });
+      let itens = [];
+      const corpo = h('div.lista-pedido');
+      const descPedido = function (c) {
+        return [c.numero ? 'Pedido ' + c.numero : 'Pedido', (c.fornecedor && c.fornecedor.nome) || 'fornecedor não informado'].join(' — ') +
+          ' · ' + [c.data ? U.dataBR(c.data) : '', Cp.rotulo(c.situacao), U.brl(Cp.totais(c).total)].filter(Boolean).join(' · ');
+      };
+      const desenharModal = function () {
+        corpo.innerHTML = '';
+        corpo.appendChild(h('p.ajuda-sec', 'Itens dos pedidos de compra ligados a esta proposta ou à obra dela, com a quantidade pedida e o custo final de cada item ' +
+          '(preço com a parte do desconto, do frete e das outras despesas). Módulos, inversores e materiais do kit solar vêm desmarcados: já entram nos itens da proposta.'));
+        if (pedidos.length > 1) {
+          corpo.appendChild(h('div.lista-pedido-compras', pedidos.map(function (c) {
+            const cb = h('input', { type: 'checkbox', checked: usar[c.id] });
+            cb.addEventListener('change', function () { usar[c.id] = cb.checked; desenharModal(); });
+            return h('label.check', cb, ' ', descPedido(c));
+          })));
+        } else corpo.appendChild(h('p.lista-pedido-um', '🧾 ', h('strong', descPedido(pedidos[0]))));
+        itens = M.itensDosPedidos(pedidos.filter(function (c) { return usar[c.id]; }), ctx.equipamentos);
+        itens.forEach(function (x) { if (x.id in marcas) x.marcado = marcas[x.id]; });
+        const totalEl = h('strong');
+        const somar = function () {
+          const m = itens.filter(function (x) { return x.marcado; });
+          totalEl.textContent = U.brl(m.reduce(function (s, x) { return s + x.total; }, 0)) + ' · ' + m.length + (m.length === 1 ? ' item' : ' itens');
+        };
+        if (!itens.length) corpo.appendChild(h('p.ajuda-sec', 'Escolha ao menos um pedido.'));
+        else {
+          const tb = h('tbody');
+          itens.forEach(function (x) {
+            const cb = h('input', { type: 'checkbox', checked: x.marcado, 'aria-label': 'Levar para a lista' });
+            cb.addEventListener('change', function () { x.marcado = marcas[x.id] = cb.checked; tr.classList.toggle('desmarcado', !cb.checked); somar(); });
+            const tr = h('tr' + (x.marcado ? '' : '.desmarcado'),
+              h('td.lista-pedido-cb', cb),
+              h('td', h('strong', x.descricao), x.descricaoPedido !== x.descricao ? h('div.mini', 'No pedido: ' + x.descricaoPedido) : null, x.fora ? h('div.mini.aviso-txt', x.fora) : null),
+              h('td.num', { 'data-rotulo': 'Qtd.' }, U.fmtSmart(x.qtd, 3) + ' ' + x.unidade),
+              h('td.num', { 'data-rotulo': 'Custo final' }, U.brl(x.custo)),
+              h('td.num', { 'data-rotulo': 'Total' }, U.brl(x.total)));
+            tb.appendChild(tr);
+          });
+          corpo.appendChild(h('div.tabela-rolagem', h('table.tabela.compacta.lista-pedido-itens',
+            h('thead', h('tr', h('th', ''), h('th', 'Item'), h('th.num', 'Qtd.'), h('th.num', 'Custo final'), h('th.num', 'Total'))), tb)));
+          corpo.appendChild(h('p.lista-pedido-total', 'Vai para a lista: ', totalEl));
+          somar();
+        }
+      };
+      desenharModal();
+      const aplicar = function (substituir) {
+        if (!itens.some(function (x) { return x.marcado; })) { UI.toast('Marque ao menos um item.', 'erro'); return false; }
+        const antes = C.totalMateriaisCA(p.materiaisCA);
+        const r = M.aplicarPedidos(p.materiaisCA, itens, substituir);
+        aoAplicar();
+        const partes = [];
+        if (r.novos) partes.push(r.novos + (r.novos === 1 ? ' material acrescentado' : ' materiais acrescentados'));
+        if (r.atualizados) partes.push(r.atualizados + (r.atualizados === 1 ? ' atualizado' : ' atualizados'));
+        const depois = C.totalMateriaisCA(p.materiaisCA);
+        UI.toast((partes.join(' e ') || 'Lista atualizada') + ' pelo pedido de compra' + (Math.abs(depois - antes) >= 0.01 ? ' — infraestrutura CA de ' + U.brl(antes) + ' para ' + U.brl(depois) : '') + '.', 'ok');
+      };
+      const acoes = [{ label: 'Cancelar' }];
+      if (p.materiaisCA.length) acoes.push({ label: 'Atualizar e acrescentar', onClick: function () { return aplicar(false); } });
+      acoes.push({ label: p.materiaisCA.length ? 'Substituir a lista' : 'Preencher a lista', primario: true, onClick: function () { return aplicar(true); } });
+      if (p.materiaisCA.length) corpo.appendChild(h('p.ajuda-sec.lista-pedido-modos', h('strong', 'Atualizar e acrescentar: '), 'os materiais que já estão na lista recebem a quantidade e o custo do pedido; os que faltam são acrescentados; o resto fica como está. ',
+        h('strong', 'Substituir: '), 'a lista fica igual aos itens marcados.'));
+      UI.modal({ titulo: 'Lista de materiais CA pelo pedido de compra', largo: true, corpo: corpo, acoes: acoes });
     }
 
     function lucroComissao(c, soArmazenamento) {

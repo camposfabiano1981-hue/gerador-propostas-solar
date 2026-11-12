@@ -148,6 +148,90 @@ window.App = window.App || {};
     return novas.length;
   }
 
+  /* ------------------------------------------------------------ lista da proposta pelos pedidos de compra da obra */
+
+  /**
+   * Pedidos de compra de materiais da obra da proposta: ligados à proposta ou à instalação dela, com itens. Ficam de fora os
+   * cancelados e os pedidos do kit (o kit já entra nos itens da proposta).
+   */
+  function pedidosDaProposta(p, compras, instalacoes) {
+    if (!p || !p.id) return [];
+    const obras = {};
+    (instalacoes || []).forEach(function (i) { if (i && i.propostaId === p.id) obras[i.id] = true; });
+    return (compras || []).filter(function (c) {
+      if (!c || c.situacao === 'cancelado' || c.kitId || c.kitFechado) return false;
+      if (!(c.itens || []).some(function (it) { return chave(it.descricao) && U.num(it.qtd) > 0; })) return false;
+      return c.propostaId === p.id || (!!c.instalacaoId && !!obras[c.instalacaoId]);
+    }).sort(function (a, b) {
+      return String(a.data || '').localeCompare(String(b.data || '')) || String(a.numero || '').localeCompare(String(b.numero || ''), 'pt-BR', { numeric: true });
+    });
+  }
+
+  /** Item fora da infraestrutura CA (motivo): módulo, inversor, estrutura… ou material do kit solar (cabo solar, MC4). */
+  function foraDoCA(eq) {
+    if (!eq) return '';
+    if (eq.tipo !== 'material') {
+      const t = ((App.DEFAULTS && App.DEFAULTS.TIPOS_EQUIP) || []).find(function (x) { return x.id === eq.tipo; });
+      return (t ? t.label : 'Equipamento') + ': já entra nos itens da proposta';
+    }
+    if (!eq.infraCA && eq.autoIncluir) return 'Material do kit solar: já entra nos itens da proposta';
+    return '';
+  }
+
+  /**
+   * Itens dos pedidos com o custo final de aquisição (preço com a parte do desconto, do frete e das outras despesas). Os do cadastro
+   * levam a descrição e a unidade do cadastro; os fora da infraestrutura CA vêm desmarcados (fora: o motivo).
+   */
+  function itensDosPedidos(compras, equipamentos) {
+    const Cp = App.Compra, eqs = {};
+    (equipamentos || []).forEach(function (e) { eqs[e.id] = e; });
+    const l = [];
+    (compras || []).forEach(function (c) {
+      (c.itens || []).forEach(function (it) {
+        const q = U.num(it.qtd);
+        if (!chave(it.descricao) || !(q > 0)) return;
+        const eq = it.equipamentoId ? eqs[it.equipamentoId] : null;
+        const fora = foraDoCA(eq);
+        const custo = Cp.custoUnitario(c, it, true);
+        l.push({
+          id: c.id + ':' + it.id, compraId: c.id, equipamentoId: eq ? eq.id : '', descricao: eq && eq.descricao ? eq.descricao : String(it.descricao).trim(),
+          descricaoPedido: String(it.descricao).trim(), unidade: (eq && eq.unidade) || Cp.unidade(it.unidade) || it.unidade || 'un',
+          qtd: q, custo: custo, total: U.round(q * custo, 2), fora: fora, marcado: !fora
+        });
+      });
+    });
+    return l;
+  }
+
+  /**
+   * Leva os itens marcados para a lista da proposta com a quantidade e o custo do pedido (o mesmo material em mais de um pedido:
+   * quantidades somadas, custo médio). substituir: a lista fica igual aos pedidos; senão as linhas do mesmo material recebem a
+   * quantidade e o custo do pedido, os que faltam são acrescentados e o resto da lista fica como está. Devolve {novos, atualizados}.
+   */
+  function aplicarPedidos(destino, itens, substituir) {
+    const grupos = [];
+    (itens || []).filter(function (x) { return x.marcado; }).forEach(function (x) {
+      const g = grupos.find(function (y) { return mesma(y, x); });
+      if (g) { g.qtd = U.round(g.qtd + x.qtd, 4); g.valor += x.qtd * x.custo; } else grupos.push({ equipamentoId: x.equipamentoId, descricao: x.descricao, unidade: x.unidade, qtd: x.qtd, valor: x.qtd * x.custo });
+    });
+    if (substituir) destino.splice(0, destino.length);
+    const r = { novos: 0, atualizados: 0 };
+    grupos.forEach(function (g) {
+      const custo = U.round(g.qtd > 0 ? g.valor / g.qtd : 0, 4);
+      const ex = destino.find(function (m) { return mesma(m, g); });
+      if (ex) {
+        ex.qtd = g.qtd; ex.custo = custo; ex.origem = 'compra';
+        if (!ex.unidade) ex.unidade = g.unidade;
+        if (!ex.equipamentoId && g.equipamentoId) { ex.equipamentoId = g.equipamentoId; ex.descricao = g.descricao; }
+        r.atualizados++;
+      } else {
+        destino.push(linha({ equipamentoId: g.equipamentoId, descricao: g.descricao, unidade: g.unidade, qtd: g.qtd, custo: custo, origem: 'compra' }));
+        r.novos++;
+      }
+    });
+    return r;
+  }
+
   /* ------------------------------------------------------------ editor (proposta e instalação) */
 
   function unidades(atual) {
@@ -187,7 +271,7 @@ window.App = window.App || {};
     function linhaTabela(m, i) {
       const totalCel = h('td.num.materiais-subtotal');
       const atualizarTotal = function () { totalCel.textContent = U.brl(U.numOr(m.qtd, 0) * U.numOr(m.custo, 0)); totais(); };
-      const origem = h('small.materiais-origem', [m.equipamentoId ? 'do cadastro' : 'digitado', naObra && m.origem === 'compra' ? 'pedido de compra' : '', naObra && m.origem === 'proposta' ? 'da proposta' : ''].filter(Boolean).join(' · '));
+      const origem = h('small.materiais-origem', [m.equipamentoId ? 'do cadastro' : 'digitado', m.origem === 'compra' ? 'pedido de compra' : '', naObra && m.origem === 'proposta' ? 'da proposta' : ''].filter(Boolean).join(' · '));
       const nome = h('input', {
         type: 'text', value: m.descricao || '', list: idLista, placeholder: mats.length ? 'Digite ou escolha do cadastro' : 'Descrição do material', 'aria-label': 'Material', autocomplete: 'off',
         oninput: function () { m.descricao = nome.value; avisar(); },
@@ -196,6 +280,7 @@ window.App = window.App || {};
           if (eq) {
             const outro = eq.id !== m.equipamentoId;
             m.equipamentoId = eq.id; m.descricao = eq.descricao; m.unidade = eq.unidade || 'un';
+            if (outro && m.origem === 'compra') delete m.origem;
             if (outro || !(U.num(m.custo) > 0)) m.custo = custoDe(eq);
           } else m.equipamentoId = '';
           desenhar();
@@ -260,6 +345,7 @@ window.App = window.App || {};
 
   App.Materiais = {
     custoDe: custoDe, linha: linha, linhaDe: linhaDe, opcoes: opcoes, total: total, atualizarCustos: atualizarCustos, mesma: mesma,
-    daProposta: daProposta, puxarProposta: puxarProposta, lancarCompra: lancarCompra, resumo: resumo, fontes: fontes, copiar: copiar, editor: editor
+    daProposta: daProposta, puxarProposta: puxarProposta, lancarCompra: lancarCompra, resumo: resumo, fontes: fontes, copiar: copiar,
+    pedidosDaProposta: pedidosDaProposta, foraDoCA: foraDoCA, itensDosPedidos: itensDosPedidos, aplicarPedidos: aplicarPedidos, editor: editor
   };
 })(window.App);

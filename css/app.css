@@ -896,3 +896,21 @@ td.num.saida { color: var(--vermelho); }
   .receb-modal td { display: block; padding: 0 !important; border: 0; width: auto !important; }
   .receb-modal td[data-rotulo]::before { content: attr(data-rotulo); display: block; font-size: 11px; color: var(--muted); }
 }
+
+/* lista de materiais CA pelo pedido de compra da obra */
+.lista-pedido-compras { display: grid; gap: 6px; margin: 4px 0 10px; }
+.lista-pedido-compras label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.lista-pedido-um { margin: 4px 0 10px; }
+.lista-pedido-itens td.lista-pedido-cb { width: 32px; text-align: center; }
+.lista-pedido-itens tr.desmarcado td:not(.lista-pedido-cb) { opacity: .5; }
+.lista-pedido-total { text-align: right; margin: 8px 0 4px; }
+.lista-pedido-modos { margin-top: 10px; }
+@media (max-width: 640px) {
+  .lista-pedido-itens, .lista-pedido-itens tbody { display: block; }
+  .lista-pedido-itens thead { display: none; }
+  .lista-pedido-itens tr { display: grid; grid-template-columns: 32px repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--borda); }
+  .lista-pedido-itens td { display: block; padding: 0 !important; border: 0; text-align: left !important; }
+  .lista-pedido-itens td.lista-pedido-cb { grid-row: span 2; width: auto; }
+  .lista-pedido-itens td:nth-child(2) { grid-column: 2 / -1; }
+  .lista-pedido-itens td[data-rotulo]::before { content: attr(data-rotulo); display: block; font-size: 11px; color: var(--muted); }
+}

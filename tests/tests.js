@@ -1062,6 +1062,50 @@
     M.copiar(destino, fts[0], ctxM.equipamentos, true);
     ok('materiais CA: copiar substituindo a lista', destino.length === 2 && destino[0].qtd === 8);
 
+    // lista da proposta pelos pedidos de compra da obra (ligados à proposta ou à instalação dela)
+    const eqMod = { id: 'mod-x', tipo: 'modulo', descricao: 'Módulo 610 W', ativo: true };
+    const eqMc4 = { id: 'mat-mc4x', tipo: 'material', descricao: 'Conector MC4', unidade: 'par', autoIncluir: true, ativo: true };
+    const eqsPd = ctxM.equipamentos.concat([eqMod, eqMc4]);
+    const pPd = { id: 'prop-pd', infraModo: 'lista', materiaisCA: [] };
+    const instPd = { id: 'inst-pd', propostaId: 'prop-pd' };
+    const pd1 = Object.assign(Cp.nova(), { id: 'pd-1', numero: 'PC-20261105-001', data: '2026-11-05', situacao: 'recebido', instalacaoId: 'inst-pd', desconto: 4.15,
+      itens: [Cp.novoItem({ descricao: 'DPS CLAMPER 275V', qtd: 2, preco: 50, total: 100, equipamentoId: 'mat-dps' }), Cp.novoItem({ descricao: 'Eletroduto 3/4 barra', unidade: 'BR', qtd: 3, preco: 12, total: 36 }),
+        Cp.novoItem({ descricao: 'Módulo 610W', qtd: 1, preco: 600, total: 600, equipamentoId: 'mod-x' }), Cp.novoItem({ descricao: 'MC4', qtd: 2, preco: 10, total: 20, equipamentoId: 'mat-mc4x' }),
+        Cp.novoItem({ descricao: '', qtd: 1, total: 5 })] });
+    const pd2 = Object.assign(Cp.nova(), { id: 'pd-2', numero: 'PC-20261102-004', data: '2026-11-02', situacao: 'pedido', propostaId: 'prop-pd',
+      itens: [Cp.novoItem({ descricao: 'DPS 275V', qtd: 1, preco: 70, total: 70, equipamentoId: 'mat-dps' })] });
+    const pdComp = [pd1, pd2,
+      Object.assign(Cp.nova(), { id: 'pd-c', situacao: 'cancelado', propostaId: 'prop-pd', itens: [Cp.novoItem({ descricao: 'X', qtd: 1, total: 1 })] }),
+      Object.assign(Cp.nova(), { id: 'pd-k', situacao: 'recebido', propostaId: 'prop-pd', kitId: 'kit-1', kitFechado: true, itens: [Cp.novoItem({ descricao: 'Kit', qtd: 1, total: 9000 })] }),
+      Object.assign(Cp.nova(), { id: 'pd-o', situacao: 'recebido', instalacaoId: 'outra-obra', itens: [Cp.novoItem({ descricao: 'Y', qtd: 1, total: 1 })] }),
+      Object.assign(Cp.nova(), { id: 'pd-v', situacao: 'pedido', propostaId: 'prop-pd', itens: [] })];
+    const pdsP = M.pedidosDaProposta(pPd, pdComp, [instPd]);
+    ok('materiais CA × compras: pedidos da proposta e da obra dela (sem cancelado, kit, outra obra e pedido vazio), por data', pdsP.map(function (c) { return c.id; }).join() === 'pd-2,pd-1',
+      pdsP.map(function (c) { return c.id; }).join());
+    ok('materiais CA × compras: proposta não gravada não tem pedidos', M.pedidosDaProposta({ infraModo: 'lista' }, pdComp, [instPd]).length === 0);
+    const itsPd = M.itensDosPedidos(pdsP, eqsPd);
+    const itDps1 = itsPd.find(function (x) { return x.id === 'pd-1:' + pd1.itens[0].id; }), itEl = itsPd.find(function (x) { return x.descricaoPedido === 'Eletroduto 3/4 barra'; });
+    const itMod = itsPd.find(function (x) { return x.equipamentoId === 'mod-x'; }), itMc4 = itsPd.find(function (x) { return x.equipamentoId === 'mat-mc4x'; });
+    ok('materiais CA × compras: itens com o custo final (desconto rateado) e a descrição do cadastro', itsPd.length === 5 && itDps1.descricao === 'DPS 275V 45kA' && itDps1.descricaoPedido === 'DPS CLAMPER 275V' &&
+      itDps1.custo === Cp.custoUnitario(pd1, pd1.itens[0], true) && itDps1.custo < 50 && itEl.unidade === 'br' && itDps1.unidade === 'pç' && itEl.equipamentoId === '' && itEl.marcado, JSON.stringify(itsPd));
+    ok('materiais CA × compras: módulo e material do kit solar vêm desmarcados (já entram nos itens da proposta)', !itMod.marcado && /Módulos FV/.test(itMod.fora) && !itMc4.marcado && /kit solar/.test(itMc4.fora) &&
+      M.foraDoCA(matCA) === '' && M.foraDoCA(null) === '' && M.foraDoCA(Object.assign({}, eqMc4, { infraCA: true })) === '');
+    const lPd = [];
+    const r1 = M.aplicarPedidos(lPd, itsPd, true);
+    const lDps = lPd.find(function (m) { return m.equipamentoId === 'mat-dps'; });
+    const custoMedio = U.round((2 * itDps1.custo + 70) / 3, 4);
+    ok('materiais CA × compras: preencher a lista (mesmo material em dois pedidos: quantidade somada e custo médio)', r1.novos === 2 && r1.atualizados === 0 && lPd.length === 2 && lDps.qtd === 3 && lDps.custo === custoMedio &&
+      lDps.origem === 'compra' && lPd[1].descricao === 'Eletroduto 3/4 barra' && lPd[1].qtd === 3, JSON.stringify(lPd));
+    const lAt = [M.linhaDe(matCA, 10), M.linha({ descricao: 'eletroduto 3/4  BARRA', unidade: 'un', qtd: 1, custo: 1 }), M.linhaDe(matCabo, 25)];
+    const r2 = M.aplicarPedidos(lAt, itsPd, false);
+    ok('materiais CA × compras: atualizar e acrescentar (o mesmo material recebe a quantidade e o custo do pedido; o resto fica)', r2.atualizados === 2 && r2.novos === 0 && lAt.length === 3 &&
+      lAt[0].qtd === 3 && lAt[0].custo === custoMedio && lAt[0].unidade === 'pç' && lAt[1].qtd === 3 && lAt[1].custo === itEl.custo && lAt[1].unidade === 'un' && lAt[2].qtd === 25 && lAt[2].custo === 7, JSON.stringify(lAt));
+    itMod.marcado = true;
+    const lSub = [M.linhaDe(matCabo, 25)];
+    M.aplicarPedidos(lSub, itsPd, true);
+    ok('materiais CA × compras: substituir deixa a lista igual aos itens marcados', lSub.length === 3 && !lSub.some(function (m) { return m.equipamentoId === 'mat-cabo-ca'; }) && lSub.some(function (m) { return m.equipamentoId === 'mod-x'; }) &&
+      C.totalMateriaisCA(lSub) === U.round(lSub.reduce(function (s, m) { return s + m.qtd * m.custo; }, 0), 2));
+
     // rateio do frete, das outras despesas e do desconto por item (custo final)
     const pr = Object.assign(Cp.nova(), { desconto: 20, frete: 30, outras: 10, itens: [Cp.novoItem({ descricao: 'A', qtd: 4, preco: 75, total: 300 }), Cp.novoItem({ descricao: 'B', qtd: 10, preco: 10, total: 100 })] });
     const ra = Cp.rateio(pr, pr.itens[0]), rb = Cp.rateio(pr, pr.itens[1]);
