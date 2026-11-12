@@ -74,11 +74,26 @@
   const r = C.calcular(p, ctx);
   igual('módulos sugeridos', r.nModulosSugerido, 9);
   perto('kWp', r.kwp, 5.625, 1e-9);
-  igual('geração mensal', U.fmt(r.geracaoMensal, 0), '702');
+  // mês médio de 365 ÷ 12 dias: geração mensal = anual ÷ 12 (antes, 30 dias: 702)
+  igual('geração mensal', U.fmt(r.geracaoMensal, 0), '712');
+  perto('geração mensal × 12 = anual', r.geracaoMensal * 12, r.geracaoAnual, 1e-9);
   igual('geração anual', U.fmt(r.geracaoAnual, 0), '8.541');
   igual('FDG (Pcc/Pca)', U.fmt(r.fdg, 3), '1,406');
   ok('FDG acima da faixa (inversor subdimensionado)', !r.fdgOk && r.alertas.some(function (x) { return /FDG \(Pcc\/Pca\) 1,406 .*subdimensionado/.test(x.msg); }));
-  igual('cobertura', U.fmt(r.cobertura * 100, 1), '108,0');
+  igual('cobertura', U.fmt(r.cobertura * 100, 1), '109,5');
+  // auditoria do dimensionamento: módulos que dão a mesma conta, potência instalada, strings desiguais e demanda contratada
+  ok('on-grid: 8 módulos dariam a mesma conta no 1º ano (prevalece o custo de disponibilidade)', r.modulosMesmaConta === 8 && r.alertas.some(function (x) { return x.nivel === 'info' && /Com 8 módulos a conta do 1º ano seria a mesma/.test(x.msg); }));
+  (function () {
+    const ctxA = ctxReferencia();
+    ctxA.equipamentos.push({ id: 'aud-mod', tipo: 'modulo', ativo: true, fabricante: 'M', modelo: 'A', potencia: 620, voc: 48.5, vmp: 40.24, isc: 16.26, coefVoc: -0.25, coefPmax: -0.30, area: 2.7 },
+      { id: 'aud-inv', tipo: 'inversor', ativo: true, fabricante: 'I', modelo: '8K', potencia: 8, fases: 'Monofásico', vmaxCC: 600, mpptMin: 90, mpptMax: 560, mppts: 1 });
+    const rA = C.calcular(Object.assign(propostaReferencia(ctxA), { ligacao: 'mono', consumoMedio: 1000, moduloId: 'aud-mod', inversorId: 'aud-inv', valorTotal: 30000 }), ctxA);
+    ok('potência instalada = menor entre módulos e inversores (8,06 kWp com inversor de 8 kW não passa do limite mono)', rA.potInstalada === 8 && !rA.alertas.some(function (x) { return /acima do limite de referência/.test(x.msg); }));
+    ok('strings de tamanhos diferentes em paralelo no mesmo MPPT: aviso', rA.strings.desiguais && rA.alertas.some(function (x) { return /strings de tamanhos diferentes \(1 × 7 e 1 × 6 módulos\) para 1 MPPT/.test(x.msg); }));
+    perto('Vmp no calor pelo coeficiente de Pmáx', C.vmpQuente(ctxA.equipamentos.find(function (e) { return e.id === 'aud-mod'; }), rA.premissas), 40.24 * (1 - 0.003 * 45), 1e-9);
+    const rV = C.calcular(Object.assign(propostaReferencia(ctxA), { ligacao: 'tri', modalidade: 'verde', consumoPonta: 1500, consumoForaPonta: 13500, demandaContratada: 60, tarifaPonta: 2.6, tarifaForaPonta: 0.52, tarifaDemanda: 38, inversorId: '', valorTotal: 350000 }), ctxA);
+    ok('grupo A: potência instalada acima da demanda contratada gera aviso', rV.potInstalada > 60 && rV.alertas.some(function (x) { return /acima da demanda contratada \(60 kW\)/.test(x.msg); }), rV.alertas.map(function (x) { return x.msg; }).join(' | '));
+  })();
   igual('área', U.fmt(r.area, 0), '25');
   perto('mão de obra', r.maoObra, 3022.92);
   igual('tecnologia', r.tecnologia, 'DMEGC 625W Bifacial + Sofar 4kW');
@@ -202,7 +217,7 @@
   const rG4 = C.calcular(Object.assign(U.clone(pG), { cenarioEscolhido: 'ponta', cenarios: { ponta: { n: 4 } } }), ctxG);
   ok('ciclagem 4 baterias: utilização abaixo de 70% e sugestão de 3 baterias', rG4.balanco.utilizacao < 0.7 &&
     rG4.alertas.some(function (x) { return x.nivel === 'aviso' && /bastam 3 bateria/.test(x.msg); }), rG4.alertas.map(function (x) { return x.msg; }).join(' | '));
-  ok('ciclagem 4 baterias: mais perdas → mais módulos sugeridos', rG4.nModulosSugerido > rGc.nModulosSugerido, rG4.nModulosSugerido + ' × ' + rGc.nModulosSugerido);
+  ok('ciclagem 4 baterias: mais perdas → mais potência necessária', rG4.kwpNecessario > rGc.kwpNecessario && rG4.nModulosSugerido >= rGc.nModulosSugerido, rG4.kwpNecessario + ' × ' + rGc.kwpNecessario);
   const ctxG0 = U.clone(ctxG);
   ctxG0.premissas.hibrido.consumoProprioW = 0;
   const pBig = Object.assign(U.clone(pG), { consumoMedio: 1000, nModulos: 9, cenarioEscolhido: 'backup' });

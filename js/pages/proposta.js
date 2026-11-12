@@ -898,6 +898,7 @@
           linhaInfo('Geração mensal', U.fmt(r.geracaoMensal, 0) + ' kWh/mês'),
           linhaInfo('Geração anual (ano 1)', U.fmt(r.geracaoAnual, 0) + ' kWh'),
           linhaInfo('Cobertura do consumo', U.fmt(r.cobertura * 100, 1) + '%'),
+          r.modulosMesmaConta ? linhaInfo('Mesma conta no 1º ano com', r.modulosMesmaConta + ' módulos (custo de disponibilidade)') : null,
           linhaInfo('Área aproximada', '~' + U.fmt(r.area, 0) + ' m²')
         ];
         if (r.strings) {

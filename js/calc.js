@@ -306,7 +306,9 @@ window.App = window.App || {};
 
   /** Vmp do módulo no calor (V), pelo coeficiente de Voc e a temperatura máxima da célula; sem coeficiente, o Vmp nominal. */
   C.vmpQuente = function (m, prem) {
-    const coef = U.num(m && m.coefVoc);
+    // o Vmp cai com a temperatura quase como a potência: usa o coeficiente de Pmáx quando cadastrado; senão o de Voc
+    const cp = U.num(m && m.coefPmax);
+    const coef = isFinite(cp) && cp !== 0 ? cp : U.num(m && m.coefVoc);
     if (isFinite(coef) && coef !== 0) return m.vmp * (1 - Math.abs(coef) / 100 * (U.numOr(prem.tempMaxCelula, 70) - 25));
     return m.vmp;
   };
@@ -729,12 +731,13 @@ window.App = window.App || {};
     const dimExtra = p._dimExtra || { proprio: r.hibridoAtivo && r.permiteFV ? C.kwhMes(prem.hibrido.consumoProprioW) : 0, perdas: 0 };
     r.dimensionamento = { consumo: r.consumoMedio, proprio: dimExtra.proprio, perdas: dimExtra.perdas };
     r.consumoDimensionamento = r.consumoMedio + dimExtra.proprio + dimExtra.perdas;
-    r.kwpNecessario = r.permiteFV && r.hsp > 0 ? r.consumoDimensionamento / (r.hsp * 30 * prem.pr) : 0;
+    // mês médio de 365 ÷ 12 dias: a geração mensal é a anual ÷ 12 (o HSP é a média diária do ano)
+    r.kwpNecessario = r.permiteFV && r.hsp > 0 ? r.consumoDimensionamento / (r.hsp * C.DIAS_MES_MEDIO * prem.pr) : 0;
     r.nModulosSugerido = wp > 0 ? Math.ceil((r.kwpNecessario * 1000) / wp - 1e-9) : 0;
     r.nModulos = !r.permiteFV ? 0 : (pos(p.nModulos) ? Math.round(U.num(p.nModulos)) : r.nModulosSugerido);
     r.kwp = (r.nModulos * wp) / 1000;
-    r.geracaoMensal = r.kwp * r.hsp * 30 * prem.pr;
     r.geracaoAnual = r.kwp * r.hsp * 365 * prem.pr;
+    r.geracaoMensal = r.geracaoAnual / 12;
     r.geracaoMeses = r.fatores.map(function (f) { return r.geracaoMensal * f; });
     r.cobertura = r.consumoMedio > 0 ? r.geracaoMensal / r.consumoMedio : 0;
     r.areaModulo = C.areaModulo(modulo) || prem.areaModulo;
@@ -862,8 +865,17 @@ window.App = window.App || {};
         alerta('aviso', 'Tensão da string (' + U.fmt(menorStr * vmpCalor, 0) + ' V' + (vmpCalor !== modulo.vmp ? ' com a célula a ' + U.fmt(U.numOr(prem.tempMaxCelula, 70), 0) + ' °C' : '') +
           ') abaixo da faixa MPPT mínima do inversor (' + inv.mpptMin + ' V).');
       }
-      if (pos(inv.mpptMax) && pos(modulo.vmp) && porStr * modulo.vmp > inv.mpptMax + 1e-9) {
-        alerta('aviso', 'Tensão da string (' + U.fmt(porStr * modulo.vmp, 0) + ' V) acima da faixa MPPT máxima do inversor (' + inv.mpptMax + ' V). Use mais strings, mais curtas.');
+      // Vmp no frio (sobe na mesma proporção do Voc) × faixa MPPT máxima
+      const vmpFrio = pos(modulo.vmp) ? modulo.vmp * vocFrio / modulo.voc : 0;
+      if (pos(inv.mpptMax) && vmpFrio && porStr * vmpFrio > inv.mpptMax + 1e-9) {
+        alerta('aviso', 'Tensão da string no frio (' + U.fmt(porStr * vmpFrio, 0) + ' V) acima da faixa MPPT máxima do inversor (' + inv.mpptMax + ' V). Use mais strings, mais curtas.');
+      }
+      // strings em paralelo no mesmo MPPT precisam ter a mesma quantidade de módulos
+      const nMaiores = r.nModulos - menorStr * nStr, nMenores = nStr - nMaiores;
+      st.desiguais = porStr !== menorStr;
+      if (st.desiguais && porMppt > 1 && ((nMaiores % porMppt) !== 0 || (nMenores % porMppt) !== 0) && nStr > totMppt) {
+        alerta('aviso', nStr + ' strings de tamanhos diferentes (' + nMaiores + ' × ' + porStr + ' e ' + nMenores + ' × ' + menorStr + ' módulos) para ' + totMppt + ' MPPT: strings em paralelo no mesmo MPPT ' +
+          'devem ter a mesma quantidade de módulos. Ajuste o número de módulos (ex.: ' + (menorStr * nStr) + ' ou ' + (porStr * nStr) + ') ou use um inversor com mais MPPTs.');
       }
       if (pos(inv.vPartida) && menorStr * modulo.voc < inv.vPartida) {
         alerta('aviso', 'Voc da string (' + U.fmt(menorStr * modulo.voc, 0) + ' V) abaixo da tensão de partida do inversor (' + inv.vPartida + ' V).');
@@ -871,9 +883,18 @@ window.App = window.App || {};
     }
 
     const limite = U.num(prem.limiteKwp && prem.limiteKwp[r.ligacao]);
-    if (r.grupo === 'B' && isFinite(limite) && limite > 0 && r.kwp > limite) {
-      alerta('aviso', 'Potência de ' + U.kwp(r.kwp) + ' kWp acima do limite de referência para ligação ' + C.LIG_ADJ[r.ligacao] +
-        ' (' + U.fmtSmart(limite, 1) + ' kWp). Pode ser necessária adequação do padrão de entrada (não inclusa).');
+    // potência instalada (REN 1.000/2021): o menor valor entre a potência dos módulos e a dos inversores
+    r.potInstalada = r.potInversores > 0 ? Math.min(r.kwp, r.potInversores) : r.kwp;
+    if (r.grupo === 'A' && r.demanda && r.potInstalada > 0) {
+      const contr = r.modalidade.id === 'verde' ? r.demanda.contr : Math.max(r.demanda.contrP || 0, r.demanda.contrFP || 0);
+      if (contr > 0 && r.potInstalada > contr + 1e-9) {
+        alerta('aviso', 'Potência instalada de ' + U.fmtSmart(r.potInstalada, 2) + ' kW acima da demanda contratada (' + U.fmtSmart(contr, 1) + ' kW): a geração fica limitada à potência disponibilizada ' +
+          '(REN 1.000/2021). Preveja o aumento da demanda contratada ou limite a potência dos inversores.');
+      }
+    }
+    if (r.grupo === 'B' && isFinite(limite) && limite > 0 && r.potInstalada > limite) {
+      alerta('aviso', 'Potência instalada de ' + U.fmtSmart(r.potInstalada, 2) + ' kW (' + U.kwp(r.kwp) + ' kWp de módulos) acima do limite de referência para ligação ' + C.LIG_ADJ[r.ligacao] +
+        ' (' + U.fmtSmart(limite, 1) + ' kW). Pode ser necessária adequação do padrão de entrada (não inclusa).');
     }
     if (r.consumoMedio > 0 && r.kwp > 0) {
       if (r.cobertura < 0.9) alerta('info', 'Geração cobre ' + U.fmt(r.cobertura * 100, 1) + '% do consumo médio.');
@@ -1259,6 +1280,26 @@ window.App = window.App || {};
       if (r.fin.paybackSimples == null) alerta('aviso', 'O investimento não se paga dentro do horizonte de análise.');
     }
 
+    // on-grid no grupo B: menor nº de módulos que dá a mesma conta no ano 1 (acima dele prevalece o custo de disponibilidade)
+    r.modulosMesmaConta = null;
+    if (tipo === 'ongrid' && r.grupo === 'B' && escolhido && escolhido.fin && r.nModulos > 1 && wp > 0 && tarifasOk) {
+      const a1 = escolhido.fin.anos[0];
+      const contaCom = function (n) {
+        const gm = n * wp / 1000 * r.hsp * 365 * prem.pr / 12;
+        const ap = E.aplicar(r.tarifas, cp, r.demanda, { G: gm, s: r.simultaneidade }, null);
+        return E.conta(r.tarifas, ap.c, ap.d, { cosip: r.cosip, disp: r.disponibilidade, compensada: ap.compensada, fioBTarifa: r.tusdFioB * C.pctFioB(anoBase, prem), regra: prem.regraDisponibilidade }, prem).total;
+      };
+      let nMin = r.nModulos;
+      while (nMin > 1 && contaCom(nMin - 1) <= a1.contaCom + 0.5) nMin--;
+      if (a1.minimo && nMin < r.nModulos) {
+        r.modulosMesmaConta = nMin;
+        const a10 = escolhido.fin.anos[Math.min(9, escolhido.fin.anos.length - 1)];
+        alerta('info', 'Com ' + nMin + ' módulos a conta do 1º ano seria a mesma (' + U.brl(a1.contaCom) + '/mês): acima disso prevalece o custo de disponibilidade (' + r.disponibilidade +
+          ' kWh). ' + (r.nModulos - nMin === 1 ? 'O módulo a mais forma' : 'Os ' + (r.nModulos - nMin) + ' módulos a mais formam') + ' créditos e folga para a degradação e o aumento de consumo' +
+          (a10 && !a10.minimo ? '' : ', sem reduzir a conta') + '.');
+      }
+    }
+
     // faixa da conta com sistema no ano 1 (sazonalidade da geração e do consumo, créditos transportados)
     r.contasMes = null;
     const cm = escolhido && escolhido.fin && escolhido.fin.contasMes1;
@@ -1305,6 +1346,7 @@ window.App = window.App || {};
   };
 
   C.DIAS_MES = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  C.DIAS_MES_MEDIO = 365 / 12;
 
   /**
    * Balanço diário do banco num cenário que cicla a bateria (energia entregue por dia ÷ capacidade disponível acima da
