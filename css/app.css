@@ -923,3 +923,8 @@ td.num.saida { color: var(--vermelho); }
 .coord-modal input { width: 100%; min-height: 40px; border: 1px solid var(--borda-forte); border-radius: 8px; padding: 6px 10px; font-size: 15px; }
 .coord-prev { margin: 8px 0 0; font-size: 14px; }
 .coord-prev.erro { color: var(--vermelho); }
+.coord-situacao { margin: 0; font-size: 13px; }
+.coord-situacao:empty { display: none; }
+.coord-situacao.erro { color: var(--vermelho); }
+.coord-situacao.aviso { color: var(--ambar); }
+.coord-situacao.ok { color: var(--verde); }

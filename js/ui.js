@@ -89,13 +89,14 @@ window.App = window.App || {};
 
   /* ------------------------------------------------------------ avisos e diálogos */
 
-  UI.toast = function (msg, tipo) {
+  UI.toast = function (msg, tipo, ms) {
     let box = document.getElementById('toasts');
     if (!box) { box = h('div#toasts'); document.body.appendChild(box); }
     const t = h('div.toast' + (tipo ? '.' + tipo : ''), { role: 'status' }, msg);
     box.appendChild(t);
-    setTimeout(function () { t.classList.add('saindo'); }, 3200);
-    setTimeout(function () { t.remove(); }, 3700);
+    const dur = ms || 3200;
+    setTimeout(function () { t.classList.add('saindo'); }, dur);
+    setTimeout(function () { t.remove(); }, dur + 500);
   };
 
   /** o: {titulo, corpo, largo, acoes: [{label, primario, perigo, onClick(fechar), manterAberto}], aoFechar} */

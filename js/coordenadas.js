@@ -126,23 +126,68 @@ window.App = window.App || {};
 
   /* ------------------------------------------------------------ ruas do croqui (OpenStreetMap) */
 
-  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  // servidores públicos do Overpass (OpenStreetMap): o principal e espelhos — quando um está ocupado ou fora, outro responde
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  const NOMINATIM = 'https://nominatim.openstreetmap.org/reverse';
+  const ESPERA = 6000;   // sem resposta do servidor em 6 s, o próximo entra na corrida
   const FORA = ['footway', 'path', 'cycleway', 'steps', 'pedestrian', 'track', 'bridleway', 'corridor', 'platform', 'proposed', 'construction', 'elevator', 'via_ferrata'];
 
-  /** Vias com nome num raio de `raio` m (Overpass do OpenStreetMap, com o desenho de cada via). */
-  async function vias(lat, lon, raio) {
-    const q = '[out:json][timeout:20];way(around:' + (raio || 300) + ',' + lat.toFixed(6) + ',' + lon.toFixed(6) + ')["highway"]["name"];out tags geom;';
-    let erro = null;
-    for (let i = 0; i < OVERPASS.length; i++) {
-      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const t = ctl ? setTimeout(function () { ctl.abort(); }, 25000) : null;
-      try {
-        const r = await fetch(OVERPASS[i], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), signal: ctl ? ctl.signal : undefined });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return await r.json();
-      } catch (e) { erro = e; } finally { if (t) clearTimeout(t); }
-    }
-    throw new Error('Não foi possível consultar o mapa (OpenStreetMap)' + (erro && /HTTP 429/.test(erro.message) ? ': muitas consultas, tente em 1 minuto.' : '. Sem internet?'));
+  function host(u) { try { return new URL(u).hostname; } catch (e) { return String(u); } }
+
+  /** GET com tempo limite; o erro diz o motivo (HTTP 429, tempo esgotado, sem resposta). */
+  async function pedir(url, ms) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: ctl ? ctl.signal : undefined });
+      if (!r.ok) throw new Error('HTTP ' + r.status + (r.status === 429 ? ' (muitas consultas)' : r.status === 504 || r.status === 503 ? ' (servidor ocupado)' : ''));
+      return await r.json();
+    } catch (e) {
+      throw new Error(e && e.name === 'AbortError' ? 'tempo esgotado' : (e && /^HTTP/.test(e.message) ? e.message : (e instanceof SyntaxError ? 'resposta inválida' : 'sem resposta (bloqueado ou fora do ar)')));
+    } finally { if (t) clearTimeout(t); }
+  }
+
+  function erroMapa(falhas) {
+    const off = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const e = new Error(off ? 'O aparelho está sem internet.' : 'O mapa (OpenStreetMap) não respondeu agora — ' + falhas.join('; ') + '. Tente de novo em instantes.');
+    e.falhas = falhas;
+    return e;
+  }
+
+  /**
+   * Vias com nome num raio de `raio` m, com o desenho de cada uma (Overpass). Corrida escalonada: começa pelo servidor principal e,
+   * sem resposta em 6 s (ou se ele falhar), o próximo espelho entra; vale a primeira resposta válida.
+   */
+  function vias(lat, lon, raio) {
+    const q = '[out:json][timeout:25];way(around:' + (raio || 300) + ',' + lat.toFixed(6) + ',' + lon.toFixed(6) + ')["highway"]["name"];out geom;';
+    return new Promise(function (res, rej) {
+      const falhas = [];
+      let feito = false, prox = 0, timer = null;
+      function lancar() {
+        if (feito || prox >= OVERPASS.length) return;
+        const base = OVERPASS[prox++];
+        clearTimeout(timer); timer = setTimeout(lancar, ESPERA);
+        pedir(base + '?data=' + encodeURIComponent(q), 30000).then(function (j) {
+          if (feito) return;
+          if (!j || !Array.isArray(j.elements)) throw new Error('resposta inválida');
+          if (!j.elements.length && j.remark) throw new Error('servidor ocupado');
+          feito = true; clearTimeout(timer); res(j);
+        }).catch(function (e) {
+          if (feito) return;
+          falhas.push(host(base) + ': ' + e.message);
+          if (falhas.length === OVERPASS.length) { feito = true; clearTimeout(timer); rej(erroMapa(falhas)); } else if (falhas.length >= prox) lancar();
+        });
+      }
+      lancar();
+    });
+  }
+
+  /** Só a rua do ponto (Nominatim, o endereço do OpenStreetMap), quando o Overpass não responde. */
+  async function ruaDoPonto(lat, lon) {
+    const j = await pedir(NOMINATIM + '?format=jsonv2&zoom=17&addressdetails=1&accept-language=pt-BR&lat=' + lat.toFixed(6) + '&lon=' + lon.toFixed(6), 15000);
+    const a = (j && j.address) || {};
+    return String(a.road || a.pedestrian || a.residential || '').trim();
   }
 
   function chave(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
@@ -236,7 +281,16 @@ window.App = window.App || {};
 
   /** Ruas do croqui pelas coordenadas: consulta o OpenStreetMap e escolhe a da UC, as transversais e a de trás. */
   async function buscarRuas(lat, lon) {
-    return ruasDoCroqui(await vias(lat, lon, 300), lat, lon);
+    try {
+      return ruasDoCroqui(await vias(lat, lon, 300), lat, lon);
+    } catch (e) {
+      // o serviço das vias não respondeu: pelo menos a rua da UC, pelo endereço do ponto
+      let uc = '';
+      try { uc = await ruaDoPonto(lat, lon); } catch (e2) { if (e.falhas) e.falhas.push('nominatim.openstreetmap.org: ' + e2.message); }
+      if (uc) return { uc: uc, r2: '', r3: '', r4: '', distUc: null, lista: [], parcial: e.message };
+      if (e.falhas) throw erroMapa(e.falhas);
+      throw e;
+    }
   }
 
   /** Lista de fusos para a seleção: os de MS e vizinhos e o que estiver gravado (ex.: 22J). */
@@ -254,9 +308,17 @@ window.App = window.App || {};
    * 🛣️ ruas pelas coordenadas. o: {alvo: objeto com utm {fuso, x, y} (e geo, gravado aqui), ruas: {uc, r2, r3, r4} | null,
    * aoMudar()}. O UTM digitado continua valendo; as ruas encontradas ficam nos campos, editáveis.
    */
+  const ULTIMA = typeof WeakMap !== 'undefined' ? new WeakMap() : { has: function () { return false; }, set: function () {}, delete: function () {}, get: function () {} };
   function barra(o) {
     const UI = App.UI, h = U.h;
     const info = h('p.coord-info');
+    const situacao = h('p.coord-situacao');
+    // a última mensagem da busca fica na tela (a seção é redesenhada depois de preencher)
+    const marcar = function (txt, tipo) {
+      situacao.textContent = txt || ''; situacao.className = 'coord-situacao' + (tipo ? ' ' + tipo : '');
+      if (txt && tipo) ULTIMA.set(o.alvo, { txt: txt, tipo: tipo }); else if (!txt) ULTIMA.delete(o.alvo);
+    };
+    if (ULTIMA.has(o.alvo)) marcar(ULTIMA.get(o.alvo).txt, ULTIMA.get(o.alvo).tipo);
     const utm = function () { return o.alvo.utm || (o.alvo.utm = {}); };
     // o ponto exato do GPS ou do digitado enquanto o UTM for o dele; UTM digitado direto: a latitude/longitude calculada
     const atual = function () {
@@ -284,8 +346,12 @@ window.App = window.App || {};
       if (!ll) { UI.toast('Informe as coordenadas (localização do aparelho, latitude/longitude ou UTM).', 'erro'); return false; }
       UI.toast('Consultando as ruas no mapa (OpenStreetMap)…');
       let r;
-      try { r = await buscarRuas(ll.lat, ll.lon); } catch (e) { UI.toast(e.message + ' As ruas podem ser digitadas.', 'erro'); return false; }
-      if (!r.uc) { UI.toast('Nenhuma rua com nome a 300 m do ponto no OpenStreetMap. Digite as ruas do croqui.', 'aviso'); return false; }
+      marcar('Consultando as ruas no mapa…');
+      try { r = await buscarRuas(ll.lat, ll.lon); } catch (e) {
+        const m = e.message + ' Enquanto isso, as ruas podem ser digitadas.';
+        marcar(m, 'erro'); UI.toast(m, 'erro', 10000); return false;
+      }
+      if (!r.uc) { const m = 'Nenhuma rua com nome a 300 m do ponto no OpenStreetMap (comum na zona rural). Digite as ruas do croqui.'; marcar(m, 'aviso'); UI.toast(m, 'aviso', 8000); return false; }
       const novo = { uc: r.uc, r2: r.r2, r3: r.r3, r4: r.r4 }, rot = { uc: 'Rua da UC', r2: 'Rua 2', r3: 'Rua 3', r4: 'Rua 4' };
       const dif = Object.keys(novo).filter(function (k) { return novo[k] && String(o.ruas[k] || '').trim() && chave(o.ruas[k]) !== chave(novo[k]); });
       const subst = dif.length ? await UI.confirmar('No mapa: ' + dif.map(function (k) { return rot[k] + ' = ' + novo[k] + ' (hoje: ' + o.ruas[k] + ')'; }).join('; ') +
@@ -293,9 +359,11 @@ window.App = window.App || {};
       let n = 0;
       Object.keys(novo).forEach(function (k) { if (novo[k] && (subst || !String(o.ruas[k] || '').trim()) && o.ruas[k] !== novo[k]) { o.ruas[k] = novo[k]; n++; } });
       const vazios = Object.keys(novo).filter(function (k) { return !novo[k]; }).map(function (k) { return rot[k]; });
-      UI.toast('Ruas do croqui pelo mapa: ' + [novo.uc, novo.r2, novo.r3, novo.r4].filter(Boolean).join(' · ') + '.' +
+      const msg = 'Ruas do croqui pelo mapa: ' + [novo.uc, novo.r2, novo.r3, novo.r4].filter(Boolean).join(' · ') + '.' +
         (r.distUc > 60 ? ' A rua da UC está a ' + r.distUc + ' m do ponto: confira.' : '') +
-        (vazios.length ? ' Não identificada(s): ' + vazios.join(', ') + '.' : '') + ' Confira no croqui — os campos continuam editáveis.', vazios.length || r.distUc > 60 ? 'aviso' : 'ok');
+        (r.parcial ? ' Só a rua da UC veio do mapa: o serviço das ruas vizinhas não respondeu agora — busque de novo em instantes ou digite as outras.'
+          : (vazios.length ? ' Não identificada(s): ' + vazios.join(', ') + '.' : '')) + ' Confira no croqui — os campos continuam editáveis.', tipoMsg = r.parcial || vazios.length || r.distUc > 60 ? 'aviso' : 'ok';
+      marcar(msg, tipoMsg); UI.toast(msg, tipoMsg, 8000);
       return n > 0;
     }
     const btnGps = h('button.btn.pequeno.btn-coord-gps', {
@@ -347,7 +415,7 @@ window.App = window.App || {};
       onclick: async function () { btnRuas.disabled = true; if (await preencherRuas()) o.aoMudar(); btnRuas.disabled = false; }
     }, '🛣️ Buscar as ruas pelas coordenadas') : null;
     pintar();
-    const box = h('div.coord-barra', h('div.barra-itens', btnGps, btnDig, btnRuas), info,
+    const box = h('div.coord-barra', h('div.barra-itens', btnGps, btnDig, btnRuas), info, situacao,
       o.ruas ? h('small.ajuda', 'As ruas vêm do OpenStreetMap (só as coordenadas são enviadas, sem dados do cliente). Confira e corrija nos campos, se precisar.') : null);
     box.pintar = pintar;
     return box;
@@ -355,6 +423,6 @@ window.App = window.App || {};
 
   App.Coordenadas = {
     utmDeLatLon: utmDeLatLon, latLonDeUtm: latLonDeUtm, lerFuso: lerFuso, lerLatLon: lerLatLon, fmtLatLon: fmtLatLon, zona: zona, banda: banda,
-    posicaoAtual: posicaoAtual, vias: vias, ruasDoCroqui: ruasDoCroqui, buscarRuas: buscarRuas, opcoesFuso: opcoesFuso, barra: barra, OVERPASS: OVERPASS
+    posicaoAtual: posicaoAtual, vias: vias, ruaDoPonto: ruaDoPonto, ruasDoCroqui: ruasDoCroqui, buscarRuas: buscarRuas, opcoesFuso: opcoesFuso, barra: barra, OVERPASS: OVERPASS, NOMINATIM: NOMINATIM
   };
 })(window.App);
