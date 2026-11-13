@@ -140,7 +140,7 @@ window.App = window.App || {};
   /**
    * Parcelas padrão: equipamentos na assinatura; serviços em 50% na assinatura e 50% após a homologação.
    */
-  function parcelasPadrao(valorTotal, valorEquip, descEquip) {
+  function parcelasPadrao(valorTotal, valorEquip, descEquip, offgrid) {
     const tot = U.round(U.numOr(valorTotal, 0), 2);
     const eq = Math.max(0, Math.min(tot, U.round(U.numOr(valorEquip, 0), 2)));
     const serv = U.round(tot - eq, 2);
@@ -148,7 +148,8 @@ window.App = window.App || {};
     const lista = [];
     if (eq > 0) lista.push({ valor: eq, descricao: descEquip || 'Aquisição dos Equipamentos', forma: 'Na assinatura do contrato', banco: false });
     lista.push({ valor: metade, descricao: '50% dos serviços de execução, instalação, montagem e projeto', forma: 'Na assinatura do contrato — PIX/Transferência', banco: true });
-    lista.push({ valor: U.round(serv - metade, 2), descricao: '50% dos serviços de execução, instalação, montagem e projeto', forma: 'Após homologação na concessionária — PIX/Transferência', banco: true });
+    // off-grid: sem homologação — a segunda metade vence no comissionamento do sistema
+    lista.push({ valor: U.round(serv - metade, 2), descricao: '50% dos serviços de execução, instalação, montagem e projeto', forma: (offgrid ? 'Após o comissionamento do sistema' : 'Após homologação na concessionária') + ' — PIX/Transferência', banco: true });
     return lista;
   }
 
@@ -272,7 +273,12 @@ window.App = window.App || {};
     const temArm = r.hibrido && r.hibrido.nBaterias > 0;
     const capArm = temArm ? U.fmtSmart(r.hibrido.capInstalada, 2) + ' kWh' : '';
     ct.kwp = temFV ? U.round(r.kwp, 3) : '';
-    if (temFV) {
+    if (temFV && r.offgridAtivo) {
+      // off-grid: sistema isolado, sem conexão à rede
+      ct.objeto = 'Elaboração de Projeto e Instalação de Sistema de Energia Solar Fotovoltaica Isolado (Off-Grid) de ' + U.kwp(r.kwp) + ' kWp' +
+        (temArm ? ' com banco de baterias de ' + capArm : '') + ', sem conexão à rede de distribuição';
+      ct.subtitulo = 'Sistema de Geração de Energia Solar Fotovoltaica Isolado (Off-Grid)';
+    } else if (temFV) {
       ct.objeto = 'Elaboração de Projeto e Instalação de Sistema de Energia Solar Fotovoltaica de ' + U.kwp(r.kwp) + ' kWp' +
         (temArm ? (r.bessAtivo ? ' com Sistema de Armazenamento de Energia (BESS) de ' : ' com banco de baterias de ') + capArm : '');
       ct.subtitulo = temArm ? 'Sistema de Geração de Energia Solar Fotovoltaica com Armazenamento' : 'Sistema de Geração de Energia Solar Fotovoltaica';
@@ -300,7 +306,7 @@ window.App = window.App || {};
     }
     ct.equipamentos = equipamentosDaProposta(r, ctx, emp, prop);
     const valorEquip = (r.incluiFV ? r.kit : 0) + (r.kitArm || 0);
-    ct.parcelas = parcelasPadrao(r.total, valorEquip, 'Aquisição dos Equipamentos' + (prop.numero ? ' (conforme Proposta ' + prop.numero + ')' : ''));
+    ct.parcelas = parcelasPadrao(r.total, valorEquip, 'Aquisição dos Equipamentos' + (prop.numero ? ' (conforme Proposta ' + prop.numero + ')' : ''), !!r.offgridAtivo);
     return ct;
   }
 

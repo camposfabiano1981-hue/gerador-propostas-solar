@@ -7,7 +7,7 @@
 
   const SIM_NAO = function (v) { return v === false ? UI.badge('Inativo', 'cinza') : UI.badge('Ativo', 'ok'); };
   const APLICA_EM = [
-    { v: 'ambos', t: 'Todos os sistemas' }, { v: 'ongrid', t: 'Somente On-Grid' }, { v: 'hibrido', t: 'Somente Híbrido' }, { v: 'bess', t: 'Somente BESS' },
+    { v: 'ambos', t: 'Todos os sistemas' }, { v: 'ongrid', t: 'Somente On-Grid' }, { v: 'hibrido', t: 'Com baterias (Híbrido e Off-Grid)' }, { v: 'offgrid', t: 'Somente Off-Grid' }, { v: 'bess', t: 'Somente BESS (antigas)' },
     { v: 'string', t: 'Somente com inversor string' }, { v: 'micro', t: 'Somente com microinversores' }
   ];
   const APLICA_TXT = {};
@@ -526,7 +526,8 @@
     ctxUso = { avulsas: S.list('avulsas') };
     // vindo das propostas avulsas (Cadastro de materiais): os materiais novos já são das avulsas
     const usoNovo = qs.get('uso') === 'avulsa' ? 'avulsa' : '';
-    const abas = h('div.abas', D.TIPOS_EQUIP.map(function (t) {
+    // o BESS saiu das propostas novas: a aba só aparece aberta pelo endereço (equipamentos antigos)
+    const abas = h('div.abas', D.TIPOS_EQUIP.filter(function (t) { return t.id !== 'bess' || def.id === 'bess'; }).map(function (t) {
       const n = S.list('equipamentos').filter(function (e) { return e.tipo === t.id; }).length;
       return h('a.aba' + (t.id === def.id ? '.ativa' : ''), { href: '#/equipamentos?tipo=' + t.id }, t.label, h('span.contagem', String(n)));
     }));

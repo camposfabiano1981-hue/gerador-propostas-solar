@@ -153,7 +153,7 @@ window.App = window.App || {};
       v: 1,
       empresa: { nome: emp.nomeCurto || emp.razao || '', razao: emp.razao || '', telefone: emp.telefone || '', email: emp.email || '', site: emp.site || '', logo: o.logo || '' },
       cliente: primeiroNome(inst.clienteNome),
-      sistema: { tipo: { hibrido: 'Híbrido', bess: 'BESS' }[inst.tipoSistema] || 'On-Grid', kwp: U.numOr(inst.kwp, 0), kwh: U.numOr(inst.kwh, 0), cidade: inst.cidade || '', uf: inst.uf || '' },
+      sistema: { tipo: { hibrido: 'Híbrido', offgrid: 'Off-Grid', bess: 'BESS' }[inst.tipoSistema] || 'On-Grid', kwp: U.numOr(inst.kwp, 0), kwh: U.numOr(inst.kwh, 0), cidade: inst.cidade || '', uf: inst.uf || '' },
       situacao: { id: st, label: (I.STATUS.find(function (s) { return s.id === st; }) || I.STATUS[0]).label },
       progresso: { feitas: pr.feitas, total: pr.total },
       previsaoConclusao: I.previsaoConclusao(inst) || '',

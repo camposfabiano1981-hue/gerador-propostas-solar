@@ -17,7 +17,7 @@
   // cores de status só para situação (com ícone e rótulo)
   const COR = {
     serie: '#118DFF', contexto: '#B8DAFF', funil: ['#86b6ef', '#5598e7', '#2a78d6', '#184f95'], recusada: '#b4b2a9',
-    tipos: { ongrid: '#118DFF', hibrido: '#E66C37', bess: '#744EC2' }, grade: '#ECEEF1', eixo: '#C9CED6', texto: '#1F2328', texto2: '#57606A', mudo: '#6B7280',
+    tipos: { ongrid: '#118DFF', hibrido: '#E66C37', offgrid: '#1AAB40', bess: '#744EC2' }, grade: '#ECEEF1', eixo: '#C9CED6', texto: '#1F2328', texto2: '#57606A', mudo: '#6B7280',
     trilha: '#cde2fb', critico: '#d03b3b', subiu: '#006300', bom: '#0ca30c', alerta: '#fab219', serio: '#ec835a', neutro: '#C9D1DA'
   };
   const CHAVE_PERIODO = 'crm.dash.periodo'; // preferência deste aparelho
@@ -208,7 +208,8 @@
 
   /** Mix por tipo de sistema nos últimos 12 meses: barra segmentada (parte do todo) e a lista com valor e participação. */
   function porTipo(dados) {
-    const tipos = dados.porTipo12, total = tipos.reduce(function (s, t) { return s + t.valor; }, 0);
+    // BESS (descontinuado) só aparece quando há vendas antigas dele
+    const tipos = dados.porTipo12.filter(function (t) { return t.id !== 'bess' || t.valor > 0; }), total = tipos.reduce(function (s, t) { return s + t.valor; }, 0);
     const pct = function (t) { return total ? U.fmt(t.valor / total * 100, 0) + '%' : '—'; };
     return cartaoGrafico({
       titulo: 'Mix por tipo de sistema', sub: 'Participação no valor vendido · últimos 12 meses',
@@ -449,7 +450,7 @@
         h('div.bi-acoes',
           h('a.btn.bi-btn', { href: '#/avulsa/nova' }, '+ Serviços'),
           h('a.btn.bi-btn', { href: '#/proposta/nova?tipo=hibrido' }, '+ Híbrida'),
-          h('a.btn.bi-btn', { href: '#/proposta/nova?tipo=bess' }, '+ BESS'),
+          h('a.btn.bi-btn', { href: '#/proposta/nova?tipo=offgrid' }, '+ Off-Grid'),
           h('a.btn.bi-btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta On-Grid'))),
       abasEl));
 
@@ -481,7 +482,8 @@
     cont.appendChild(h('section.bi-slicers', { 'aria-label': 'Segmentações' },
       h('div.bi-slicer.bi-slicer-periodo', h('span', 'Período'), h('div.bi-seg-linha', botoesPeriodo, chipMes)),
       sel('vendedor', 'Vendedor', opcoes(unicos(App.Crm.vendedorDe), 'Todos')),
-      sel('tipo', 'Tipo de sistema', [{ v: '', t: 'Todos' }].concat(App.Crm.TIPOS.map(function (t) { return { v: t.id, t: t.label }; }))),
+      sel('tipo', 'Tipo de sistema', [{ v: '', t: 'Todos' }].concat(App.Crm.TIPOS.filter(function (t) { return t.id !== 'bess' || S.list('propostas').some(function (p) { return p.tipoSistema === 'bess'; }); })
+        .map(function (t) { return { v: t.id, t: t.label }; }))),
       sel('cidade', 'Cidade', opcoes(unicos(cidadeDe), 'Todas'))));
 
     const area = h('div.dash.bi');

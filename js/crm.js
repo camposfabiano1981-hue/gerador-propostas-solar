@@ -16,7 +16,8 @@ window.App = window.App || {};
   const ETAPAS_FUNIL = [
     { id: 'rascunho', label: 'Rascunho' }, { id: 'enviada', label: 'Enviada' }, { id: 'negociacao', label: 'Em negociação' }, { id: 'aprovada', label: 'Aprovada' }
   ];
-  const TIPOS = [{ id: 'ongrid', label: 'On-Grid' }, { id: 'hibrido', label: 'Híbrido' }, { id: 'bess', label: 'BESS' }];
+  // o BESS saiu das propostas novas; as antigas continuam somando no tipo delas
+  const TIPOS = [{ id: 'ongrid', label: 'On-Grid' }, { id: 'hibrido', label: 'Híbrido' }, { id: 'offgrid', label: 'Off-Grid' }, { id: 'bess', label: 'BESS' }];
   const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }

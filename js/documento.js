@@ -179,7 +179,9 @@ window.App = window.App || {};
     const prem = r.premissas;
     const papel = emp.papel === 'a4' ? { w: 11906, h: 16838 } : { w: 12240, h: 15840 };
     const k = (papel.w - 2880) / 9360;
-    const hib = r.hibridoAtivo && r.hibrido;
+    // off-grid: sem rede (sem conta, concessionária e créditos); o retorno, quando há, é contra o gerador a diesel
+    const og = r.offgridAtivo && r.offgrid && r.offgrid.meses ? r.offgrid : null;
+    const hib = r.hibridoAtivo && r.hibrido && !og;
     const arm = r.armazenamentoAtivo ? r.hibrido : null;
     const cen = r.cen;
     const temArm = !!(arm && cen && cen.n > 0);
@@ -200,12 +202,17 @@ window.App = window.App || {};
 
     const vars = {
       empresa: emp.razao, empresaCurta: emp.nomeCurto || emp.razao, cidadeEmpresa: [emp.cidade, emp.uf].filter(Boolean).join('/'),
-      registroTipo: emp.registroTipo || '', registro: emp.registro || '', concessionaria: conc || 'concessionária',
+      registroTipo: emp.registroTipo || '', registro: emp.registro || '', concessionaria: og ? 'distribuidora' : (conc || 'concessionária'),
       inversor: inv ? inv.fabricante : '', modulo: mod ? mod.fabricante : '', bateria: bat ? bat.fabricante : '',
       fdg: U.fmt(r.fdg, 3), fdgIcone: r.fdgOk ? '✅' : '⚠️', cliente: nomeCliente, cidade: r.cidade || ''
     };
     vars.fdi = vars.fdg; vars.fdiIcone = vars.fdgIcone; // marcadores antigos em textos personalizados
-    const t = function (x) { return substituir(x, vars); };
+    // off-grid: sem as menções à homologação e às normas da concessionária nos textos padrão da empresa
+    const semRede = function (x) {
+      return typeof x !== 'string' ? x : x.replace(/\s+e\s+homologa\S*\s+(na\s+|junto à\s+|da\s+)?\{concessionaria\}/gi, '')
+        .replace(/,?\s*homologa\S*\s+(na\s+|junto à\s+|da\s+)?\{concessionaria\}/gi, '').replace(/\s+e\s+da\s+\{concessionaria\}/gi, '');
+    };
+    const t = function (x) { return substituir(og ? semRede(x) : x, vars); };
     const rs = function (v) { return 'R$' + U.fmt(v, Math.max(2, decimais(v))); };
 
     const b = [];
@@ -225,6 +232,7 @@ window.App = window.App || {};
     const pFin = pags.filter(function (pg) { return !/cart/i.test(pg.label) && pg.prazo !== '1x'; })
       .sort(function (x, y) { return (parseInt(y.prazo, 10) || 0) - (parseInt(x.prazo, 10) || 0); })[0];
     const maxParcelas = pags.reduce(function (m, pg) { return Math.max(m, parseInt(pg.prazo, 10) || 1); }, 1);
+    const comDiesel = !!(og && !f.semComparacao);
     const semRot = temFV ? 'Sem energia solar' : 'Sem o sistema';
     const comRot = temFV ? (temArm ? 'Com energia solar e baterias' : 'Com energia solar') : 'Com o sistema';
     const disp = r.disponibilidade;
@@ -233,13 +241,14 @@ window.App = window.App || {};
     const lc = encaixar(logo.w, logo.h, 2743200, 1371600);
     b.push(P(IMG('logo', lc.cx, lc.cy, 'Logotipo'), { before: 240, after: 300, jc: 'center' }));
     b.push(T('PROPOSTA DE ENERGIA SOLAR', { after: 100, jc: 'center' }, { b: true, color: DOURADO, sz: 20 }));
-    const manchete = temFV && pct >= 30 ? ['Energia do sol,', 'conta de luz ' + pct + '% menor']
-      : (temArm && !temFV ? ['Energia armazenada:', 'economia e segurança'] : ['Sua energia,', 'mais econômica']);
+    const manchete = og ? ['Energia própria,', 'sem depender da rede']
+      : (temFV && pct >= 30 ? ['Energia do sol,', 'conta de luz ' + pct + '% menor']
+        : (temArm && !temFV ? ['Energia armazenada:', 'economia e segurança'] : ['Sua energia,', 'mais econômica']));
     b.push(P([R(manchete[0], { b: true, color: AZUL, sz: 54 })], { jc: 'center', after: 0 }));
     b.push(P([R(manchete[1], { b: true, color: '2563EB', sz: 54 })], { jc: 'center', after: 120 }));
-    const tipoNome = r.bessAtivo
+    const tipoNome = og ? 'Sistema fotovoltaico off-grid (isolado, com baterias)' : (r.bessAtivo
       ? (temFV ? 'Sistema fotovoltaico + armazenamento (BESS)' : 'Sistema de armazenamento de energia (BESS)')
-      : 'Sistema fotovoltaico ' + (hib ? 'híbrido (com baterias)' : 'conectado à rede');
+      : 'Sistema fotovoltaico ' + (hib ? 'híbrido (com baterias)' : 'conectado à rede'));
     const subt = tipoNome + ' · ' + [temFV ? U.kwp(r.kwp) + ' kWp' : '', temArm ? U.fmtSmart(arm.capInstalada, 2) + ' kWh' : ''].filter(Boolean).join(' + ');
     b.push(T(subt, { after: 160, jc: 'center' }, { color: CINZA, sz: 24 }));
     if (App.Arte) {
@@ -255,10 +264,15 @@ window.App = window.App || {};
     };
     const vaoCapa = function (w) { return TC(P([], { after: 0 }), { w: w, fill: AZUL_CAPA, borda: { sz: 4, cor: AZUL_CAPA }, mar: { t: 0, b: 0, l: 0, r: 0 } }); };
     const chips = [];
-    if (temFV) chips.push(chip(U.kwp(r.kwp) + ' kWp', 'potência'), chip('≈ ' + U.fmt(r.geracaoMensal, 0) + ' kWh', 'geração por mês'));
-    if (temArm) chips.push(chip(U.fmtSmart(arm.capInstalada, 2) + ' kWh', 'armazenamento'));
-    chips.splice(2);
-    chips.push(chip(f.economiaMes1 > 0 ? reais(f.economiaMes1) : U.brl(r.total), f.economiaMes1 > 0 ? 'economia por mês*' : 'investimento', true));
+    if (og) {
+      chips.push(chip(U.fmtSmart(og.cargasDia, 1) + ' kWh/dia', 'energia para as cargas'), chip('≈ ' + U.fmtSmart(og.autonomiaDias, 1) + (og.autonomiaDias >= 1.95 ? ' dias' : ' dia'), 'de autonomia sem sol'));
+      chips.push(chip(comDiesel ? reais(f.economiaMes1) : U.brl(r.total), comDiesel ? 'de diesel evitado por mês*' : 'investimento', true));
+    } else {
+      if (temFV) chips.push(chip(U.kwp(r.kwp) + ' kWp', 'potência'), chip('≈ ' + U.fmt(r.geracaoMensal, 0) + ' kWh', 'geração por mês'));
+      if (temArm) chips.push(chip(U.fmtSmart(arm.capInstalada, 2) + ' kWh', 'armazenamento'));
+      chips.splice(2);
+      chips.push(chip(f.economiaMes1 > 0 ? reais(f.economiaMes1) : U.brl(r.total), f.economiaMes1 > 0 ? 'economia por mês*' : 'investimento', true));
+    }
     while (chips.length < 3) chips.unshift(chip(r.tecnologia ? r.tecnologia.split(' ')[0] : '—', 'tecnologia'));
     // grade: margem, destaque, vão, destaque, vão, destaque, margem (os vãos azuis separam os destaques)
     const LC = [180, 2880, 180, 2880, 180, 2880, 180];
@@ -271,7 +285,7 @@ window.App = window.App || {};
         celCapa(P([R('Emitida em ', { color: TXT_CLARO, sz: 18 }), R(U.dataBR(p.data), { b: true, color: BRANCO, sz: 18 })]), 3060, { span: 2 }),
         celCapa(P([R('Válida até ', { color: TXT_CLARO, sz: 18 }), R(validoAte, { b: true, color: BRANCO, sz: 18 })]), 3060, { span: 3 })]),
       TR([celCapa([T('Responsável: ' + (emp.responsavel || emp.razao) + (fone ? ' · WhatsApp ' + fone : ''), { after: 20 }, { color: TXT_CLARO, sz: 18 }),
-        f.economiaMes1 > 0 ? T('*estimativa do 1º ano, detalhada nas páginas seguintes', { after: 160 }, { color: '93C5FD', sz: 15 }) : P([], { after: 160 })], 9360, { span: 7 })])
+        (og ? comDiesel : f.economiaMes1 > 0) ? T(og ? '*comparado ao gerador a diesel no 1º ano, detalhado nas páginas seguintes' : '*estimativa do 1º ano, detalhada nas páginas seguintes', { after: 160 }, { color: '93C5FD', sz: 15 }) : P([], { after: 160 })], 9360, { span: 7 })])
     ], { manterJunto: true }));
     b.push(T(emp.razao + '  │  CNPJ ' + emp.cnpj + (emp.registro ? '  │  ' + emp.registroTipo + ' ' + emp.registro : ''), { before: 160, jc: 'center', sectPr: 'capa' }, { color: CINZA, sz: 16 }));
 
@@ -358,7 +372,7 @@ window.App = window.App || {};
 
 
     /* ---------- PASSO A PASSO (cronograma em linha do tempo ilustrada; entra quando ligado em Configurações › Textos padrão) */
-    const etapas = (textos.cronograma || []).filter(function (c) { return c && (c.etapa || c.prazo); })
+    const etapas = (textos.cronograma || []).filter(function (c) { return c && (c.etapa || c.prazo) && !(og && /homolog|medidor|concession/i.test(c.etapa + ' ' + c.prazo)); })
       .map(function (c) { return { etapa: t(c.etapa), prazo: t(c.prazo) }; });
     const comPassos = etapas.length > 0 && !!textos.passoNaProposta;
     if (comPassos) {
@@ -377,31 +391,46 @@ window.App = window.App || {};
       abrir('Como a energia solar funciona' + (cliente && /empresa|comerc|indus/i.test(r.classe || '') ? ' no seu negócio' : ' na sua casa'),
         'Simples, silencioso e automático: você não precisa fazer nada no dia a dia.', true);
       if (App.Arte) {
-        const il = App.Arte.comoFunciona({ bateria: temArm });
+        const il = App.Arte.comoFunciona({ bateria: temArm, offgrid: !!og });
         imagens.comoFunciona = il.dataURL;
         b.push(P(IMG('comoFunciona', wTexto, Math.round(wTexto * il.proporcao), 'Como funciona'), { after: 120, jc: 'center' }));
       }
-      const passosCF = [
+      const passosCF = og ? [
+        ['Painéis no telhado', 'captam a luz do sol e produzem energia elétrica (corrente contínua).'],
+        ['O inversor off-grid', 'transforma essa energia na corrente alternada dos aparelhos e controla a carga das baterias.'],
+        ['De dia', 'a energia do sol abastece a casa e o que sobra carrega as baterias.'],
+        ['À noite e em dias nublados', 'as baterias fornecem a energia — por até ' + U.fmtSmart(og.autonomiaDias, 1) + ' dia(s) sem sol, sem rede e sem gerador.']
+      ] : [
         ['Painéis no telhado', 'captam a luz do sol e produzem energia elétrica (corrente contínua).'],
         [r.micro ? 'Os microinversores' : 'O inversor', 'transforma' + (r.micro ? 'm' : '') + ' essa energia na corrente alternada que os aparelhos usam.'],
         ['Você usa primeiro', 'a energia do sol, no mesmo momento em que ela é produzida.'],
         ['O que sobra vai para a rede', 'e o medidor bidirecional registra como crédito em kWh.'],
         ['À noite e em dias nublados', 'você usa a rede, e os créditos abatem a sua conta.']
       ];
-      if (temArm) passosCF.push(['As baterias', 'guardam energia para usar à noite e mantêm as cargas essenciais funcionando na falta de energia.']);
+      if (temArm && !og) passosCF.push(['As baterias', 'guardam energia para usar à noite e mantêm as cargas essenciais funcionando na falta de energia.']);
       b.push(TBL([520, 8840], passosCF.map(function (x, i) {
         return TR([TC(T(String(i + 1), { jc: 'center' }, { b: true, color: '1F2937', sz: 20 }), { w: 520, fill: 'F6A81C', borda: { sz: 18, cor: BRANCO } }),
           TC(P([R(x[0] + ' ', { b: true }), R(x[1])]), { w: 8840, semBorda: true, mar: { t: 50, b: 50, l: 160, r: 60 } })]);
       })));
       b.push(subtitulo('Por que vale a pena para você'));
       const benef = [];
-      if (pct > 0) benef.push(['💰', 'Conta ' + pct + '% menor', 'De ' + valorCurto(a1.contaSem) + ' para cerca de ' + valorCurto(a1.contaCom) + ' por mês no primeiro ano.']);
+      if (og) {
+        benef.push(['🔌', 'Energia onde a rede não chega', 'O sistema atende ' + U.fmtSmart(og.cargasDia, 1) + ' kWh por dia das suas cargas, o ano todo, sem conta de luz.']);
+        benef.push(['🔋', U.fmtSmart(og.autonomiaDias, 1) + ' dia(s) de autonomia', 'As baterias seguram a casa nos dias nublados e à noite.']);
+        if (comDiesel) benef.push(['⛽', 'Sem diesel e sem barulho', 'Evita cerca de ' + U.fmt(f.litrosAno, 0) + ' litros de diesel por ano, o abastecimento e a manutenção do gerador.']);
+        if (f.co2t > 0) benef.push(['🌱', U.fmt(f.co2t, 0) + ' t de CO₂ evitadas', 'Energia limpa no lugar do diesel ao longo de ' + H + ' anos.']);
+        benef.push(['🛡️', 'Sem reajuste de tarifa', 'A energia é sua: não depende de concessionária nem do preço do combustível.']);
+        benef.push(['📱', 'Acompanhamento no celular', 'Veja a geração e a carga das baterias pelo aplicativo do inversor.']);
+      }
+      if (pct > 0 && !og) benef.push(['💰', 'Conta ' + pct + '% menor', 'De ' + valorCurto(a1.contaSem) + ' para cerca de ' + valorCurto(a1.contaCom) + ' por mês no primeiro ano.']);
+      if (!og) {
       benef.push(['🛡️', 'Proteção contra reajustes', 'A energia que você produz não sofre os aumentos anuais da tarifa.']);
       benef.push(['🏠', 'Imóvel valorizado', 'Um sistema solar é um diferencial na venda ou na locação do imóvel.']);
       if (f.co2t > 0) benef.push(['🌱', U.fmt(f.co2t, 0) + ' t de CO₂ evitadas', 'Energia limpa e renovável ao longo dos ' + H + ' anos de operação.']);
       if (temArm) benef.push(['🔋', 'Energia na falta de luz', 'As cargas essenciais continuam funcionando durante as quedas da rede.']);
       benef.push(['📱', 'Acompanhamento no celular', 'Veja a geração em tempo real pelo aplicativo do inversor.']);
       if (pFin && f.economiaMes1 > pFin.parcela) benef.push(['💳', 'Pagamento que cabe no bolso', 'No financiamento em ' + pFin.prazo + ', a parcela é menor que a economia do mês.']);
+      }
       b.push(grade(benef.slice(0, 6), 2, function (x, w) {
         return TC([P([R(x[0] + '  ', { sz: 24 }), R(x[1], { b: true, sz: 21 })], { after: 30 }), T(x[2], null, { color: '475569', sz: 17 })],
           { w: w, fill: BRANCO, borda: { sz: 6, cor: 'E2E8F0' }, mar: { t: 120, b: 120, l: 180, r: 140 }, vAlign: 'top' });
@@ -411,20 +440,27 @@ window.App = window.App || {};
 
     /* ---------- SEU SISTEMA */
     if (temFV) {
-      abrir('Seu sistema solar', 'Dimensionado para o seu consumo médio de ' + U.fmt(r.consumoMedio, 0) + ' kWh/mês' + (cidadeUF ? ' em ' + cidadeUF.replace(' / ', '/') : '') + '.', true);
-      const faixa = [[U.kwp(r.kwp) + ' kWp', 'potência'], [r.nModulos + ' × ' + (mod ? U.fmtSmart(mod.potencia, 0) : '') + ' Wp', 'módulos'],
-        [U.fmt(r.geracaoMensal, 0) + ' kWh', 'geração média/mês'], [U.fmt(r.cobertura * 100, 0) + '%', 'do seu consumo'], ['≈ ' + U.fmt(r.area, 0) + ' m²', 'de telhado']];
+      abrir('Seu sistema solar', og
+        ? 'Dimensionado para atender sozinho ' + U.fmtSmart(og.demandaDiaMax, 1) + ' kWh por dia, inclusive no mês de menor sol (' + C.MESES_CURTOS[og.mesCritico] + ')' + (cidadeUF ? ', em ' + cidadeUF.replace(' / ', '/') : '') + '.'
+        : 'Dimensionado para o seu consumo médio de ' + U.fmt(r.consumoMedio, 0) + ' kWh/mês' + (cidadeUF ? ' em ' + cidadeUF.replace(' / ', '/') : '') + '.', true);
+      const faixa = og
+        ? [[U.kwp(r.kwp) + ' kWp', 'potência'], [r.nModulos + ' × ' + (mod ? U.fmtSmart(mod.potencia, 0) : '') + ' Wp', 'módulos'],
+          [U.fmtSmart(og.capInstalada, 2) + ' kWh', 'em baterias'], ['≈ ' + U.fmtSmart(og.autonomiaDias, 1) + ' dia(s)', 'de autonomia'], ['≈ ' + U.fmt(r.area, 0) + ' m²', 'de telhado']]
+        : [[U.kwp(r.kwp) + ' kWp', 'potência'], [r.nModulos + ' × ' + (mod ? U.fmtSmart(mod.potencia, 0) : '') + ' Wp', 'módulos'],
+          [U.fmt(r.geracaoMensal, 0) + ' kWh', 'geração média/mês'], [U.fmt(r.cobertura * 100, 0) + '%', 'do seu consumo'], ['≈ ' + U.fmt(r.area, 0) + ' m²', 'de telhado']];
       b.push(TBL([1872, 1872, 1872, 1872, 1872], [TR(faixa.map(function (x) {
         return TC([T(x[0], { jc: 'center', after: 0 }, { b: true, color: BRANCO, sz: 24 }), T(x[1], { jc: 'center' }, { color: 'BFDBFE', sz: 16 })],
           { w: 1872, fill: AZUL, borda: { sz: 6, cor: '3557A6' }, mar: { t: 140, b: 140, l: 60, r: 60 } });
       }), false, { naoQuebrar: true })]));
       b.push(subtitulo('Geração estimada mês a mês'));
       b.push(P(IMG('grafico', Math.round(5524500 * k), Math.round(5524500 * 772 / 1800 * k), 'Grafico'), { after: 60, jc: 'center' }));
-      b.push(T('Nos meses de inverno o sol é mais fraco e a geração cai um pouco; os créditos dos meses de maior geração compensam essa diferença.', { after: 60 }, { color: CINZA, sz: 17 }));
+      b.push(T(og ? 'O sistema foi dimensionado pelo mês de menor sol (' + C.MESES_CURTOS[og.mesCritico] + '): mesmo nele a geração cobre a demanda com folga para recarregar as baterias. ' +
+          'Nos outros meses sobra energia, que fica sem uso (não há rede para receber créditos).'
+        : 'Nos meses de inverno o sol é mais fraco e a geração cai um pouco; os créditos dos meses de maior geração compensam essa diferença.', { after: 60 }, { color: CINZA, sz: 17 }));
       b.push(subtitulo('Equipamentos'));
       const eqs = [];
       if (mod) eqs.push(['⚡', 'Módulos fotovoltaicos', r.nModulos + ' × ' + nomeEq(mod) + ' (' + U.fmtSmart(mod.potencia, 0) + ' Wp' + (mod.tecnologia ? ', ' + String(mod.tecnologia).toLowerCase() : '') + ')', C.garantiaModulo(mod)]);
-      if (inv) eqs.push(['🔌', r.micro ? 'Microinversores' : (hib ? 'Inversor híbrido' : 'Inversor'), (r.nInversores > 1 ? r.nInversores + ' × ' : '') + nomeEq(inv) + ' · ' + C.specInversor(inv), garantiaAnos(inv)]);
+      if (inv) eqs.push(['🔌', r.micro ? 'Microinversores' : (og ? 'Inversor off-grid' : (hib ? 'Inversor híbrido' : 'Inversor')), (r.nInversores > 1 ? r.nInversores + ' × ' : '') + nomeEq(inv) + ' · ' + C.specInversor(inv), garantiaAnos(inv)]);
       if (temArm && bat) eqs.push(['🔋', r.bessAtivo ? 'Armazenamento (BESS)' : 'Baterias', cen.n + ' × ' + nomeEq(bat) + ' — ' + U.fmtSmart(arm.capInstalada, 2) + ' kWh', garantiaAnos(bat)]);
       eqs.push(['🏗️', 'Estrutura de fixação', r.estruturaTexto || 'Conforme o tipo de telhado', 'conforme fabricante']);
       eqs.push(['📱', 'Monitoramento', r.monitoramento, 'acompanhe a geração pelo celular']);
@@ -433,12 +469,43 @@ window.App = window.App || {};
           T((x[0] === '📱' ? '' : 'Garantia: ') + x[3], null, { b: true, color: '15803D', sz: 16 })],
         { w: w, fill: 'F8FAFF', borda: { sz: 6, cor: 'DBEAFE' }, mar: { t: 120, b: 120, l: 180, r: 140 }, vAlign: 'top' });
       }));
-      b.push(P([R('Entenda os termos: ', { b: true, color: '475569', sz: 17 }), R('kWp — potência máxima dos módulos em condições de teste (sol forte e temperatura padrão).  kWh — quantidade de energia: é a unidade que aparece na sua conta de luz.', { color: '475569', sz: 17 })],
+      b.push(P([R('Entenda os termos: ', { b: true, color: '475569', sz: 17 }), R('kWp — potência máxima dos módulos em condições de teste (sol forte e temperatura padrão).  kWh — quantidade de energia' + (og ? ' que os aparelhos consomem.' : ': é a unidade que aparece na sua conta de luz.'), { color: '475569', sz: 17 })],
         { left: { sz: 18, space: 6, color: 'F6A81C' }, shd: 'F8FAFC', before: 200, after: 80 }));
     }
 
+    /* ---------- BATERIAS E AUTONOMIA (off-grid) */
+    if (temArm && og) {
+      abrir('Baterias e autonomia', 'A energia do dia guardada para a noite e para os dias sem sol.', true);
+      b.push(T('O banco de baterias guarda a energia do sol para a noite e para os dias nublados: com ' + cen.n + ' × ' + nomeEq(bat) + ' (' + U.fmtSmart(arm.capInstalada, 2) + ' kWh, ' +
+        U.fmtSmart(arm.capUtil, 2) + ' kWh úteis), a casa funciona por até ' + U.fmtSmart(og.autonomiaDias, 1) + ' dia(s) seguidos sem sol. O sistema não depende da rede elétrica.', { after: 80 }, { color: GRAFITE }));
+      b.push(vazio());
+      if (r.ogDemanda === 'cargas' && arm.cargas.length) {
+        const colsO = [{ t: 'Carga', w: 3560 }, { t: 'Qtd.', w: 800, jc: 'center' }, { t: 'Potência (W)', w: 1500, jc: 'right' }, { t: 'Uso por dia (h)', w: 1500, jc: 'center' }, { t: 'Energia por dia (Wh)', w: 2000, jc: 'right' }];
+        const linO = arm.cargas.map(function (c) { return [c.descricao + (c.motor ? ' (motor)' : ''), U.fmtSmart(c.qtd, 2), U.fmt(c.potTotal, 0), U.fmtSmart(c.horas, 1), U.fmt(c.energia, 0)]; });
+        const totO = [{ t: 'Total', b: true }, '', { t: U.fmt(arm.potCargasSoma, 0), b: true }, '', { t: U.fmt(og.cargasDia * 1000, 0), b: true }];
+        totO.fundo = DESTAQUE;
+        linO.push(totO);
+        b.push(tabela(colsO, linO, { sz: 19 }));
+        b.push(vazio());
+      } else {
+        b.push(T('Demanda considerada: ' + U.fmt(r.consumoMedio, 0) + ' kWh por mês (' + U.fmtSmart(og.cargasDia, 2) + ' kWh por dia), com até ' + U.fmtSmart(arm.potCargas / 1000, 2) + ' kW ligados ao mesmo tempo.', { after: 80 }, { color: GRAFITE }));
+      }
+      b.push(subtitulo('Energia do sol × demanda, mês a mês (por dia)'));
+      const colsB = [{ t: 'Mês', w: 1560 }, { t: 'Sol (HSP)', w: 1700, jc: 'right' }, { t: 'Geração (kWh)', w: 2100, jc: 'right' }, { t: 'Demanda (kWh)', w: 2100, jc: 'right' }, { t: 'Cobertura', w: 1900, jc: 'right' }];
+      const linB = og.meses.map(function (m) {
+        const l = [C.MESES_CURTOS[m.mes] + (m.mes === og.mesCritico ? ' (menor sol)' : ''), U.fmtSmart(m.hsp, 2), U.fmtSmart(m.geracaoDia, 1), U.fmtSmart(m.demandaDia, 1), U.fmt(m.cobertura * 100, 0) + '%'];
+        if (m.mes === og.mesCritico) l.fundo = DESTAQUE;
+        return l;
+      });
+      b.push(tabela(colsB, linB, { sz: 18 }));
+      const resumoOg = ['Recarga: no mês de menor sol, o excedente repõe a autonomia em cerca de ' + (og.diasRecarga != null ? U.fmt(og.diasRecarga, 0) + ' dias' : '—') + '.'];
+      if (cen.vidaArmAnos) resumoOg.push('Vida estimada das baterias: ≈ ' + U.fmt(cen.vidaArmAnos, 0) + ' anos' + (r.trocaBateria ? ' (troca prevista em ' + (r.anoBase + r.trocaBateria.ano - 1) + ')' : '') + '.');
+      b.push(T('🔋 ' + resumoOg.join(' '), { left: { sz: 12, space: 4, color: AZUL }, shd: DESTAQUE, before: 80, after: 80 }, { color: AZUL }));
+      b.push(vazio());
+    }
+
     /* ---------- ARMAZENAMENTO */
-    if (temArm) {
+    if (temArm && !og) {
       const backupCen = cen.id === 'backup';
       abrir('Armazenamento de energia' + (backupCen && arm.cargas.length ? ' e cargas críticas' : (r.bessAtivo ? ' (BESS)' : '')), null, true);
       let txt;
@@ -537,9 +604,22 @@ window.App = window.App || {};
 
 
     /* ---------- SEU INVESTIMENTO E RETORNO (valor, retorno, saldo acumulado, formas de pagamento e validade) */
-    abrir('Seu investimento e retorno', 'Quanto você investe, em quanto tempo o valor volta e as formas de pagamento.', true);
+    abrir('Seu investimento e retorno', og && !comDiesel ? 'Quanto você investe, o custo da energia e as formas de pagamento.' : 'Quanto você investe, em quanto tempo o valor volta e as formas de pagamento.', true);
     const geracao25 = f.anos.reduce(function (s0, a) { return s0 + (a.geracao || 0); }, 0);
-    const cartoesInv = [
+    const cartoesInv = og ? [
+      { rot: 'Investimento', valor: U.brl(r.total), sub: maxParcelas > 1 ? 'à vista ou parcelado em até ' + maxParcelas + 'x' : 'à vista' },
+      comDiesel ? { rot: 'O investimento volta em', valor: f.paybackSimples != null ? U.anosMeses(f.paybackSimples) : 'mais de ' + H + ' anos', sub: 'comparado ao gerador a diesel', tom: 'ouro' }
+        : { rot: 'Energia para as cargas', valor: U.fmtSmart(og.cargasDia, 1) + ' kWh/dia', sub: '≈ ' + U.fmt(r.consumoMedio, 0) + ' kWh por mês', tom: 'ouro' },
+      comDiesel ? { rot: 'Diesel evitado no 1º ano', valor: valorCurto(f.economiaAno1), sub: '≈ ' + U.fmt(f.litrosAno, 0) + ' litros · ' + valorCurto(f.economiaMes1) + ' por mês', tom: 'verde' }
+        : { rot: 'Autonomia', valor: '≈ ' + U.fmtSmart(og.autonomiaDias, 1) + ' dia(s)', sub: 'sem sol, só com as baterias', tom: 'verde' },
+      comDiesel ? { rot: 'Rentabilidade (TIR)', valor: f.tir != null ? U.fmt(f.tir * 100, 1) + '% a.a.' : (f.tirAcima ? 'acima de 1.000% a.a.' : '—'), sub: 'a ' + (prem.tmaNome || 'SELIC') + ' está em ' + U.fmt(prem.tma * 100, 2) + '% a.a.', tom: 'verde' }
+        : { rot: 'Banco de baterias', valor: U.fmtSmart(og.capInstalada, 2) + ' kWh', sub: U.fmtSmart(og.capUtil, 2) + ' kWh úteis' },
+      comDiesel ? { rot: 'Economia em ' + H + ' anos', valor: valorCurto(f.economiaTotal), sub: 'diesel evitado menos a troca das baterias · reajuste de ' + U.fmtSmart(prem.offgrid.reajusteDiesel * 100, 1) + '% ao ano' }
+        : { rot: 'Potência', valor: U.kwp(r.kwp) + ' kWp', sub: r.nModulos + ' módulos' },
+      geracao25 > 0
+        ? { rot: 'Custo da sua energia', valor: U.brl(r.total / geracao25) + '/kWh', sub: comDiesel ? 'contra ' + U.brl(f.custoKwhDiesel) + '/kWh do diesel hoje' : 'investimento ÷ energia em ' + H + ' anos' }
+        : { rot: 'Garantia das baterias', valor: garantiaAnos(bat), sub: 'pelo fabricante' }
+    ] : [
       { rot: 'Investimento', valor: U.brl(r.total), sub: maxParcelas > 1 ? 'à vista ou parcelado em até ' + maxParcelas + 'x' : 'à vista' },
       { rot: 'O investimento volta em', valor: f.paybackSimples != null ? U.anosMeses(f.paybackSimples) : 'mais de ' + H + ' anos', sub: 'depois disso, a economia é lucro', tom: 'ouro' },
       { rot: 'Economia no 1º ano', valor: valorCurto(f.economiaAno1), sub: '≈ ' + valorCurto(f.economiaMes1) + ' por mês', tom: 'verde' },
@@ -551,7 +631,7 @@ window.App = window.App || {};
     ];
     cartoesInv.forEach(function (c) { c.sz = 28; });
     b.push(grade(cartoesInv, 3, cartao));
-    if (App.Chart && App.Chart.saldoDataURL) {
+    if (App.Chart && App.Chart.saldoDataURL && (!og || comDiesel)) {
       b.push(subtitulo('Seu dinheiro ao longo do tempo (saldo acumulado)', 200));
       const ptsSaldo = [{ rot: 'Hoje', v: -r.total }].concat(f.anos.map(function (a) { return { rot: String(a.ano), v: a.acumulado }; }));
       const gs = App.Chart.saldoDataURL({
@@ -561,12 +641,12 @@ window.App = window.App || {};
       imagens.saldo = gs.dataURL;
       b.push(P(IMG('saldo', wTexto, Math.round(wTexto * gs.proporcao), 'Saldo acumulado'), { after: 40, jc: 'center' }));
     }
-    const extrasRet = ['Payback descontado (' + (prem.tmaNome || 'SELIC') + ' ' + U.fmt(prem.tma * 100, 2) + '% a.a.): ' + (f.paybackDescontado != null ? U.anosMeses(f.paybackDescontado) : 'acima do horizonte'),
+    const extrasRet = og && !comDiesel ? [] : ['Payback descontado (' + (prem.tmaNome || 'SELIC') + ' ' + U.fmt(prem.tma * 100, 2) + '% a.a.): ' + (f.paybackDescontado != null ? U.anosMeses(f.paybackDescontado) : 'acima do horizonte'),
       'VPL em ' + H + ' anos: ' + U.brl(f.vpl)];
-    if (temFV) extrasRet.push('CO₂ evitado: ' + U.fmt(f.co2t, 1) + ' t');
+    if (temFV && f.co2t > 0) extrasRet.push('CO₂ evitado: ' + U.fmt(f.co2t, 1) + ' t');
     if (a1.beneficioBackup > 0) extrasRet.push('benefício de backup: ' + U.brl(a1.beneficioBackup) + '/ano');
     if (r.trocaBateria && r.trocaBateria.custo > 0) extrasRet.push('substituição ' + (r.bessAtivo ? 'do BESS' : 'das baterias') + ' no ano ' + (r.anoBase + r.trocaBateria.ano - 1) + ': ' + U.brl(r.trocaBateria.custo));
-    b.push(T(extrasRet.join('  •  '), { after: 40 }, { color: CINZA, sz: 16 }));
+    if (extrasRet.length) b.push(T(extrasRet.join('  •  '), { after: 40 }, { color: CINZA, sz: 16 }));
     // como pagar: todas as opções em cartões, na ordem cadastrada (rótulo antes do " — " e o detalhe, como a taxa, no complemento)
     const comoPagar = pags.map(function (pg) {
       const partes = String(pg.label || '').split(' — ');
@@ -576,7 +656,7 @@ window.App = window.App || {};
       return {
         rot: partes[0], valor: (parseInt(pg.prazo, 10) || 1) + ' × ' + U.brl(pg.parcela), sz: 26,
         sub: [detalhe, semAcrescimo ? (/sem acr/i.test(detalhe) ? '' : 'sem acréscimo') : 'total ' + U.brl(pg.total)].filter(Boolean).join(' · '),
-        nota: f.economiaMes1 > pg.parcela ? 'parcela menor que a economia do mês' : ''
+        nota: og ? (comDiesel && f.economiaMes1 > pg.parcela ? 'parcela menor que o gasto com diesel do mês' : '') : (f.economiaMes1 > pg.parcela ? 'parcela menor que a economia do mês' : '')
       };
     });
     if (comoPagar.length) {
@@ -595,7 +675,41 @@ window.App = window.App || {};
     b.push(TBL(fone ? [6160, 3200] : [9360], [TR(cta, false, { naoQuebrar: true })]));
 
 
+    /* ---------- OFF-GRID × GERADOR A DIESEL */
+    if (comDiesel) {
+      const ogp = prem.offgrid;
+      abrir('Sistema off-grid × gerador a diesel', 'O que você deixa de gastar com combustível e manutenção, com reajuste de ' + U.fmtSmart(ogp.reajusteDiesel * 100, 1) + '% ao ano.', true);
+      const caixaD = function (rot, valor, sub, fundo, cor, w) {
+        return TC([T(rot, { after: 20 }, { color: cor, sz: 17 }), T(valor, { after: 20 }, { b: true, color: cor, sz: 30 }), T(sub, null, { color: cor, sz: 16 })],
+          { w: w, fill: fundo, borda: { sz: 4, cor: fundo }, mar: { t: 140, b: 140, l: 200, r: 120 } });
+      };
+      b.push(TBL([2900, 400, 2900, 260, 2900], [TR([
+        caixaD('Com gerador a diesel', U.brl(a1.contaSem), 'por mês · ≈ ' + U.fmt(f.litrosAno / 12, 0) + ' litros', 'F1F5F9', '334155', 2900),
+        TC(T('➜', { jc: 'center' }, { color: CINZA, sz: 28 }), { w: 400, semBorda: true }),
+        caixaD('Com o sistema off-grid', 'R$ 0', 'sem combustível · energia do sol e das baterias', 'EFF6FF', AZUL, 2900),
+        espaco(260),
+        caixaD('Você deixa de gastar', U.brl(f.economiaMes1), 'por mês · ' + valorCurto(f.economiaAno1) + ' no 1º ano', '15803D', BRANCO, 2900)
+      ], false, { naoQuebrar: true })]));
+      const infosD = [['Como calculamos', 'Um gerador a diesel desse porte consome cerca de ' + U.fmtSmart(f.litrosKwh, 2) + ' litro por kWh; com o diesel a ' + U.brl(f.dieselPreco) +
+        '/L e a manutenção (' + U.brl(f.manutKwh) + '/kWh), a energia custa ' + U.brl(f.custoKwhDiesel) + '/kWh hoje.']];
+      if (r.trocaBateria) infosD.push(['E as baterias?', 'As baterias duram cerca de ' + U.fmt(cen.vidaArmAnos, 0) + ' anos; a troca prevista em ' + (r.anoBase + r.trocaBateria.ano - 1) + ' (' + U.brl(r.trocaBateria.custo) + ') já está descontada na economia.']);
+      else infosD.push(['E as baterias?', 'A vida estimada das baterias (≈ ' + U.fmt(cen.vidaArmAnos || 0, 0) + ' anos) cobre o período da análise.']);
+      b.push(P([], { after: 120 }));
+      b.push(grade(infosD, 2, function (x, w) {
+        return TC([T(x[0], { after: 40 }, { b: true, color: '92400E', sz: 21 }), T(x[1], null, { color: '57534E', sz: 17 })],
+          { w: w, fill: 'FFFBEB', borda: { sz: 6, cor: 'FDE68A' }, mar: { t: 120, b: 120, l: 180, r: 140 }, vAlign: 'top' });
+      }));
+      b.push(subtitulo('O diesel nos próximos anos', 200));
+      const colsD = [{ t: 'Ano', w: 1200, jc: 'left' }, { t: 'Diesel por ano', w: 1800 }, { t: 'Gerador a diesel por mês', w: 2300 }, { t: 'Troca das baterias', w: 1800 }, { t: 'Você deixa de gastar no ano', w: 2260 }];
+      const linD = f.projecao.map(function (a) { return [String(a.ano), U.fmt(a.litros, 0) + ' L', reais(a.contaSem), a.extra > 0 ? '− ' + reais(a.extra) : '—', { t: reais(a.liq), b: true }]; });
+      const totD = [{ t: 'Total em ' + f.anos.length + ' anos', b: true }, '', '', '', { t: valorCurto(f.economiaTotal), b: true }];
+      totD.fundo = DESTAQUE;
+      linD.push(totD);
+      b.push(tabela(colsD, linD, { sz: 19 }));
+    }
+
     /* ---------- QUANTO VOCÊ ECONOMIZA */
+    if (!og) {
     abrir('Quanto você economiza', 'Valores estimados com a tarifa atual, reajuste de ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano' + (temFV ? ' e as regras da Lei 14.300/2022.' : '.'), true);
     const caixa = function (rot, valor, sub, fundo, cor, w) {
       return TC([T(rot, { after: 20 }, { color: cor, sz: 17 }), T(valor, { after: 20 }, { b: true, color: cor, sz: 30 }), T(sub, null, { color: cor, sz: 16 })],
@@ -678,13 +792,16 @@ window.App = window.App || {};
     linhasT.push(TR([TC(P([R('Somando os ' + f.anos.length + ' anos, a economia na conta de luz chega a ', { color: BRANCO, sz: 20 }), R(valorCurto(somaEco), { b: true, color: BRANCO, sz: 24 })], { jc: 'center' }),
       { w: 9360, span: colsT.length, fill: '15803D', borda: { sz: 4, cor: '15803D' }, mar: { t: 90, b: 90, l: 160, r: 160 } })], false, { naoQuebrar: true }));
     b.push(TBL(LCT, linhasT));
+    }
 
     /* ---------- O QUE ESTÁ INCLUSO */
     abrir('O que está incluso', 'Do projeto à energia gerando: tudo o que fazemos por você, e o que fica fora do escopo.', true);
-    const extraInc = hib ? textos.inclusosHibrido || [] : (r.bessAtivo ? textos.inclusosBess || [] : []);
-    const extraNinc = hib ? textos.naoInclusosHibrido || [] : (r.bessAtivo ? textos.naoInclusosBess || [] : []);
-    const inc = (textos.inclusos || []).concat(extraInc).map(t).filter(Boolean);
-    const ninc = (textos.naoInclusos || []).concat(extraNinc).map(t).filter(Boolean);
+    const extraInc = og ? textos.inclusosOffgrid || [] : (hib ? textos.inclusosHibrido || [] : (r.bessAtivo ? textos.inclusosBess || [] : []));
+    const extraNinc = og ? textos.naoInclusosOffgrid || [] : (hib ? textos.naoInclusosHibrido || [] : (r.bessAtivo ? textos.naoInclusosBess || [] : []));
+    // off-grid: saem da base os itens que dependem da rede (homologação, padrão de entrada, medidor, vistoria da concessionária)
+    const daRede = function (x) { return og && /homolog|concession|padr[ãa]o de entrada|medidor|vistoria|\{concessionaria\}/i.test(String(x)); };
+    const inc = (textos.inclusos || []).filter(function (x) { return !daRede(x); }).concat(extraInc).map(t).filter(Boolean);
+    const ninc = (textos.naoInclusos || []).filter(function (x) { return !daRede(x); }).concat(extraNinc).map(t).filter(Boolean);
     const itensMarcados = function (lista, simbolo, cor) {
       return lista.map(function (x) { return P([R(simbolo + '  ', { b: true, color: cor }), R(x, { sz: 19 })], { after: 60 }); });
     };
@@ -694,12 +811,12 @@ window.App = window.App || {};
         TC(T('Não está incluso', null, { b: true, color: BRANCO, sz: 22 }), { w: 4000, fill: '64748B', borda: { sz: 4, cor: '64748B' }, mar: { t: 120, b: 120, l: 200, r: 120 } })], true),
       TR([TC(itensMarcados(inc, '✓', '15803D'), { w: 5160, fill: 'F0FDF4', borda: { sz: 4, cor: 'BBF7D0' }, mar: { t: 140, b: 120, l: 200, r: 160 }, vAlign: 'top' }),
         espaco(200),
-        TC(itensMarcados(ninc, '✗', 'DC2626').concat([T('Se algum desses itens for necessário (por exemplo, exigência da ' + (conc || 'concessionária') + ' na vistoria), avisamos antes e passamos o orçamento à parte.',
+        TC(itensMarcados(ninc, '✗', 'DC2626').concat([T(og ? 'Se algum desses itens for necessário, avisamos antes e passamos o orçamento à parte.' : 'Se algum desses itens for necessário (por exemplo, exigência da ' + (conc || 'concessionária') + ' na vistoria), avisamos antes e passamos o orçamento à parte.',
           { before: 120, top: { sz: 4, space: 4, color: 'CBD5E1' } }, { color: CINZA, sz: 16 })]), { w: 4000, fill: 'F8FAFC', borda: { sz: 4, cor: 'E2E8F0' }, mar: { t: 140, b: 120, l: 200, r: 160 }, vAlign: 'top' })])
     ]));
     const garantias = [];
     if (mod) garantias.push({ rot: 'Módulos', valor: (C.garantiaModulo(mod).match(/^\d+\s*anos?/) || [C.garantiaModulo(mod)])[0], sub: C.garantiaModulo(mod), sz: 26 });
-    if (inv) garantias.push({ rot: r.micro ? 'Microinversores' : (hib ? 'Inversor híbrido' : 'Inversor'), valor: garantiaAnos(inv), sub: 'pelo fabricante ' + (inv.fabricante || ''), sz: 26 });
+    if (inv) garantias.push({ rot: r.micro ? 'Microinversores' : (og ? 'Inversor off-grid' : (hib ? 'Inversor híbrido' : 'Inversor')), valor: garantiaAnos(inv), sub: 'pelo fabricante ' + (inv.fabricante || ''), sz: 26 });
     if (temArm && bat) garantias.push({ rot: r.bessAtivo ? 'BESS' : 'Baterias', valor: garantiaAnos(bat), sub: 'pelo fabricante ' + (bat.fabricante || ''), sz: 26 });
     if (textos.garantiaInstalacao) garantias.push({ rot: 'Instalação', valor: t(textos.garantiaInstalacao), sub: 'pela ' + (emp.nomeCurto || emp.razao) + ': mão de obra e conexões', sz: 26 });
     if (garantias.length) {
@@ -719,17 +836,25 @@ window.App = window.App || {};
     b.push(TBL([2900, 330, 2900, 330, 2900], [TR([
       passo3(1, 'Aprovação', 'Assine abaixo' + (fone ? ' ou responda pelo WhatsApp.' : '.')), seta(),
       passo3(2, 'Contrato e pagamento', 'Formalizamos o contrato e a forma de pagamento escolhida.'), seta(),
-      passo3(3, 'Vistoria e projeto', 'Visitamos o local e damos entrada' + (conc ? ' na ' + conc : ' na concessionária') + '.')
+      og ? passo3(3, 'Visita técnica', 'Conferimos o local e as cargas e agendamos a instalação.') : passo3(3, 'Vistoria e projeto', 'Visitamos o local e damos entrada' + (conc ? ' na ' + conc : ' na concessionária') + '.')
     ], false, { naoQuebrar: true })]));
     b.push(P([R('Esta proposta foi emitida em ', { color: '78350F', sz: 22 }), R(U.dataBR(p.data), { b: true, color: '78350F', sz: 22 }), R(' e é válida até ', { color: '78350F', sz: 22 }),
       R(validoAte, { b: true, color: '78350F', sz: 22 }), R('.', { color: '78350F', sz: 22 })], { jc: 'center', shd: 'FFFBEB', before: 240, after: 160, top: { sz: 6, space: 6, color: 'FDE68A' }, bottom: { sz: 6, space: 6, color: 'FDE68A' } }));
     b.push(subtitulo('Considerações importantes'));
     const cons = [];
     if (temFV) cons.push('A geração foi estimada com dados de irradiação solar' + (r.cidade ? ' de ' + cidadeUF.replace(' / ', '/') : '') + (r.localidade && r.localidade.fonte ? ' (' + r.localidade.fonte + ')' : '') + ' e varia conforme o clima de cada mês.');
+    if (og) {
+      cons.push('O sistema foi dimensionado para as cargas informadas, pelo mês de menor sol (' + C.MESES_CURTOS[og.mesCritico] + ') e para ' + U.fmtSmart(og.autonomiaDesejada, 1) +
+        ' dia(s) sem sol. Cargas novas ou maiores pedem a ampliação do gerador e das baterias.');
+      if (comDiesel) cons.push('A comparação com o gerador a diesel considera ' + U.fmtSmart(f.litrosKwh, 2) + ' L/kWh, o diesel a ' + U.brl(f.dieselPreco) + '/L e reajuste de ' + U.fmtSmart(prem.offgrid.reajusteDiesel * 100, 1) + '% ao ano.');
+      cons.push('A manutenção é simples: limpar os módulos a cada 6 a 12 meses e manter as baterias em local ventilado, protegido do sol e da chuva.');
+      cons.push(comPassos ? 'Os prazos de cada etapa estão no passo a passo desta proposta.' : 'Após a aprovação, combinamos com você as datas de cada etapa.');
+    } else {
     cons.push('A economia considera o consumo informado, a tarifa atual da ' + (conc || 'concessionária') + ', reajuste de ' + U.fmtSmart(prem.inflacaoTarifa * 100, 1) + '% ao ano' + (temFV ? ' e a cobrança gradual do Fio B prevista na Lei 14.300/2022.' : '.'));
     if (temFV) cons.push('A manutenção é simples: recomendamos limpar os módulos a cada 6 a 12 meses, principalmente na época seca.');
     cons.push((comPassos ? 'Os prazos de cada etapa estão no passo a passo desta proposta' : 'Após a aprovação, combinamos com você as datas de cada etapa') +
       '; a ligação do sistema depende da aprovação da ' + (conc || 'concessionária') + '.');
+    }
     cons.forEach(function (x) { b.push(P([R('•  ', { b: true, color: 'F6A81C' }), R(x, { sz: 19 })], { after: 60, ind: 120 })); });
     const hlc = encaixar(logo.w, logo.h, 1600200, 800100);
     const contato = [T(emp.razao, { after: 40 }, { b: true, color: AZUL, sz: 24 })];
@@ -756,7 +881,7 @@ window.App = window.App || {};
     ];
     b.push(TBL([4680, 4680], [TR([TC(colEmp, { w: 4680, semBorda: true, mar: { t: 0, b: 0, l: 240, r: 240 } }), TC(colCli, { w: 4680, semBorda: true, mar: { t: 0, b: 0, l: 240, r: 240 } })], false, { naoQuebrar: true })]));
     b.push(vazio());
-    b.push(T(t(textos.slogan), { top: { sz: 6, space: 4, color: DOURADO }, before: 100, jc: 'center' }, { color: AZUL }));
+    b.push(T(og ? '"Energia própria, limpa e silenciosa — onde a rede não chega."' : t(textos.slogan), { top: { sz: 6, space: 4, color: DOURADO }, before: 100, jc: 'center' }, { color: AZUL }));
 
     /* ---------- cabeçalho e rodapé */
     const hl = encaixar(logo.w, logo.h, 1238250, 666750);

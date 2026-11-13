@@ -75,7 +75,7 @@
       tb.appendChild(h('tr', { onclick: function (e) { if (!e.target.closest('button,select')) UI.ir('#/proposta/' + p.id); } },
         h('td', h('strong', p.numero), h('div.mini', U.dataBR(p.data))),
         h('td', p.clienteNome || '—', h('div.mini', rs.cidade || '')),
-        h('td', p.tipoSistema === 'hibrido' ? UI.badge('Híbrido', 'roxo') : (p.tipoSistema === 'bess' ? UI.badge('BESS', 'ambar') : UI.badge('On-Grid', 'azul')),
+        h('td', p.tipoSistema === 'hibrido' ? UI.badge('Híbrido', 'roxo') : (p.tipoSistema === 'offgrid' ? UI.badge('Off-Grid', 'ok') : (p.tipoSistema === 'bess' ? UI.badge('BESS', 'ambar') : UI.badge('On-Grid', 'azul'))),
           rs.cenario ? h('div.mini', rs.cenario) : null),
         h('td.num', rs.kwp ? U.kwp(rs.kwp) + ' kWp' : '—', rs.kwh ? h('div.mini', U.fmtSmart(rs.kwh, 2) + ' kWh') : null),
         h('td.num', rs.total ? U.brl(rs.total) : '—'),
@@ -134,7 +134,8 @@
     const selStatus = h('select', { 'aria-label': 'Filtrar por situação', onchange: function () { filtro.status = selStatus.value; desenhar(); } },
       h('option', { value: '' }, 'Todas as situações'), D.STATUS.map(function (s) { return h('option', { value: s.id }, s.label); }));
     const selTipo = h('select', { 'aria-label': 'Filtrar por tipo', onchange: function () { filtro.tipo = selTipo.value; desenhar(); } },
-      h('option', { value: '' }, 'Todos os tipos'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'), h('option', { value: 'bess' }, 'BESS'));
+      h('option', { value: '' }, 'Todos os tipos'), h('option', { value: 'ongrid' }, 'On-Grid'), h('option', { value: 'hibrido' }, 'Híbrido'), h('option', { value: 'offgrid' }, 'Off-Grid'),
+      S.list('propostas').some(function (p) { return p.tipoSistema === 'bess'; }) ? h('option', { value: 'bess' }, 'BESS (antigas)') : null);
     cont.appendChild(UI.cabecalho('Propostas', 'Clique em uma proposta para editar. 📲 envia ao cliente pelo WhatsApp, 👁 visualiza, PDF / DOCX baixam, ✍ gera o contrato, 🏗 abre a instalação, ⧉ duplica.', [
       busca, selStatus, selTipo, h('a.btn.primario', { href: '#/proposta/nova' }, '+ Nova proposta')
     ]));

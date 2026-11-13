@@ -106,7 +106,8 @@ window.App = window.App || {};
 
   /** Tipo de kit que serve à proposta. */
   function tipoProposta(p) {
-    if (p.tipoSistema === 'hibrido') return 'hibrido';
+    // off-grid usa os kits com baterias (inversor híbrido/off-grid)
+    if (p.tipoSistema === 'hibrido' || p.tipoSistema === 'offgrid') return 'hibrido';
     return p.topologia === 'micro' ? 'micro' : 'ongrid';
   }
 
@@ -167,15 +168,19 @@ window.App = window.App || {};
     const eMod = mod && itemEq(mod, eqs);
     if (eMod) { p.moduloId = eMod.id; p.nModulos = String(Math.round(num(mod.qtd))); }
     else if (mod) avisos.push('Módulo do kit fora do cadastro: a proposta mantém o módulo escolhido.');
-    if (p.tipoSistema !== 'hibrido' && (k.tipo === 'micro' || k.tipo === 'ongrid')) p.topologia = k.tipo === 'micro' ? 'micro' : 'string';
-    const tipoInv = p.tipoSistema === 'hibrido' ? 'hibrido' : (p.topologia === 'micro' ? 'micro' : 'inversor');
+    const comBat = p.tipoSistema === 'hibrido' || p.tipoSistema === 'offgrid';
+    if (!comBat && (k.tipo === 'micro' || k.tipo === 'ongrid')) p.topologia = k.tipo === 'micro' ? 'micro' : 'string';
+    const tipoInv = comBat ? 'hibrido' : (p.topologia === 'micro' ? 'micro' : 'inversor');
     const inv = itemDoTipo(k, INVERSORES, eqs);
     const eInv = inv && itemEq(inv, eqs);
     if (eInv && eInv.tipo === tipoInv) { p.inversorId = eInv.id; p.nInversores = String(Math.round(num(inv.qtd))); }
     else if (inv) avisos.push(eInv ? 'O inversor do kit (' + rotuloItem(eInv.tipo).toLowerCase() + ') não é do tipo da proposta: a proposta mantém o inversor escolhido.' : 'Inversor do kit fora do cadastro: a proposta mantém o inversor escolhido.');
-    if (p.tipoSistema === 'hibrido') {
+    if (comBat) {
       const bat = itemDoTipo(k, ['bateria'], eqs), eBat = bat && itemEq(bat, eqs);
-      if (eBat && eBat.tipo === 'bateria') p.bateriaId = eBat.id;
+      if (eBat && eBat.tipo === 'bateria') {
+        p.bateriaId = eBat.id;
+        if (p.tipoSistema === 'offgrid' && num(bat.qtd) > 0) p.ogBaterias = String(Math.round(num(bat.qtd)));
+      }
     }
     p.kitManual = true;
     p.kitValor = custo(k);
@@ -221,7 +226,7 @@ window.App = window.App || {};
     if (r.modulo && r.nModulos > 0) k.itens.push(novoItem({ tipo: 'modulo', equipamentoId: r.modulo.id, descricao: App.Calc.nomeEquip(r.modulo), qtd: r.nModulos }));
     if (r.inversor && r.nInversores > 0) k.itens.push(novoItem({ tipo: r.inversor.tipo, equipamentoId: r.inversor.id, descricao: App.Calc.nomeEquip(r.inversor), qtd: r.nInversores }));
     const hb = r.hibrido;
-    if (p.tipoSistema === 'hibrido' && hb && hb.bateria && hb.nBaterias > 0) {
+    if ((p.tipoSistema === 'hibrido' || p.tipoSistema === 'offgrid') && hb && hb.bateria && hb.nBaterias > 0) {
       k.itens.push(novoItem({ tipo: 'bateria', equipamentoId: hb.bateria.id, descricao: App.Calc.nomeEquip(hb.bateria), qtd: hb.nBaterias }));
     }
     k.valor = arred(num(p.kitManual ? p.kitValor : r.kit));

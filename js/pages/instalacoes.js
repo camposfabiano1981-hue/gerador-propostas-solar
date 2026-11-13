@@ -761,6 +761,12 @@
 
     /* ---------- homologação na Energisa (memorial V6 da planilha oficial) */
     secao('homologacao', 'Homologação (memorial Energisa)', function (c) {
+      // off-grid: sistema isolado, sem conexão à rede — não há acesso nem homologação na distribuidora
+      if (inst.tipoSistema === 'offgrid') {
+        c.appendChild(h('p.ajuda-sec', 'Sistema off-grid (isolado da rede): não há solicitação de acesso nem homologação na distribuidora. ' +
+          'Registre a ART e a documentação do projeto em Dados da obra.'));
+        return;
+      }
       App.HomologacaoTela.secao(c, {
         inst: inst, ctx: ctx, mudou: mudou,
         registrar: function (txt) { I.registrar(inst, txt, 'nota'); desenhar('historico'); if (inst.id) salvar(false); }

@@ -22,7 +22,8 @@
             h('button.btn-icone.perigo', { type: 'button', title: 'Remover', 'aria-label': 'Remover', onclick: function () { lista.splice(i, 1); desenhar(); if (aoMudar) aoMudar(); } }, '×'))
         ));
       });
-      box.appendChild(h('table.tabela.editavel', h('thead', h('tr', colunas.map(function (c) { return h('th', c.label); }), h('th.acoes-col', ''))), tb));
+      // rolagem própria no celular (a tabela não alarga a página)
+      box.appendChild(h('div.tabela-rolagem', h('table.tabela.editavel', h('thead', h('tr', colunas.map(function (c) { return h('th', c.label); }), h('th.acoes-col', ''))), tb)));
       box.appendChild(h('button.btn.pequeno', {
         type: 'button', onclick: function () {
           const n = novaLinha ? novaLinha() : {};
@@ -249,8 +250,8 @@
       { k: 'naoInclusos', label: '❌ Não inclusos', type: 'linhas', rows: 9 },
       { k: 'inclusosHibrido', label: '✅ Inclusos adicionais — sistemas híbridos', type: 'linhas', rows: 3 },
       { k: 'naoInclusosHibrido', label: '❌ Não inclusos adicionais — sistemas híbridos', type: 'linhas', rows: 3 },
-      { k: 'inclusosBess', label: '✅ Inclusos adicionais — BESS', type: 'linhas', rows: 3 },
-      { k: 'naoInclusosBess', label: '❌ Não inclusos adicionais — BESS', type: 'linhas', rows: 3 },
+      { k: 'inclusosOffgrid', label: '✅ Inclusos adicionais — sistemas off-grid', type: 'linhas', rows: 3 },
+      { k: 'naoInclusosOffgrid', label: '❌ Não inclusos adicionais — sistemas off-grid', type: 'linhas', rows: 3 },
       { k: 'cenariosIntro', label: 'Introdução do comparativo de cenários', type: 'textarea', rows: 3, cls: 'span2' }
     ], tx, marcar)));
 

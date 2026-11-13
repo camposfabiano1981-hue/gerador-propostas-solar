@@ -28,7 +28,7 @@ window.App = window.App || {};
     { id: 'rural', label: 'Rural' }, { id: 'publico', label: 'Poder público' }
   ];
   D.TIPOS_PROJETO = [
-    { id: 'ongrid', label: 'On-Grid' }, { id: 'hibrido', label: 'Híbrido' }, { id: 'bess', label: 'BESS' }, { id: 'offgrid', label: 'Off-Grid' }
+    { id: 'ongrid', label: 'On-Grid' }, { id: 'hibrido', label: 'Híbrido' }, { id: 'offgrid', label: 'Off-Grid' }, { id: 'bess', label: 'BESS' }
   ];
 
   D.TELHADOS = ['Cerâmico', 'Fibrocimento', 'Metálico', 'Laje', 'Solo', 'Shingle', 'Carport', 'Outro'];
@@ -37,7 +37,7 @@ window.App = window.App || {};
     { id: 'modulo', label: 'Módulos FV' },
     { id: 'inversor', label: 'Inversores On-Grid' },
     { id: 'micro', label: 'Microinversores' },
-    { id: 'hibrido', label: 'Inversores Híbridos' },
+    { id: 'hibrido', label: 'Inversores Híbridos / Off-Grid' },
     { id: 'bateria', label: 'Baterias' },
     { id: 'bess', label: 'BESS (armazenamento)' },
     { id: 'estrutura', label: 'Estruturas' },
@@ -151,6 +151,20 @@ window.App = window.App || {};
       utilizacaoMin: 0.70,
       // pico de partida de motores com partida direta (× potência nominal; compressores/bombas: 5–8×)
       fatorPartida: 5
+    },
+    // off-grid (sistema isolado): o gerador e o banco atendem toda a demanda, sem a rede
+    // (mês crítico, dias de autonomia, relação gerador/carga — IEEE 1562; CRESESB, Manual de Engenharia para Sistemas FV)
+    offgrid: {
+      autonomiaDias: 2,       // dias sem sol atendidos só pelo banco (LiFePO4 e HSP > 4,5: 2; chumbo-ácido ou carga crítica: 3–5)
+      margemGerador: 1.2,     // gerador ÷ demanda no mês crítico (IEEE 1562: 1,1–1,2 cargas comuns e boa insolação; 1,3–1,4 críticas)
+      fatorTemperatura: 1.0,  // capacidade do banco na temperatura do local (lítio em abrigo: 1,0; chumbo-ácido no frio: 0,8–0,9)
+      diasRecargaMax: 12,     // aviso quando o excedente do mês crítico leva mais que isso para repor a autonomia (≈ dias ÷ (margem − 1): 2 dias e 1,2 → 10)
+      // comparação com o gerador a diesel (custo evitado)
+      dieselLkWh: 0.40,       // consumo do gerador (L/kWh): grupos pequenos em carga parcial, 0,35–0,6
+      dieselPreco: 6.20,      // R$/L
+      dieselManutKwh: 0.10,   // manutenção, óleo e filtros (R$/kWh)
+      reajusteDiesel: 0.05,   // reajuste anual do diesel
+      fatorCO2Diesel: 2.68    // kg de CO2 por litro de diesel queimado
     },
     armazenamento: {
       degradacao: 0.02,
@@ -365,6 +379,17 @@ window.App = window.App || {};
     ],
     conformidadeHibrido: [
       { norma: 'IEC 62619', descricao: 'Requisitos de segurança para baterias de lítio em aplicações estacionárias' }
+    ],
+    // off-grid (sistema isolado): itens adicionais; os da base que dependem da rede (homologação, padrão de entrada, vistoria) saem
+    inclusosOffgrid: [
+      'Dimensionamento do banco de baterias para os dias de autonomia',
+      'Configuração do inversor em modo isolado (off-grid) e da carga das baterias',
+      'Quadro de distribuição das cargas com proteções CC e CA'
+    ],
+    naoInclusosOffgrid: [
+      'Gerador a diesel de apoio e a sua integração',
+      'Abrigo ou casa de baterias (obra civil)',
+      'Cargas acima da potência e da energia dimensionadas'
     ],
     inclusosBess: [
       'Projeto e integração do sistema de armazenamento (BESS)',
@@ -762,6 +787,16 @@ window.App = window.App || {};
     { descricao: 'Roteador Wi-Fi', qtd: 1, potencia: 12, horas: 6 },
     { descricao: 'Televisor', qtd: 1, potencia: 100, horas: 3 },
     { descricao: 'Ventilador', qtd: 2, potencia: 80, horas: 4 }
+  ];
+
+  /** Cargas de exemplo para o off-grid (horas de uso por dia). */
+  D.cargasOffgridExemplo = [
+    { descricao: 'Geladeira', qtd: 1, potencia: 150, horas: 10, motor: true },
+    { descricao: 'Iluminação LED', qtd: 10, potencia: 10, horas: 6 },
+    { descricao: 'Televisor', qtd: 1, potencia: 100, horas: 5 },
+    { descricao: 'Ventilador', qtd: 2, potencia: 80, horas: 8 },
+    { descricao: 'Bomba d\'água 1/2 cv', qtd: 1, potencia: 370, horas: 1, motor: true },
+    { descricao: 'Roteador e celulares', qtd: 1, potencia: 30, horas: 12 }
   ];
 
   App.DEFAULTS = D;

@@ -170,9 +170,10 @@ window.App = window.App || {};
   }
 
   /** Etapas do cronograma de execução (Textos padrão), com os marcadores substituídos. */
-  function etapasPadrao(textos, vars) {
+  function etapasPadrao(textos, vars, offgrid) {
     const sub = App.Documento ? App.Documento.nos.substituir : function (x) { return x; };
-    return ((textos && textos.cronograma) || []).filter(function (c) { return c && (c.etapa || c.prazo); })
+    // off-grid: sem as etapas da rede (homologação, troca do medidor)
+    return ((textos && textos.cronograma) || []).filter(function (c) { return c && (c.etapa || c.prazo) && !(offgrid && /homolog|medidor|concession/i.test(c.etapa + ' ' + c.prazo)); })
       .map(function (c) { return novaEtapa(sub(c.etapa || '', vars), sub(c.prazo || '', vars)); });
   }
 
@@ -209,14 +210,14 @@ window.App = window.App || {};
     const nomeCli = (cli && cli.nome) || p.clienteNome || '';
     const kwp = r && r.incluiFV ? r.kwp : U.numOr(rs.kwp, 0);
     const kwh = r && r.armazenamentoAtivo && r.hibrido ? U.numOr(r.hibrido.capInstalada, 0) : U.numOr(rs.kwh, 0);
-    const tipo = p.tipoSistema === 'hibrido' ? 'Híbrido' : (p.tipoSistema === 'bess' ? 'BESS' : 'On-Grid');
+    const tipo = { hibrido: 'Híbrido', offgrid: 'Off-Grid', bess: 'BESS' }[p.tipoSistema] || 'On-Grid';
     Object.assign(inst, {
       propostaId: p.id || '', propostaNumero: p.numero || '', clienteId: p.clienteId || '', clienteNome: nomeCli, telefone: (cli && cli.telefone) || '', concessionaria: conc,
       endereco: p.enderecoInstalacao || (cli ? [cli.endereco, cli.numero, cli.bairro].filter(Boolean).join(', ') : ''),
       cidade: (r && r.cidade) || rs.cidade || (cli && cli.cidade) || '', uf: (r && r.uf) || (cli && cli.uf) || inst.uf,
       tipoSistema: p.tipoSistema || 'ongrid', kwp: kwp, kwh: kwh, valor: r ? r.total : U.numOr(rs.total, 0),
       titulo: [nomeCli, [kwp > 0 ? U.kwp(kwp) + ' kWp' : '', kwh > 0 ? U.fmtSmart(kwh, 2) + ' kWh' : ''].filter(Boolean).join(' + '), tipo].filter(Boolean).join(' — '),
-      etapas: etapasPadrao(ctx.textos, varsTexto(ctx, conc, nomeCli)),
+      etapas: etapasPadrao(ctx.textos, varsTexto(ctx, conc, nomeCli), p.tipoSistema === 'offgrid'),
       // materiais CA previstos na proposta; o consumo real é lançado na obra
       materiais: App.Materiais ? App.Materiais.daProposta(p) : []
     });

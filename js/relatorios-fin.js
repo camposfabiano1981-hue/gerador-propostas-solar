@@ -504,7 +504,7 @@ window.App = window.App || {};
   /** Blocos da apuração de uma obra (relatório da obra e o detalhamento no relatório de todas). */
   function blocosObra(a, quebra) {
     const p = a.p;
-    const tipoSis = p.tipoSistema === 'hibrido' ? 'Híbrido' : p.tipoSistema === 'bess' ? 'BESS' : 'On-Grid';
+    const tipoSis = { hibrido: 'Híbrido', offgrid: 'Off-Grid', bess: 'BESS' }[p.tipoSistema] || 'On-Grid';
     const r = a.prev.r;
     const inst = a.instalacao;
     const linhas = [{ destaque: true, celulas: [txt('(+) Preço de venda / receita'), brl(a.vendido), brl(a.lancadoReceber), brl(a.receita, { b: true }), brlSinal(a.receita - a.vendido)] }];

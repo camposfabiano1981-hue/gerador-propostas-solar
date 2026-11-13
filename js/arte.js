@@ -142,7 +142,8 @@ window.App = window.App || {};
       linha(g, 'M302 240h14M302 250h14', '#99F6E4', 3);
       linha(g, 'M322 236H330', '#0F766E', 3);
     }
-    // medidor e rede
+    // medidor e rede (o off-grid não tem)
+    if (!o.offgrid) {
     linha(g, 'M390 238H470', AZUL2, 3);
     forma(g, 'M480 208h46a10 10 0 0 1 10 10v40a10 10 0 0 1 -10 10h-46a10 10 0 0 1 -10 -10v-40a10 10 0 0 1 10 -10z', '#FFFFFF', AZUL, 3);
     linha(g, 'M484 230h38M522 230l-7-6M522 230l-7 6M522 248h-38M484 248l7-6M484 248l7 6', VERDE, 3);
@@ -158,10 +159,11 @@ window.App = window.App || {};
     g.fillText('CRÉDITOS', 579, 137);
     g.font = '12px ' + FONTE;
     g.fillText('em kWh', 579, 152);
+    }
     // passos numerados (escala do desenho: o raio do número é 15)
     g.save();
     g.scale(1 / E, 1 / E);
-    const pts = [[255, 92], [372, 190], [214, 252], [503, 198], [668, 228]];
+    const pts = o.offgrid ? [[255, 92], [372, 190], [214, 252]] : [[255, 92], [372, 190], [214, 252], [503, 198], [668, 228]];
     if (o.bateria) pts.push([290, 214]);
     pts.forEach(function (p, i) { numero(g, p[0] * E, p[1] * E, i + 1); });
     g.restore();

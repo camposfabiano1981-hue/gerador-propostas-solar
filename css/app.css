@@ -212,6 +212,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .fatores .campo > label, .meses .campo > label { font-weight: 500; color: var(--muted); }
 .editor-linhas { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .editor-linhas .tabela { border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; }
+.editor-linhas > .tabela-rolagem { max-width: 100%; align-self: stretch; }
 .barra-salvar { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; padding: 12px 0; background: linear-gradient(to top, var(--bg) 70%, transparent); }
 .logo-box { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .logo-box > div { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
@@ -928,3 +929,7 @@ td.num.saida { color: var(--vermelho); }
 .coord-situacao.erro { color: var(--vermelho); }
 .coord-situacao.aviso { color: var(--ambar); }
 .coord-situacao.ok { color: var(--verde); }
+
+/* off-grid: balanço mês a mês */
+.og-tabela tr.critico td { background: var(--ambar-bg); font-weight: 600; }
+.og-tabela td.falta { color: var(--vermelho); font-weight: 700; }

@@ -449,6 +449,63 @@
   const rBatAuto = C.calcular(Object.assign(U.clone(pH), { bateriaId: null, inversorId: 'hib-huawei-5-l1' }), ctxH);
   igual('híbrido: bateria padrão compatível com o inversor escolhido', C.classeBateria(rBatAuto.hibrido.bateria), 'HV');
 
+  // ---------------------------------------------------------------- off-grid (sistema isolado): mês crítico, autonomia, inversor e diesel
+  (function () {
+    const ctxO = ctxReferencia();
+    ctxO.equipamentos = ctxO.equipamentos.concat([
+      { id: 'og-mod', tipo: 'modulo', ativo: true, fabricante: 'OG', modelo: 'M500', potencia: 500, voc: 45, vmp: 38, isc: 14, preco: 600 },
+      { id: 'og-inv', tipo: 'hibrido', ativo: true, fabricante: 'OG', modelo: 'H5', potencia: 5, potenciaBackup: 5, surtoKW: 10, pFVMax: 6.5, fases: 'Monofásico', tensaoBateria: 48, vBatMin: 40, vBatMax: 60,
+        pBateriaMax: 5, consumoProprioW: 0, efBateria: 97, preco: 6000 },
+      { id: 'og-bat', tipo: 'bateria', ativo: true, fabricante: 'OG', modelo: 'B5', energia: 5, tensao: 51.2, potencia: 2.5, dod: 90, eficiencia: 95, ciclos: 6000, preco: 7000 },
+      { id: 'og-mat', tipo: 'material', ativo: true, autoIncluir: true, aplicaEm: 'hibrido', descricao: 'Cabo de bateria 35 mm²', regra: 'porBateria', fator: 2, preco: 50, uso: 'solar' }
+    ]);
+    const loc = ctxO.localidades[0];
+    const pO = { numero: 'OG-1', data: '2026-11-13', tipoSistema: 'offgrid', clienteId: 'cli', localidadeId: loc.id, ligacao: 'mono', telhado: 'Fibrocimento', moduloId: 'og-mod', inversorId: 'og-inv', bateriaId: 'og-bat',
+      cargas: [{ descricao: 'Carga A', qtd: 1, potencia: 1000, horas: 5 }, { descricao: 'Bomba', qtd: 1, potencia: 500, horas: 2, motor: true }], itens: [], kitManual: false, precoModo: 'composto', valorTotal: 0,
+      precificacao: 'margem', premissas: ctxO.premissas };
+    const rO = C.calcular(pO, ctxO);
+    const o = rO.offgrid, prem = rO.premissas;
+    // demanda por dia: 1000×5 + 500×2 = 6 kWh (o inversor deste teste não tem consumo próprio)
+    perto('off-grid: energia das cargas por dia (Σ qtd × potência × horas)', o.cargasDia, 6, 1e-9);
+    igual('off-grid: sem rede (modalidade convencional, sem disponibilidade nem demanda)', [rO.hibridoAtivo, rO.offgridAtivo, rO.disponibilidade, rO.demanda].join('|'), 'true|true|0|');
+    const somaF = loc.fatores.reduce(function (a, b) { return a + b; }, 0);
+    const hspM = loc.fatores.map(function (fx) { return loc.hsp * fx * 12 / somaF; });
+    let crit = 0; hspM.forEach(function (x, i) { if (x < hspM[crit]) crit = i; });
+    igual('off-grid: mês crítico = o de menor sol (demanda igual o ano todo)', o.mesCritico, crit);
+    const eta = 0.95 * 0.97;
+    perto('off-grid: eficiência do ciclo pelos datasheets (bateria 95% × inversor 97%)', o.eta, eta, 1e-9);
+    perto('off-grid: potência necessária = demanda × margem ÷ (HSP do mês crítico × PR × ciclo)', rO.kwpNecessario, 6 * 1.2 / (hspM[crit] * prem.pr * eta), 1e-9);
+    igual('off-grid: módulos = potência necessária ÷ potência do módulo (arredondado para cima)', rO.nModulos, Math.ceil(rO.kwpNecessario * 1000 / 500 - 1e-9));
+    const nBatEsp = Math.ceil((6 * 2 / 1) / (0.9 * eta) / 5 - 1e-9);
+    igual('off-grid: baterias pela autonomia (2 dias × 6 kWh ÷ (DoD 90% × ciclo) ÷ 5 kWh)', rO.hibrido.nBaterias, nBatEsp);
+    ok('off-grid: autonomia do banco ≥ 2 dias e cobertura do mês crítico ≥ margem', o.autonomiaDias >= 2 - 1e-9 && o.coberturaCritica >= 1.2 - 1e-9, [o.autonomiaDias, o.coberturaCritica]);
+    igual('off-grid: 12 meses no balanço; inversor híbrido escolhido; banco no preço e material "com baterias" na lista', [o.meses.length, rO.inversor && rO.inversor.id, rO.itens.some(function (i) { return i.categoria === 'bateria' && i.qtd === nBatEsp; }),
+      (rO.itens.find(function (i) { return /Cabo de bateria/.test(i.descricao); }) || {}).qtd].join('|'), '12|og-inv|true|' + nBatEsp * 2);
+    perto('off-grid: pico de partida = cargas + maior motor × (fator − 1)', rO.hibrido.picoPartida, 1500 + 500 * (prem.hibrido.fatorPartida - 1), 1e-9);
+    // diesel: energia do ano × (preço × L/kWh + manutenção)
+    const og = prem.offgrid, eAno = 6 * 365;
+    perto('off-grid × diesel: custo evitado no 1º ano', rO.fin.economiaAno1, eAno * (og.dieselPreco * og.dieselLkWh + og.dieselManutKwh), 1e-6);
+    perto('off-grid × diesel: litros evitados por ano', rO.fin.litrosAno, eAno * og.dieselLkWh, 1e-9);
+    ok('off-grid × diesel: payback e TIR calculados; sem comparação, em branco', rO.fin.paybackSimples > 0 && rO.fin.tir != null &&
+      C.calcular(Object.assign(U.clone(pO), { ogCompararDiesel: false }), ctxO).fin.paybackSimples === null);
+    // consumo em 12 meses: o mês crítico é o de maior demanda ÷ sol
+    const cm = Array(12).fill(150); cm[1] = 400;
+    const rC = C.calcular(Object.assign(U.clone(pO), { ogDemanda: 'consumo', consumoModo: 'mensal', consumoMensal: cm, ogPotenciaSimultanea: 3 }), ctxO);
+    igual('off-grid por consumo mensal: mês crítico pela maior demanda ÷ sol (fevereiro, 400 kWh)', rC.offgrid.mesCritico, 1);
+    const rSemPot = C.calcular(Object.assign(U.clone(pO), { ogDemanda: 'consumo', consumoMedio: 300, cargas: [] }), ctxO);
+    ok('off-grid por consumo: pede a potência simultânea (define o inversor)', rSemPot.alertas.some(function (a) { return a.nivel === 'erro' && /potência máxima simultânea/.test(a.msg); }));
+    const r3 = C.calcular(Object.assign(U.clone(pO), { ogPotenciaSimultanea: 9 }), ctxO);
+    igual('off-grid: inversores pela potência simultânea (9 kW × 1,25 ÷ 5 kW = 3)', r3.nInversores, 3);
+    const rPoucos = C.calcular(Object.assign(U.clone(pO), { nModulos: 2 }), ctxO);
+    ok('off-grid: poucos módulos — erro no mês crítico com o sugerido', rPoucos.alertas.some(function (a) { return a.nivel === 'erro' && /mês crítico/.test(a.msg) && new RegExp('use ' + rO.nModulos + ' módulos').test(a.msg); }));
+    const rPoucas = C.calcular(Object.assign(U.clone(pO), { ogBaterias: 1 }), ctxO);
+    ok('off-grid: poucas baterias — aviso de autonomia', rPoucas.alertas.some(function (a) { return /dia\(s\) de autonomia dos 2 desejados/.test(a.msg); }));
+    const r3d = C.calcular(Object.assign(U.clone(pO), { ogAutonomiaDias: 3 }), ctxO);
+    ok('off-grid: 3 dias de autonomia pedem mais baterias', r3d.hibrido.nBaterias > rO.hibrido.nBaterias && r3d.offgrid.autonomiaDias >= 3 - 1e-9);
+    ok('off-grid: sem cenários de rede (um cenário só) e sem alertas de tarifa', rO.cenarios.length === 1 && rO.cenarios[0].id === 'offgrid' && !rO.comparar &&
+      !rO.alertas.some(function (a) { return /tarifa|concession/i.test(a.msg); }));
+  })();
+
   // ---------------------------------------------------------------- estruturas por tipo de telhado
   function itensTelhado(telhado, nMod) {
     return C.calcular(Object.assign(U.clone(p), { telhado: telhado, moduloId: 'mod-osda-620', nModulos: nMod }), ctx).itens
@@ -1522,7 +1579,7 @@
       const m = di.porMes.slice(-2);
       igual('painel: matriz por mês (emitidas, vendas, recusas e conversão)', m.map(function (x) { return x.rot + ':' + x.emitidas + '/' + x.n + '/' + x.recusas + '/' + (x.conversao == null ? '-' : x.conversao); }).join(' '), 'out/26:2/1/1/0.5 nov/26:3/1/0/1');
       igual('painel: 12 meses por cidade e por tipo; vendedores no período', [di.porCidade12.map(function (c) { return c.label + '=' + c.valor; }).join(','), di.porTipo12.map(function (t) { return t.id + '=' + t.valor; }).join(','), di.porVendedor.map(function (v) { return v.label; }).join(',')].join(' | '),
-        'Ladário=50000,Corumbá=30000 | ongrid=30000,hibrido=50000,bess=0 | Bruno');
+        'Ladário=50000,Corumbá=30000 | ongrid=30000,hibrido=50000,offgrid=0,bess=0 | Bruno');
       const ag = K.agrupar([1, 2, 3, 4, 5, 6, 7].map(function (i) { return { cidade: 'C' + i, resumo: { total: i * 1000 } }; }), function (p) { return p.cidade; }, 5, 'Outras');
       igual('painel: ranking com "Outras" além dos 5 maiores', ag.map(function (x) { return x.label + '=' + x.valor; }).join(','), 'C7=7000,C6=6000,C5=5000,C4=4000,Outras=6000');
     })();
@@ -1549,7 +1606,7 @@
     ok('CRM: emitidas no período e em aberto agora', d.emitidas === 5 && d.abertas.n === 3 && d.abertas.valor === 39000, JSON.stringify([d.emitidas, d.abertas]));
     igual('CRM: funil das emitidas no período', d.funil.map(function (e) { return e.id + ':' + e.n; }).join(',') + ',recusada:' + d.funilRecusadas.n, 'rascunho:1,enviada:1,negociacao:1,aprovada:1,recusada:1');
     ok('CRM: vendas por mês (12 meses) com os meses do período marcados', d.porMes.length === 12 && d.porMes[11].mes === '2026-10' && d.porMes[11].valor === 60000 && d.porMes[11].noPeriodo && d.porMes[10].valor === 30000 && !d.porMes[10].noPeriodo);
-    igual('CRM: vendas do período por tipo', d.porTipo.map(function (t) { return t.id + ':' + t.valor; }).join(','), 'ongrid:20000,hibrido:40000,bess:0');
+    igual('CRM: vendas do período por tipo', d.porTipo.map(function (t) { return t.id + ':' + t.valor; }).join(','), 'ongrid:20000,hibrido:40000,offgrid:0,bess:0');
     igual('CRM: acompanhar — validade vencida primeiro, depois a que vence em até 3 dias', d.acompanhar.map(function (x) { return x.motivo; }).join(' | '), 'Validade vencida há 24 dias | Vence em 2 dias');
     const d12 = K.indicadores({ propostas: lista }, '12m', '2026-10-30');
     ok('CRM: 12 meses somam todas as vendas', d12.vendido === 90000 && d12.porMes.every(function (m) { return m.noPeriodo; }));
