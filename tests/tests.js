@@ -1131,6 +1131,45 @@
     ok('compras: número PC-AAAAMMDD-NNN com sequência própria', /^PC-20261030-\d{3}$/.test(S.proximoNumero('2026-10-30', 'compra').numero) && S.proximoNumero('2026-10-30', 'compra').chave === 'PC:20261030');
   })();
 
+  // ---------------------------------------------------------------- coordenadas: UTM, leitura do texto e ruas do croqui
+  (function () {
+    const G = App.Coordenadas;
+    // referência: pyproj (EPSG:4326 → EPSG:327zz / 326zz), em metros
+    const REF = [['Corumbá', -19.00862, -57.65318, '21K', 431255.235, 7898091.13], ['Campo Grande', -20.4697, -54.6201, '21K', 748257.538, 7734736.481],
+      ['Três Lagoas', -20.7849, -51.7007, '22K', 427071.891, 7701499.517], ['Ponta Porã', -22.5361, -55.7256, '21K', 631052.173, 7507273.679],
+      ['Brasília', -15.7939, -47.8828, '23L', 191138.743, 8251745.906], ['Boa Vista', 2.8235, -60.6758, '20N', 758384.404, 312342.381],
+      ['Porto Alegre', -30.0346, -51.2177, '22J', 479010.601, 6677360.718], ['borda do fuso', -20.0, -54.0001, '21K', 813915.849, 7785706.161]];
+    const errosUtm = REF.map(function (r) { const u = G.utmDeLatLon(r[1], r[2]); return [r[0], u.fuso === r[3], Math.abs(u.xm - r[4]), Math.abs(u.ym - r[5])]; })
+      .filter(function (e) { return !e[1] || e[2] > 0.01 || e[3] > 0.01; });
+    ok('coordenadas: latitude/longitude → UTM igual à referência (pyproj) em 8 pontos do Brasil, fuso com a letra da faixa (21K, 22K, 23L, 20N, 22J)', errosUtm.length === 0, JSON.stringify(errosUtm));
+    const idas = REF.map(function (r) { const u = G.utmDeLatLon(r[1], r[2]), v = G.latLonDeUtm(u.fuso, u.xm, u.ym); return Math.max(Math.abs(v.lat - r[1]), Math.abs(v.lon - r[2])); });
+    ok('coordenadas: UTM → latitude/longitude (ida e volta abaixo de 1e-7 grau)', Math.max.apply(null, idas) < 1e-7, JSON.stringify(idas));
+    const cor = G.utmDeLatLon(-19.00862, -57.65318);
+    igual('coordenadas: X e Y em metros inteiros (6 e 7 dígitos) e o fuso sem letra é do hemisfério sul', [cor.fuso, cor.x, cor.y, JSON.stringify(G.lerFuso('21')), JSON.stringify(G.lerFuso('20 N')), G.lerFuso('99K'), G.latLonDeUtm('', 1, 1)].join('|'),
+      '21K|431255|7898091|{"zona":21,"sul":true}|{"zona":20,"sul":false}||');
+    const L = function (t) { const r = G.lerLatLon(t); return r ? r.lat.toFixed(6) + ',' + r.lon.toFixed(6) : 'null'; };
+    igual('coordenadas: leitura de graus decimais (ponto ou vírgula), GMS (S/W e S/O), links do Google Maps e longitude/latitude trocadas',
+      [L('-19.0076, -57.6522'), L('-19,0076 -57,6522'), L('-19,0076; -57,6522'), L('19°00\'27.4"S 57°39\'07.9"W'), L('19º 00\' 27,4" S  57º 39\' 07,9" O'),
+        L('https://www.google.com/maps/@-19.0076,-57.6522,17z'), L('https://maps.google.com/?q=-19.0076,-57.6522'), L('https://www.google.com/maps/place/X/data=!3m1!4b1!3d-19.0076!4d-57.6522'),
+        L('-57.6522, -19.0076'), L('abc'), L(''), L('0, 0')].join(' | '),
+      '-19.007600,-57.652200 | -19.007600,-57.652200 | -19.007600,-57.652200 | -19.007611,-57.652194 | -19.007611,-57.652194 | -19.007600,-57.652200 | -19.007600,-57.652200 | -19.007600,-57.652200 | -19.007600,-57.652200 | null | null | null');
+    igual('coordenadas: fuso fora da lista (ex.: 22J) entra na seleção', [G.opcoesFuso(['21K', '22K'])({ fuso: '22J' }).join(','), G.opcoesFuso(['21K', '22K'])({ utm: { fuso: '21K' } }).join(',')].join('|'), '22J,21K,22K|21K,22K');
+    // ruas do croqui num quarteirão montado em metros em volta do ponto da obra (formato da resposta do OpenStreetMap/Overpass)
+    const lat0 = -19.0, lon0 = -57.65, kx = 111320 * Math.cos(-19 * Math.PI / 180), ky = 110540;
+    const via = function (nome, pts, hw) { return { type: 'way', tags: { name: nome, highway: hw || 'residential' }, geometry: pts.map(function (p) { return { lat: lat0 + p[1] / ky, lon: lon0 + p[0] / kx }; }) }; };
+    const osm = { elements: [
+      via('Rua da Frente', [[-200, -15], [0, -15]]), via('Rua da Frente', [[0, -15], [200, -15]]),   // a rua da UC em duas vias
+      via('Rua Leste', [[40, -100], [40, 120]]), via('Rua Oeste', [[-60, -15], [-60, 120]], 'tertiary'),
+      via('Rua do Outro Lado', [[15, -15], [15, -120]]),                                             // chega na da UC pelo outro lado
+      via('Rua de Trás', [[-200, 85], [200, 85]]), via('Avenida Sul', [[-200, -95], [200, -95]], 'secondary'),
+      via('Passeio da Praça', [[-200, -5], [200, -5]], 'footway'), { type: 'node', tags: { name: 'Ponto' } }] };
+    const rc = G.ruasDoCroqui(osm, lat0, lon0);
+    igual('ruas do croqui: a da UC (a mais próxima, sem calçada), Rua 3 = transversal mais perto do lote, Rua 2 = a do outro lado, Rua 4 = a de trás',
+      [rc.uc, rc.r2, rc.r3, rc.r4, rc.distUc].join('|'), 'Rua da Frente|Rua Oeste|Rua Leste|Rua de Trás|15');
+    const rc2 = G.ruasDoCroqui({ elements: [via('Rua Única', [[-100, -20], [100, -20]])] }, lat0, lon0), rc0 = G.ruasDoCroqui({ elements: [] }, lat0, lon0);
+    igual('ruas do croqui: só a rua da UC no mapa (as outras em branco) e nenhuma rua', [rc2.uc, rc2.r2, rc2.r3, rc2.r4, rc0.uc, rc0.lista.length].join('|'), 'Rua Única|||||0');
+  })();
+
   // ---------------------------------------------------------------- avisos ao cliente (WhatsApp) e página de acompanhamento
   (function () {
     const A = App.Acompanhamento, I = App.Instalacao;

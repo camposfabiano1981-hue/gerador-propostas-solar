@@ -171,6 +171,7 @@ window.App = window.App || {};
 
     // ---------- 4. padrão de entrada, proteções e coordenadas
     const pad = hm.padrao, pr = hm.protecoes, bt = hm.bitolas, utm = hm.utm;
+    const coordH = App.Coordenadas.barra({ alvo: hm, ruas: null, aoMudar: function () { mudou(true); } });
     grupo('4. Padrão de entrada, proteções e coordenadas', true, h('div',
       UI.grade([
         { k: 'disjGeral', label: 'Disjuntor geral (A)', type: 'number' },
@@ -190,7 +191,9 @@ window.App = window.App || {};
       UI.grade([{ k: 'fase', label: 'Bitola fase (mm²)', type: 'number' }, { k: 'neutro', label: 'Bitola neutro (mm²)', type: 'number' }, { k: 'terra', label: 'Bitola terra (mm²)', type: 'number' }], bt, function () { mudou(); }, 3),
       UI.grade([{ k: 'mes', label: 'Previsão de ligação (mês)', type: 'select', options: opcoes(H.MESES, '—') }, { k: 'ano', label: 'Ano', type: 'number' }], hm.previsao, function () { mudou(); }, 3),
       h('h4.secao-form', 'Coordenadas do padrão de entrada (UTM — digitadas pelo projetista)'),
-      UI.grade([{ k: 'fuso', label: 'Fuso', type: 'select', options: H.FUSOS }, { k: 'x', label: 'X (LONG) — 6 dígitos' }, { k: 'y', label: 'Y (LAT) — 7 dígitos' }], utm, function () { mudou(); }, 3)));
+      UI.grade([{ k: 'fuso', label: 'Fuso', type: 'select', options: App.Coordenadas.opcoesFuso(H.FUSOS) }, { k: 'x', label: 'X (LONG) — 6 dígitos' }, { k: 'y', label: 'Y (LAT) — 7 dígitos' }], utm,
+        function () { delete hm.geo; coordH.pintar(); mudou(); }, 3),
+      coordH));
 
     // ---------- 5/6. equipamentos (lista oficial)
     function editorEquip(rows, tipo, limite, listaTipo, rotuloAdd) {

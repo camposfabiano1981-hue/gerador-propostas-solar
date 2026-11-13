@@ -915,3 +915,11 @@ td.num.saida { color: var(--vermelho); }
   .lista-pedido-itens td[data-rotulo]::before { content: attr(data-rotulo); display: block; font-size: 11px; color: var(--muted); }
 }
 .prancha-ramal-preview { display: flex; flex-direction: column; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.35; padding: 6px 10px; border: 1px dashed var(--borda-forte); border-radius: 8px; }
+
+/* coordenadas: GPS em campo, latitude/longitude digitada e ruas do croqui */
+.coord-barra { margin: 4px 0 12px; display: grid; gap: 4px; }
+.coord-barra .barra-itens { margin: 0; }
+.coord-info { margin: 0; font-size: 13px; color: var(--muted); }
+.coord-modal input { width: 100%; min-height: 40px; border: 1px solid var(--borda-forte); border-radius: 8px; padding: 6px 10px; font-size: 15px; }
+.coord-prev { margin: 8px 0 0; font-size: 14px; }
+.coord-prev.erro { color: var(--vermelho); }

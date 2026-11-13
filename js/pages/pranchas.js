@@ -160,6 +160,9 @@ window.App = window.App || {};
     const ph = function (v) { return v ? 'Auto: ' + v : ''; };
 
     // ---------- 1. estilo, cliente e carimbo
+    // coordenadas: GPS em campo, latitude/longitude digitada e as ruas do croqui pelo mapa
+    if (!pr.ruas) pr.ruas = {};
+    const coord = App.Coordenadas.barra({ alvo: pr, ruas: pr.ruas, aoMudar: function () { comp(); mudou(true); } });
     grupo('1. Estilo, cliente e carimbo', true, h('div',
       UI.grade([
         { k: 'estilo', label: 'Estilo da prancha', type: 'select', options: P.OPCOES_ESTILO, help: 'A: tabelas e unifilar · B: plantas, fachadas e diagramas.' },
@@ -171,12 +174,13 @@ window.App = window.App || {};
         { k: 'cliente.documento', label: 'CPF/CNPJ' },
         { k: 'cliente.endereco', label: 'Endereço (como sai no carimbo)', cls: 'span2' },
         { k: 'uc', label: 'UC' },
-        { k: 'utm.fuso', label: 'Fuso (UTM)', type: 'select', options: ['18K', '19K', '20K', '21K', '22K', '23K', '24K', '25K'] },
+        { k: 'utm.fuso', label: 'Fuso (UTM)', type: 'select', options: App.Coordenadas.opcoesFuso(['18K', '19K', '20K', '21K', '22K', '23K', '24K', '25K']) },
         { k: 'utm.x', label: 'X (UTM) — 6 dígitos' },
         { k: 'utm.y', label: 'Y (UTM) — 7 dígitos' }
-      ], pr, function (k) { if (k === 'estilo') mudou(true); else { if (/^utm\./.test(k)) comp(); mudou(); } }, 3),
+      ], pr, function (k) { if (k === 'estilo') mudou(true); else { if (/^utm\./.test(k)) { delete pr.geo; comp(); coord.pintar(); } mudou(); } }, 3),
+      coord,
       h('h4.secao-form', 'Croqui de localização (ruas)'),
-      UI.grade([{ k: 'ruas.uc', label: 'Rua da UC' }, { k: 'ruas.r2', label: 'Rua 2' }, { k: 'ruas.r3', label: 'Rua 3' }, { k: 'ruas.r4', label: 'Rua 4' }], pr, function () { mudou(); }, 4),
+      UI.grade([{ k: 'ruas.uc', label: 'Rua da UC' }, { k: 'ruas.r2', label: 'Rua 2 (transversal do outro lado)' }, { k: 'ruas.r3', label: 'Rua 3 (transversal ao lado do lote)' }, { k: 'ruas.r4', label: 'Rua 4 (de trás)' }], pr, function () { mudou(); }, 4),
       h('h4.secao-form', 'Empresa e responsável técnico (em branco = Configurações › Empresa)'),
       UI.grade([
         { k: 'emp.endereco', label: 'Endereço da empresa', placeholder: ph(auto.empEndereco), cls: 'span2' },
