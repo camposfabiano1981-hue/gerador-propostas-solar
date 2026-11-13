@@ -2372,6 +2372,17 @@
     const vB = P.valores(Object.assign({}, pr, { estilo: 'B' }), 'B', ctxP);
     igual('prancha B: textos no formato do estilo B', [vB.mod_qtd_txt, vB.mod_total_txt, vB.mod_qtd_curto, vB.inv_pot_txt, vB.inv_rotulo, vB.disj_geral_2p, vB.bit_cc_marca, vB.cabo_ramal_lig_multiplex, vB.inclinacao, vB.selo_x].join('|'),
       'QTDE MODULOS:  14|POTENCIA TOTAL:  8,68 KWp|14 Módulos|POTENCIA: 6.0 KW|MARCA INV | INV6|2P-50|#6|2#25(25) mm2|i = 15º|X: 435000');
+    // detalhe do padrão (rede BT → poste): a descrição do cabo e a composição do ramal de ligação nos dois estilos, pelos campos do ramal
+    const prRl = Object.assign(U.clone(pr), { ligacao: 'tri', ramal: Object.assign({}, pr.ramal, { cond: '3', bit: '16', neutro: '16', desc: 'Cabo Quadruplex' }) });
+    const vRlA = P.valores(prRl, 'A', ctxP), vRlB = P.valores(Object.assign(U.clone(prRl), { estilo: 'B' }), 'B', ctxP), vRl0 = P.valores(pr, 'A', ctxP);
+    const prRlV = Object.assign(U.clone(pr), { ligacao: 'mono', ramal: Object.assign({}, pr.ramal, { cond: '', bit: '10', neutro: '' }) });
+    igual('prancha: cabo do ramal de ligação no detalhe do padrão (A e B) pelos campos; descrição padrão "Cabo Multiplex"; condutores em branco pela ligação',
+      [vRlA.cabo_ramal_desc, vRlA.cabo_ramal_lig_multiplex, vRlB.cabo_ramal_desc, vRlB.cabo_ramal_lig_multiplex, vRl0.cabo_ramal_desc, vRl0.cabo_ramal_lig_multiplex, P.ramalComp(prRlV),
+        P.ramalComp(Object.assign(U.clone(pr), { ramal: Object.assign({}, pr.ramal, { bit: '' }) }))].join('|'),
+      'Cabo Quadruplex|3#16(16) mm2|Cabo Quadruplex|3#16(16) mm2|Cabo Multiplex|2#25(25) mm2|1#10(10) mm2|');
+    const cfRl = P.conferir(Object.assign(U.clone(pr), { ligacao: 'tri' })).map(function (x) { return x.texto; }).join(' | ');
+    const cfRlOk = P.conferir(prRl).map(function (x) { return x.texto; }).join(' | ');
+    ok('conferência: condutores do ramal de ligação × ligação da UC (2 fases numa UC trifásica)', /Ramal de ligação com 2 condutores fase \(2#25\(25\) mm2\), mas a ligação da UC é trifásico \(3 fases \+ neutro\)/.test(cfRl) && !/Ramal de ligação com/.test(cfRlOk), cfRl);
     igual('prancha: módulos por string (divisão não exata: as primeiras levam um a mais; número fixo; lista digitada)', [P.tamanhos(15, 2).join('+'), P.tamanhos(14, 2).join('+'), P.tamanhos(14, 2, 8).join('+'), P.tamanhos(0, 2).length,
       P.tamanhos(25, 2, '10+10+5').join('+'), P.tamanhos(25, 3, '').join('+'), P.tamanhos(20, 2, '10').join('+')].join('|'), '8+7|7+7|8+8|0|10+10+5|9+8+8|10+10');
     // desenho das strings do estilo A com a quantidade real (mapa e geometria do modelo, como em assets/pranchas/mapa-pranchas.json)

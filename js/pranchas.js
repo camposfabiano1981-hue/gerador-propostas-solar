@@ -42,7 +42,7 @@ window.App = window.App || {};
     ca: { bit: '6', mat: 'PVC', iso: '450/750V - 70°C', un: '0,49' },
     entrada: { bit: '16', mat: 'PVC', iso: '450/750V - 70°C' },
     saida: { bit: '16', mat: 'PVC', iso: '450/750V - 70°C' },
-    ramal: { cond: '2', bit: '25', neutro: '25', tipo: 'XLPE- MULTIPLEX', iso: '0,6/1KV - 90°C' },
+    ramal: { cond: '2', bit: '25', neutro: '25', tipo: 'XLPE- MULTIPLEX', iso: '0,6/1KV - 90°C', desc: '' },
     terraBit: '6',
     disjCaKa: '3',
     dpsCa: { classe: 'II', uc: '275', in: '10', imax: '20', up: '1,2' },
@@ -55,8 +55,17 @@ window.App = window.App || {};
     condCA: 'FFT', terraMod: '6'
   };
   const CHAVES_PADRAO = ['estilo', 'cc.bit', 'cc.tipo', 'cc.un', 'ca.bit', 'ca.mat', 'ca.iso', 'ca.un', 'entrada.bit', 'entrada.mat', 'entrada.iso', 'saida.bit', 'saida.mat', 'saida.iso',
-    'ramal.cond', 'ramal.bit', 'ramal.neutro', 'ramal.tipo', 'ramal.iso', 'terraBit', 'disjCaKa', 'dpsCa.classe', 'dpsCa.uc', 'dpsCa.in', 'dpsCa.imax', 'dpsCa.up', 'dpsCcUcpv',
+    'ramal.cond', 'ramal.bit', 'ramal.neutro', 'ramal.tipo', 'ramal.iso', 'ramal.desc', 'terraBit', 'disjCaKa', 'dpsCa.classe', 'dpsCa.uc', 'dpsCa.in', 'dpsCa.imax', 'dpsCa.up', 'dpsCcUcpv',
     'sbCc', 'fia.qgbt', 'fia.ramal', 'elet.placas', 'elet.inversor', 'elet.ramal', 'haste', 'cxPassagem', 'cxInspecao', 'inclinacao', 'efic', 'fp', 'limiteCC', 'limiteCA', 'maxStr', 'terraMod'];
+
+  // ramal de ligação no detalhe do padrão (rede BT → poste): a descrição do cabo e a composição fases#bitola(neutro)
+  const DESC_RAMAL = ['Cabo Multiplex', 'Cabo Duplex', 'Cabo Triplex', 'Cabo Quadruplex', 'Cabo Concêntrico'];
+  const FASES_LIG = { mono: 1, bi: 2, tri: 3 };
+  function ramalDesc(pr) { return str(pr.ramal && pr.ramal.desc) || DESC_RAMAL[0]; }
+  function ramalComp(pr) {
+    const r = pr.ramal || {};
+    return str(r.bit) ? (str(r.cond) || String(FASES_LIG[pr.ligacao] || 2)) + '#' + str(r.bit) + '(' + (str(r.neutro) || str(r.bit)) + ') mm2' : '';
+  }
 
   // ------------------------------------------------------------ carregamento sob demanda
   const cache = {};
@@ -551,6 +560,7 @@ window.App = window.App || {};
     const v = {
       emp_endereco: ef.empEndereco, emp_contato: ef.empContato,
       cli_nome: cli.nome, cli_endereco: cli.endereco, rt_nome: ef.rtNome,
+      cabo_ramal_desc: ramalDesc(pr), cabo_ramal_lig_multiplex: ramalComp(pr),
       utm_x: str(pr.utm.x), utm_y: str(pr.utm.y), rt_nome_mai: maiusc(ef.rtNome), rt_registro: ef.rtRegistro, rt_tel: ef.rtTel,
       cli_nome_mai: maiusc(cli.nome), cli_doc: str(cli.documento) ? 'CPF/CNPJ:' + documento(cli.documento) : '', data: dataBR(pr.data),
       uc_carimbo: str(pr.uc) ? 'UC:' + str(pr.uc) : '', art: str(pr.art),
@@ -627,7 +637,7 @@ window.App = window.App || {};
       bit_terra_ca_marca: terraCA(pr) ? '#' + terraCA(pr) : '', bit_terra_cc_marca: '#' + terraMod(pr),
       disj_ca_a: dca ? dca + 'A' : '', dps_ca_classe_mai: str(d.classe) ? 'DPS CA CLASSE ' + maiusc(d.classe) : '', dps_ca_uc_v: str(d.uc) ? str(d.uc) + ' V' : '',
       dps_ca_in_esp: str(d.in) ? 'In = ' + str(d.in) + ' kA' : '', dps_ca_imax_esp: str(d.imax) ? 'In Max = ' + str(d.imax) + ' kA' : '',
-      sb_cc: str(pr.sbCc), cabo_ramal_lig_multiplex: str(pr.ramal.bit) ? str(pr.ramal.cond) + '#' + str(pr.ramal.bit) + '(' + (str(pr.ramal.neutro) || str(pr.ramal.bit)) + ') mm2' : ''
+      sb_cc: str(pr.sbCc)
     });
     return valoresAmpl(pr, v, inversores(pr), 'B');
   }
@@ -1963,6 +1973,9 @@ window.App = window.App || {};
     if (dg > 0 && izSai && dg > izSai) add('aviso', 'Disjuntor geral de ' + dg + ' A acima da capacidade do cabo de saída de ' + pr.saida.bit + ' mm² (' + izSai + ' A).');
     if (dg > 0 && izEnt && dg > izEnt) add('aviso', 'Disjuntor geral de ' + dg + ' A acima da capacidade do cabo de entrada de ' + pr.entrada.bit + ' mm² (' + izEnt + ' A).');
     if (dg > 0 && dca > 0 && dca > dg) add('aviso', 'Disjuntor CA do inversor (' + dca + ' A) maior que o disjuntor geral (' + dg + ' A).');
+    const nfLig = FASES_LIG[pr.ligacao], nfRam = Math.round(num(pr.ramal && pr.ramal.cond));
+    if (nfLig && nfRam > 0 && nfRam !== nfLig) add('aviso', 'Ramal de ligação com ' + nfRam + (nfRam === 1 ? ' condutor fase' : ' condutores fase') + ' (' + ramalComp(pr) + '), mas a ligação da UC é ' +
+      LIGACOES[pr.ligacao] + ' (' + nfLig + (nfLig === 1 ? ' fase' : ' fases') + ' + neutro).');
     // lado CC
     const izCc = IZ_SOLAR[num(pr.cc.bit)];
     if (izCc && c.iscStr > 0 && 1.25 * c.iscStr > izCc) add('aviso', 'Cabo CC de ' + pr.cc.bit + ' mm² (' + izCc + ' A) abaixo de 1,25 × Isc do módulo (' + f2(1.25 * c.iscStr) + ' A).');
@@ -2140,7 +2153,7 @@ window.App = window.App || {};
   }
 
   App.Pranchas = {
-    ESTILOS: ESTILOS, OPCOES_ESTILO: OPCOES_ESTILO, LIGACOES: LIGACOES, PADROES: PADROES, DESENHO: DESENHO, ASSINATURA: ASSINATURA, DISJUNTORES: DISJUNTORES,
+    ESTILOS: ESTILOS, OPCOES_ESTILO: OPCOES_ESTILO, LIGACOES: LIGACOES, DESC_RAMAL: DESC_RAMAL, FASES_LIG: FASES_LIG, ramalDesc: ramalDesc, ramalComp: ramalComp, PADROES: PADROES, DESENHO: DESENHO, ASSINATURA: ASSINATURA, DISJUNTORES: DISJUNTORES,
     mapa: mapa, modelo: modelo, fonteTxt: fonteTxt, fonteRomans: fonteRomans, fonteArial: fonteArial,
     sugerir: sugerir, puxarCrm: puxarCrm, padroesDe: padroesDe, lerCompartilhados: lerCompartilhados, gravarCompartilhados: gravarCompartilhados,
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,

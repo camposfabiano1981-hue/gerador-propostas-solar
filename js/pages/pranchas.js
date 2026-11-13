@@ -431,12 +431,29 @@ window.App = window.App || {};
       ], pr, function () { mudou(); }, 3)));
 
     // ---------- 5. cabos de entrada, saída e ramal
+    // o texto do detalhe do padrão (rede BT → poste), como sai na prancha
+    const textoRamal = h('div.campo.prancha-ramal-texto');
+    const atualizarRamal = function () {
+      const comp = P.ramalComp(pr);
+      textoRamal.innerHTML = '';
+      textoRamal.appendChild(h('label', 'Sai no desenho'));
+      textoRamal.appendChild(h('div.prancha-ramal-preview', h('span', P.ramalDesc(pr)), h('span', comp || '(informe a bitola)')));
+    };
+    atualizarRamal();
     grupo('5. Ramal, entrada, saída e aterramento', false, h('div',
-      h('h4.secao-form', 'Ramal de ligação'),
+      h('h4.secao-form', 'Ramal de ligação (rede da distribuidora → padrão)'),
       UI.grade([
-        { k: 'ramal.cond', label: 'Condutores fase', type: 'int' }, { k: 'ramal.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'ramal.neutro', label: 'Neutro (mm²)', type: 'number' },
+        { k: 'ramal.cond', label: 'Condutores fase', type: 'int', placeholder: String(P.FASES_LIG[pr.ligacao] || 2), help: 'Mono 1, bi 2, tri 3 (+ neutro).' },
+        { k: 'ramal.bit', label: 'Bitola (mm²)', type: 'number' }, { k: 'ramal.neutro', label: 'Neutro (mm²)', type: 'number' },
         { k: 'ramal.tipo', label: 'Tipo (estilo A)', placeholder: 'XLPE- MULTIPLEX' }, { k: 'ramal.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('ramal.iso') }
-      ], pr, function () { mudou(); }, 5),
+      ], pr, function () { atualizarRamal(); mudou(); }, 5),
+      UI.grade([
+        { k: 'ramal.desc', label: 'Cabo no detalhe do padrão', type: 'select', options: function (st) {
+          const v = String(U.get(st, 'ramal.desc') || '').trim();
+          return (v && P.DESC_RAMAL.indexOf(v) < 0 ? [v] : []).concat(P.DESC_RAMAL.map(function (d, i) { return { v: i ? d : '', t: d }; }));
+        } },
+        { el: textoRamal }
+      ], pr, function () { atualizarRamal(); mudou(); }, 3),
       h('h4.secao-form', 'Ramal de entrada (padrão → medidor)'),
       UI.grade([{ k: 'entrada.bit', label: 'Bitola (mm²)', type: 'number', help: 'A "bitola fase" da Homologação.' }, { k: 'entrada.mat', label: 'Isolação', type: 'select', options: MATERIAIS }, { k: 'entrada.iso', label: 'Classe / temperatura', type: 'select', options: opClasses('entrada.iso') }],
         pr, function (k) { if (k === 'entrada.bit') comp(); mudou(); }, 3),
