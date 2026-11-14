@@ -204,6 +204,17 @@
   const kwh40 = 40 * 24 * 365 / 12 / 1000;
   perto('premissa: consumo próprio padrão 40 W ≈ 29,2 kWh/mês', C.kwhMes(D.premissas.hibrido.consumoProprioW), kwh40, 1e-9);
   perto('premissas antigas: eficiência 90% → 92%', App.Store.ajustarPremissas({ hibrido: { eficiencia: 0.9 } }).hibrido.eficiencia, 0.92, 1e-12);
+  // Performance Ratio editável: em fração ou em %, com volta ao padrão quando inválido e aviso fora da faixa usual
+  perto('PR: 0,78 mantido', App.Store.normalizarPR(0.78), 0.78, 1e-12);
+  perto('PR: 75 (digitado em %) vira 0,75', App.Store.normalizarPR(75), 0.75, 1e-12);
+  perto('PR: vazio ou zero volta ao padrão (0,80)', App.Store.normalizarPR(''), D.premissas.pr, 1e-12);
+  perto('PR: premissas antigas com 80 passam a 0,80', App.Store.ajustarPremissas({ pr: 80 }).pr, 0.8, 1e-12);
+  const pPR = U.clone(p); pPR.premissas = Object.assign(U.clone(p.premissas || ctx.premissas), { pr: 0.75 });
+  const rPR = C.calcular(pPR, ctx);
+  perto('PR 75%: potência necessária = consumo ÷ (HSP × 365/12 × 0,75)', rPR.kwpNecessario, rPR.consumoDimensionamento / (rPR.hsp * 365 / 12 * 0.75), 1e-9);
+  ok('PR 75%: precisa de mais potência que PR 80%', rPR.kwpNecessario > r.kwpNecessario * 1.06 && !rPR.alertas.some(function (x) { return /Performance Ratio/.test(x.msg); }));
+  pPR.premissas.pr = 0.55;
+  ok('PR 55%: aviso de faixa usual', C.calcular(pPR, ctx).alertas.some(function (x) { return /Performance Ratio de 55% fora da faixa usual/.test(x.msg); }));
   perto('premissas novas: 90% escolhido pelo usuário é mantido', App.Store.ajustarPremissas({ hibrido: { eficiencia: 0.9, consumoProprioW: 40 } }).hibrido.eficiencia, 0.9, 1e-12);
   perto('híbrido: consumo próprio do inversor (padrão)', rG.consumoProprio, kwh40, 1e-9);
   perto('híbrido: dimensionamento = consumo + consumo próprio', rG.consumoDimensionamento, 650 + kwh40 + rG.dimensionamento.perdas, 1e-9);

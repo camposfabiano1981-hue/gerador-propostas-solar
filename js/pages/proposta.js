@@ -429,7 +429,10 @@
         { el: infos.placeModulos },
         { k: 'inversorId', label: ehOg() ? 'Inversor híbrido / off-grid' : (tipoInv === 'hibrido' ? 'Inversor híbrido' : (micro ? 'Microinversor' : 'Inversor')), type: 'select', cls: 'span2',
           options: function () { return [{ v: '', t: ehOg() ? 'Automático (cargas e gerador)' : (micro ? 'Automático (compatível com o módulo)' : 'Automático (melhor FDG)') }].concat(opcoesEquip(ctx, tipoInv, p.inversorId)); } },
-        { el: infos.placeInv }
+        { el: infos.placeInv },
+        { k: 'premissas.pr', label: 'Performance Ratio (PR)', type: 'pct', suffix: '%', vazio: S.config().premissas.pr,
+          help: 'Rendimento do sistema após as perdas (temperatura, sujeira, sombras, cabos e inversor). Usual 75–80%; em clima quente, 75–78%. ' +
+            'Padrão das novas propostas: ' + U.fmtSmart(S.config().premissas.pr * 100, 1) + '% (Configurações › Premissas).' }
       ], p, mudou, 3));
       infos.sistema = h('div.info');
       c.appendChild(infos.sistema);
@@ -995,7 +998,6 @@
         ehOg() ? null : { k: 'premissas.inflacaoTarifa', label: 'Inflação tarifária', type: 'pct', suffix: '% a.a.' },
         ehOg() ? null : { k: 'premissas.reajusteCosip', label: 'Reajuste da COSIP', type: 'pct', suffix: '% a.a.' },
         { k: 'premissas.degradacao', label: 'Degradação dos módulos', type: 'pct', suffix: '% a.a.' },
-        { k: 'premissas.pr', label: 'Performance Ratio', type: 'number' },
         { k: 'premissas.horizonte', label: 'Horizonte', type: 'int', suffix: 'anos' },
         ehArm() ? { k: 'premissas.armazenamento.degradacao', label: 'Degradação do armazenamento', type: 'pct', suffix: '% a.a.' } : null,
         ehArm() && !ehOg() ? { k: 'premissas.armazenamento.diasUteis', label: 'Dias úteis (ponta) por ano', type: 'int', suffix: 'dias' } : null,
@@ -1090,7 +1092,7 @@
         if (placeI) placeI.placeholder = r.inversor ? 'Auto: ' + r.nInversores : '';
         const sug = r.inversorSugerido;
         const itensInfo = [
-          linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp'),
+          linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp (PR ' + U.fmtSmart(r.premissas.pr * 100, 1) + '%)'),
           r.dimensionamento && (r.dimensionamento.proprio || r.dimensionamento.perdas)
             ? linhaInfo('Consumo do dimensionamento', U.fmt(r.dimensionamento.consumo, 0) + ' + ' + U.fmt(r.dimensionamento.proprio, 0) + ' inversor' +
               (r.dimensionamento.perdas ? ' + ' + U.fmt(r.dimensionamento.perdas, 0) + ' perdas da bateria' : '') + ' = ' + U.fmt(r.consumoDimensionamento, 0) + ' kWh/mês') : null,
@@ -1116,7 +1118,7 @@
           const mc = og.meses[og.mesCritico];
           const cobOk = mc.cobertura + 0.005 >= og.margem;
           itensInfo.splice(0, itensInfo.length,
-            linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp (mês crítico ' + C.MESES_CURTOS[og.mesCritico] + ', margem ' + U.fmtSmart(og.margem, 2) + ', ciclo ' + U.fmtSmart(og.eta * 100, 1) + '%)'),
+            linhaInfo('Potência necessária', U.fmt(r.kwpNecessario, 2) + ' kWp (mês crítico ' + C.MESES_CURTOS[og.mesCritico] + ', PR ' + U.fmtSmart(r.premissas.pr * 100, 1) + '%, margem ' + U.fmtSmart(og.margem, 2) + ', ciclo ' + U.fmtSmart(og.eta * 100, 1) + '%)'),
             linhaInfo('Potência do sistema', U.kwp(r.kwp) + ' kWp', 'destaque'),
             linhaInfo('Inversor', r.inversor ? r.nInversores + ' × ' + C.nomeEquip(r.inversor) : '—'),
             linhaInfo('No mês crítico (' + C.MESES_CURTOS[og.mesCritico] + ')', U.fmtSmart(mc.geracaoDia, 2) + ' kWh/dia para ' + U.fmtSmart(mc.demandaDia, 2) + ' kWh/dia — ' + U.fmt(mc.cobertura * 100, 0) + '%' + (cobOk ? ' ✅' : ' ⚠️'), cobOk ? null : 'alerta'),

@@ -263,10 +263,19 @@ window.App = window.App || {};
    * Premissas gravadas por versões anteriores: a eficiência de ciclo padrão do híbrido passa de 90% para 92%;
    * a faixa do FDI (P inversor ÷ P FV) vira FDG (P FV ÷ P inversor) — a padrão antiga usa a nova e uma personalizada é invertida.
    */
+  /** Performance Ratio como fração entre 0,30 e 1: aceita 80 (em %) e volta ao padrão quando vazio ou inválido. */
+  Store.normalizarPR = function (v) {
+    let n = U.num(v);
+    if (isFinite(n) && n > 1 && n <= 100) n = n / 100;
+    return isFinite(n) && n >= 0.3 && n <= 1 ? U.round(n, 4) : D.premissas.pr;
+  };
+
   Store.ajustarPremissas = function (prem) {
     if (!prem) return prem;
     // híbrido: premissas anteriores ao consumo próprio do inversor usavam 90% de eficiência de ciclo como padrão
     if (prem.hibrido && prem.hibrido.consumoProprioW === undefined && prem.hibrido.eficiencia === 0.9) prem.hibrido.eficiencia = D.premissas.hibrido.eficiencia;
+    // Performance Ratio: fração (0,80); digitado em % (80) vira 0,80; vazio, zero ou absurdo volta ao padrão
+    if ('pr' in prem) prem.pr = Store.normalizarPR(prem.pr);
     if (prem.fdiMin === undefined) return prem;
     const padraoAntigo = prem.fdiMin === 0.75 && prem.fdiMax === 1.2 && prem.fdiAlvo === 0.9;
     const inverso = function (x) { const n = U.num(x); return n > 0 ? U.round(1 / n, 2) : undefined; };

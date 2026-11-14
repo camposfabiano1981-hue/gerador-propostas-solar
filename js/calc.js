@@ -822,6 +822,9 @@ window.App = window.App || {};
     r.consumoDimensionamento = r.consumoMedio + dimExtra.proprio + dimExtra.perdas;
     // mês médio de 365 ÷ 12 dias: a geração mensal é a anual ÷ 12 (o HSP é a média diária do ano)
     r.kwpNecessario = r.permiteFV && r.hsp > 0 ? r.consumoDimensionamento / (r.hsp * C.DIAS_MES_MEDIO * prem.pr) : 0;
+    if (r.permiteFV && (prem.pr < 0.65 || prem.pr > 0.9)) {
+      alerta('aviso', 'Performance Ratio de ' + U.fmtSmart(prem.pr * 100, 1) + '% fora da faixa usual (65–90%): confira o valor no Dimensionamento.');
+    }
     if (og) {
       // Off-grid (IEEE 1562; CRESESB): o gerador atende o MÊS CRÍTICO — a maior razão demanda ÷ sol — com toda a energia passando
       // pelo banco (eficiência do ciclo) e a margem de recarga (relação gerador/carga); o banco cobre os dias de autonomia

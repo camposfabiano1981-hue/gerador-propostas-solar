@@ -132,7 +132,7 @@
     cont.appendChild(UI.cabecalho('Premissas técnicas e financeiras', 'Valores padrão aplicados às NOVAS propostas (cada proposta guarda uma cópia que pode ser ajustada).'));
 
     cont.appendChild(h('div.card', h('h3', 'Geração e dimensionamento'), UI.grade([
-      { k: 'pr', label: 'Performance Ratio (PR)', type: 'number', help: 'Ex.: 0,80' },
+      { k: 'pr', label: 'Performance Ratio (PR)', type: 'pct', suffix: '%', vazio: D.premissas.pr, help: 'Rendimento após as perdas (temperatura, sujeira, cabos, inversor). Ex.: 80%. Vale para as NOVAS propostas; cada proposta pode ajustar o seu no Dimensionamento.' },
       { k: 'degradacao', label: 'Degradação anual dos módulos', type: 'pct' },
       { k: 'simultaneidade', label: 'Simultaneidade (autoconsumo direto)', type: 'pct', help: 'Parcela da geração consumida na hora (não paga Fio B); o restante é injetado e paga Fio B quando compensado.' },
       { k: 'areaModulo', label: 'Área por módulo (padrão)', type: 'number', suffix: 'm²', help: 'Quando o módulo não tem área nem dimensões cadastradas.' },
