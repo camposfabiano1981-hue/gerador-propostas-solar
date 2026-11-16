@@ -75,6 +75,43 @@ window.App = window.App || {};
     pg.pushOperators.apply(pg, ops);
   }
 
+  /** Quebra o texto em linhas de até larg (medida pela fonte do texto). */
+  function quebrar(medir, txt, larg) {
+    const out = [];
+    let cur = '';
+    String(txt == null ? '' : txt).split(/\s+/).filter(Boolean).forEach(function (p) {
+      const t = cur ? cur + ' ' + p : p;
+      if (cur && medir(t) > larg) { out.push(cur); cur = p; } else cur = t;
+    });
+    if (cur) out.push(cur);
+    return out;
+  }
+  /**
+   * Parágrafo (ou lista numerada) com quebra de linha: q = {w, lh, max, x, y, rotulo: {x, fmt: 'n.', ini}}. Se passar de max linhas,
+   * as letras e o passo diminuem juntos até caber.
+   */
+  function desenharParagrafo(pg, c, FT, P, fonte) {
+    const q = c.quebra, Pr = App.Pranchas, base = Object.assign({}, c.oc, { x: q.x, y: q.y });
+    const itens = c.itens || [c.txt];
+    let oc = base, blocos = [];
+    const medir = function (o) {
+      return function (t) { return o.t === 'tt' ? (fonte ? fonte.widthOfTextAtSize(textoArial(t), o.s) : t.length * o.s * 0.5) : Pr.larguraTracos(FT, o, t, o.s, o.fl || 1); };
+    };
+    for (let k = 0; k < 10; k++) {
+      blocos = itens.map(function (t) { return quebrar(medir(oc), t, q.w); });
+      const total = blocos.reduce(function (a, l) { return a + l.length; }, 0);
+      if (!q.max || total <= q.max) break;
+      oc = Object.assign({}, oc, { s: oc.s * 0.94 });
+    }
+    const lh = (q.lh || base.s * 1.2) * oc.s / base.s;
+    const escreve = function (o, t) { if (o.t === 'tt') { if (fonte) desenharArial(pg, o, t, fonte, P); } else desenharTracos(pg, o, t, FT, P); };
+    let y = oc.y;
+    blocos.forEach(function (linhas, i) {
+      if (q.rotulo) escreve(Object.assign({}, oc, { x: q.rotulo.x, y: y, w: null }), (q.rotulo.fmt || 'n.').replace('n', String((q.rotulo.ini || 1) + i)));
+      linhas.forEach(function (t) { escreve(Object.assign({}, oc, { y: y, w: null }), t); y -= lh; });
+    });
+  }
+
   /** Linha (polilinha) com a espessura mínima do AutoCAD; traco = padrão de tracejado. */
   function desenharLinha(pg, pts, cor, traco, P) {
     if (!pts || pts.length < 2) return;
@@ -106,6 +143,7 @@ window.App = window.App || {};
         ops.push(Op.of('cm', c.m.map(function (v) { return n.of(Math.round(v * 10000) / 10000); })), Op.of('Do', [P.PDFName.of(c.nome)]), Op.of('Q'));
         pg.pushOperators.apply(pg, ops);
       } else if (c.t === 'linha') desenharLinha(pg, c.pts, c.cor, c.traco, P);
+      else if (c.t === 'texto' && c.quebra) desenharParagrafo(pg, c, FT, P, fonte);
       else if (c.t === 'texto') { if (c.oc.t === 'tt') { if (fonte) desenharArial(pg, c.oc, c.txt, fonte, P); } else desenharTracos(pg, c.oc, c.txt, FT, P); }
       else if (c.t === 'regiao') {
         // trecho do modelo na nova posição; w/h: o trecho ampliado (ex.: o inversor maior das 3 fases)
@@ -159,13 +197,13 @@ window.App = window.App || {};
       const campos = mapa[e] || {};
       // estilo A: strings, tabela e unifilares com a quantidade real da obra
       const pular = {};
-      let desloc = null, pularOc = {}, soCarimbo = false, pularRegiao = null, manterRegiao = null, mover = null;
+      let desloc = null, pularOc = {}, soCarimbo = false, pularRegiao = null, manterRegiao = null, mover = null, pularRegioes = [];
       if (e === 'A' && mapa.stringsA) {
         Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
         const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA, fo.folha);
         desloc = d.desloc || null;
         (d.pular || []).forEach(function (k) { pular[k] = true; });
-        pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo; pularRegiao = d.pularRegiao || null; manterRegiao = d.manterRegiao || null; mover = (d.moverRegiao ? [d.moverRegiao] : []).concat(d.moverMF || []);
+        pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo; pularRegiao = d.pularRegiao || null; pularRegioes = d.pularRegioes || []; manterRegiao = d.manterRegiao || null; mover = (d.moverRegiao ? [d.moverRegiao] : []).concat(d.moverMF || []);
         // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): embutidos antes, na ordem dos comandos
         const regioes = [];
         for (const c of d) if (c.t === 'regiao') regioes.push(await doc.embedPage(src.getPage(0), { left: c.bb[0], bottom: c.bb[1], right: c.bb[2], top: c.bb[3] }));
@@ -181,7 +219,7 @@ window.App = window.App || {};
           if (pularOc[cid] && pularOc[cid].indexOf(k) >= 0) return;
           const em = function (r) { return r && oc.x >= r[0] && oc.x <= r[2] && oc.y >= r[1] && oc.y <= r[3]; };
           // campos de um trecho que foi para a outra folha (ex.: o detalhe de instalação)
-          if (em(pularRegiao)) return;
+          if (em(pularRegiao) || pularRegioes.some(em)) return;
           // folha 2: entram o carimbo, o descritivo e as legendas (à direita) e os campos do trecho mantido (o detalhe de instalação)
           if (soCarimbo && oc.x < 1862 && !em(manterRegiao)) return;
           // trecho levado a outro lugar da folha (ex.: o croqui ao lado das tabelas): os campos dele vão junto, na mesma escala

@@ -343,6 +343,43 @@ window.App = window.App || {};
       return el;
     }
 
+    // ---------- sistema e baterias (híbrido / off-grid): o banco vem da proposta; disjuntores e cabos sugeridos pela corrente
+    pr.bat = pr.bat || {};
+    pr.bk = pr.bk || { disj: '', bit: '', cargas: '' };
+    const comBat = P.comBaterias(pr), og = P.sistemaDe(pr) === 'offgrid';
+    const cb = comBat ? P.calcBat(pr) : null;
+    const fb = function (v, d) { return U.fmtSmart(v, d == null ? 2 : d); };
+    grupo('Sistema e baterias (híbrido / off-grid)', comBat, h('div',
+      UI.grade([
+        { k: 'sistema', label: 'Tipo de sistema', type: 'select', options: [{ v: 'ongrid', t: 'On-Grid (sem baterias)' }, { v: 'hibrido', t: 'Híbrido (rede + baterias)' }, { v: 'offgrid', t: 'Off-Grid (isolado)' }],
+          help: 'Vem da proposta. Híbrido: diagrama do armazenamento e do backup (QCC). Off-Grid: sem rede, medidor e padrão de entrada.' }
+      ], pr, function () { mudou(true); }, 3),
+      comBat ? h('div',
+        h('h4.secao-form', 'Banco de baterias (da proposta)'),
+        UI.grade([
+          { k: 'bat.fab', label: 'Fabricante' }, { k: 'bat.modelo', label: 'Modelo' }, { k: 'bat.qtd', label: 'Quantidade', type: 'int' },
+          { k: 'bat.kwh', label: 'Energia por bateria', type: 'number', suffix: 'kWh' }, { k: 'bat.v', label: 'Tensão por bateria', type: 'number', suffix: 'V' },
+          { k: 'bat.serie', label: 'Baterias em série', type: 'int', help: 'Baixa tensão (48 V): 1.' }, { k: 'bat.dod', label: 'DoD', type: 'number', suffix: '%' }
+        ], pr, function () { mudou(); }, 4),
+        h('h4.secao-form', 'Circuito CC das baterias'),
+        UI.grade([
+          { k: 'batDisj', label: 'Disjuntor CC (A)', type: 'number', placeholder: cb && cb.disjAuto ? 'Auto: ' + cb.disjAuto : '',
+            help: cb && cb.iBat > 0 ? 'Corrente máxima ' + fb(cb.iBat) + ' A (' + cb.origem + ') × 1,25.' : 'Informe a corrente de bateria no cadastro do inversor.' },
+          { k: 'batBit', label: 'Cabo (+ e −)', type: 'number', suffix: 'mm²', placeholder: cb && cb.bitAuto ? 'Auto: ' + cb.bitAuto : '', help: 'Iz ≥ disjuntor (NBR 5410, PVC 70 °C).' },
+          { k: 'batDist', label: 'Distância banco–inversor', type: 'number', suffix: 'm' }
+        ], pr, function () { mudou(); }, 3),
+        og ? null : h('h4.secao-form', 'Backup (EPS) → quadro de cargas críticas (QCC)'),
+        UI.grade([
+          og ? null : { k: 'bk.disj', label: 'Disjuntor do backup (A)', type: 'number', placeholder: cb && cb.bkDisjAuto ? 'Auto: ' + cb.bkDisjAuto : '',
+            help: cb && cb.iBk > 0 ? 'Saída de backup ' + fb(cb.kwBk) + ' kW → ' + fb(cb.iBk) + ' A × 1,25.' : '' },
+          og ? null : { k: 'bk.bit', label: 'Cabo do backup', type: 'number', suffix: 'mm²', placeholder: cb && cb.bkBitAuto ? 'Auto: ' + cb.bkBitAuto : '' },
+          { k: 'bk.cargas', label: og ? 'Circuitos do quadro de cargas (QDC)' : 'Circuitos do QCC', cls: og ? 'span3' : '', placeholder: pr.cargasCrm ? 'Da proposta: ' + pr.cargasCrm : 'Ex.: Iluminação, Tomadas, Geladeira',
+            help: 'Separados por vírgula (até 5 no desenho). Em branco = as cargas da proposta.' }
+        ], pr, function () { mudou(); }, 3),
+        cb ? h('p.ajuda-sec', 'Banco: ' + (cb.n > 0 ? cb.n + ' × ' + fb(cb.kwhUn) + ' kWh = ' + fb(cb.kwh) + ' kWh' + (cb.vBanco > 0 ? ' · ' + fb(cb.vBanco, 1) + ' V' : '') + ' · ' + cb.serie + 'S' + cb.par + 'P' +
+          (cb.util ? ' · útil ' + fb(cb.util) + ' kWh' : '') : 'sem baterias') + '. Na prancha A: diagrama do armazenamento, seção 5 e a legenda; no off-grid, sem rede, medidor e padrão de entrada.') : null
+      ) : null));
+
     // ---------- 3. circuitos e quedas de tensão
     const calc = h('div.tabela-rolagem');
     function pintarCalc() {

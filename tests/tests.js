@@ -2503,6 +2503,35 @@
       _uS_campo: [ocT(846.1, 869.52, 5.5, 90)], _uU_campo: [ocT(1129.6, 864.6, 4.72, 90), ocT(1188.0, 861.6, 4.56, 90)], cabo_cc: [ocT(1184.28, 945.1, 4.7)],
       campo_fv: [ocT(1196.2, 872.4, 4.72, 90), ocT(1137.7, 875.4, 4.66, 90), ocT(855.8, 882.6, 5.48, 90), ocT(967.2, 882.6, 5.52, 90)] };
     const conta = function (cmds, nome) { return cmds.filter(function (c) { return c.t === 'forma' && c.nome === nome; }).length; };
+    // híbrido e off-grid: banco de baterias, disjuntor CC e cabo pela corrente do inversor, backup e o desenho
+    (function () {
+      const base = Object.assign(U.clone(pr), { sistema: 'hibrido', inv: Object.assign({}, pr.inv, { iBatCarga: '120', iBatDesc: '100', vBatMin: '40', vBatMax: '60', kwBackup: '6' }),
+        bat: { fab: 'Bat', modelo: 'B5', qtd: '3', kwh: '5.12', v: '51.2', serie: '1', dod: '90' }, bk: { disj: '', bit: '', cargas: '' }, cargasCrm: 'Geladeira, Iluminação' });
+      const b = P.calcBat(base);
+      igual('prancha híbrida: banco (3 × 5,12 kWh, 1S3P, 51,2 V, útil 90%)', [b.n, b.serie, b.par, U.round(b.kwh, 2), b.vBanco, U.round(b.util, 3)].join('|'), '3|1|3|15.36|51.2|13.824');
+      igual('prancha híbrida: disjuntor CC ≥ 1,25 × 120 A → 160 A e cabo com Iz ≥ 160 A → 70 mm²', [b.iBat, b.disjAuto, b.bitAuto, b.origem].join('|'), '120|160|70|inversor');
+      igual('prancha híbrida: backup 6 kW / 220 V = 27,27 A → disjuntor 40 A e cabo 6 mm²; cargas da proposta', [U.round(b.iBk, 2), b.bkDisjAuto, b.bkBitAuto, b.cargas].join('|'), '27.27|40|6|Geladeira, Iluminação');
+      const semI = P.calcBat(Object.assign(U.clone(base), { inv: Object.assign({}, base.inv, { iBatCarga: '', iBatDesc: '', pBat: '5' }) }));
+      igual('prancha híbrida: sem corrente no datasheet, potência de bateria ÷ tensão do banco (5 kW / 51,2 V)', [U.round(semI.iBat, 2), semI.origem, semI.disjAuto].join('|'), '97.66|potência de bateria|125');
+      const conf = P.conferirBat(Object.assign(U.clone(base), { batDisj: 100, batBit: 35, bat: Object.assign({}, base.bat, { serie: '2' }) })).map(function (x) { return x.nivel + ':' + x.texto; }).join(' | ');
+      ok('prancha híbrida: conferências (disjuntor CC < 1,25 × I, banco fora da faixa do inversor)', /aviso:Disjuntor CC das baterias de 100 A abaixo/.test(conf) && /erro:Banco de 102,4 V fora da faixa/.test(conf) && !/Cabo das baterias/.test(conf), conf);
+      ok('prancha híbrida: cabo abaixo do disjuntor é erro', P.conferirBat(Object.assign(U.clone(base), { batDisj: 160, batBit: 35 })).some(function (x) { return x.nivel === 'erro' && /Cabo das baterias de 35 mm²/.test(x.texto); }));
+      ok('prancha híbrida sem baterias: aviso para puxar do CRM', /sem banco de baterias/.test(P.conferirBat(Object.assign(U.clone(base), { bat: {} }))[0].texto));
+      igual('on-grid: sem conferência de baterias', P.conferirBat(pr).length, 0);
+      igual('prancha híbrida: descritivo reescrito pelo desenho (campo do modelo em branco)', P.valores(base, 'A', ctxP).descritivo, null);
+      const dH = P.desenhoStringsA(base, campA, GA), txt = function (d) { return d.filter(function (c) { return c.t === 'texto'; }).map(function (c) { return c.txt || (c.itens || []).join(' '); }).join(' ¦ '); };
+      const tH = txt(dH);
+      ok('prancha híbrida: diagrama do armazenamento (inversor híbrido, disjuntor CC, banco, backup e QCC com as cargas)', /DIAGRAMA DO ARMAZENAMENTO/.test(tH) && /INVERSOR HÍBRIDO/.test(tH) && /DISJUNTOR CC 160 A/.test(tH) &&
+        /BANCO DE BATERIAS: 3 x BAT - B5/.test(tH) && /BACKUP \(EPS\) 6,00 kW/.test(tH) && /QUADRO DE CARGAS CRÍTICAS/.test(tH) && /Geladeira/.test(tH), tH.slice(0, 400));
+      ok('prancha híbrida: blocos com baterias, QCC, medidor e rede; seção 5, nota 9 e título', /BANCO DE BATERIAS/.test(tH) && /QUADRO DE CARGAS CRÍTICAS \(QCC\)/.test(tH) && /MEDIDOR BIDIRECIONAL/.test(tH) &&
+        /5\) Banco de Baterias/.test(tH) && /anti-ilhamento/.test(tH) && /Projeto Fotovoltaico HÍBRIDO/.test(tH) && /Inversor Híbrido \(rede e baterias\)/.test(tH));
+      const dO = P.desenhoStringsA(Object.assign(U.clone(base), { sistema: 'offgrid' }), campA, GA), tO = txt(dO);
+      ok('prancha off-grid: sem medidor e rede nos blocos, QDC, carimbo e notas do sistema isolado', !/MEDIDOR BIDIRECIONAL/.test(tO) && !/REDE BT DA DISTRIBUIDORA/.test(tO) && /QUADRO DE DISTRIBUIÇÃO \(QDC\)/.test(tO) &&
+        /PROJETO DE SISTEMA FOTOVOLTAICO ISOLADO/.test(tO) && /não tem conexão com a rede da distribuidora/.test(tO) && !/BACKUP \(EPS\)/.test(tO));
+      ok('prancha off-grid: unifilar, multifilar e padrão de entrada apagados (e os campos deles pulados)', (dO.pularRegioes || []).length >= 5 &&
+        dO.pularRegioes.some(function (r) { return r[0] === 752 && r[2] === 925; }) && dO.pularRegioes.some(function (r) { return 1460 >= r[0] && 1460 <= r[2] && 568 >= r[1] && 568 <= r[3]; }));
+      ok('on-grid: nada do armazenamento no desenho', !/ARMAZENAMENTO|Banco de Baterias/.test(txt(P.desenhoStringsA(pr, campA, GA))));
+    })();
     const d2 = P.desenhoStringsA(pr, campA, GA);
     const tab2 = d2.filter(function (c) { return c.t === 'texto' && /^STR\d$/.test(c.txt) && Math.abs(c.oc.x - 199.92) < 0.01; });
     ok('strings A (14 módulos, 2 × 7): fileiras na escala do desenho, 14 módulos, 12 ligações, 2 ramais e a tabela nas posições originais',

@@ -147,7 +147,10 @@ window.App = window.App || {};
     return {
       fab: (eq && eq.fabricante) || (placa && placa.marca) || '', modelo: (eq && eq.modelo) || (placa && placa.modelo) || '',
       kw: g((eq && eq.potencia) || (placa && placa.potencia)), qtd: qtd > 0 ? String(qtd) : '', fases: fases,
-      tensao: tensao ? tensao[0] : '220', vmaxCC: g(eq && eq.vmaxCC), iSaida: g(eq && eq.iSaidaMax), mppts: g(eq && eq.mppts), imaxMppt: g(eq && eq.imaxMppt)
+      tensao: tensao ? tensao[0] : '220', vmaxCC: g(eq && eq.vmaxCC), iSaida: g(eq && eq.iSaidaMax), mppts: g(eq && eq.mppts), imaxMppt: g(eq && eq.imaxMppt),
+      // híbrido / off-grid: bateria e backup (datasheet)
+      vBat: g(eq && eq.tensaoBateria), vBatMin: g(eq && eq.vBatMin), vBatMax: g(eq && eq.vBatMax), iBatCarga: g(eq && eq.iCargaMax), iBatDesc: g(eq && eq.iDescargaMax),
+      pBat: g(eq && eq.pBateriaMax), kwBackup: g(eq && eq.potenciaBackup)
     };
   }
 
@@ -275,6 +278,16 @@ window.App = window.App || {};
     if (pr.invs && pr.invs.length) pr.nStrings = '';
     if (LIGACOES[e.ligacao]) pr.ligacao = e.ligacao;
     if (e.telhado) pr.telhado = e.telhado;
+    // híbrido / off-grid: o tipo da proposta e o banco de baterias dimensionado (os disjuntores e cabos do projetista ficam)
+    const tp = e.x.prop && e.x.prop.tipoSistema;
+    if (tp) pr.sistema = tp === 'offgrid' ? 'offgrid' : (tp === 'hibrido' || tp === 'bess') ? 'hibrido' : 'ongrid';
+    const bat = dadosBateria(e.x.r);
+    if (bat) pr.bat = bat;
+    pr.bk = pr.bk || { disj: '', bit: '', cargas: '' };
+    // cargas da proposta (híbrido: as críticas, no QCC; off-grid: as da lista de cargas, no QDC)
+    const pp = e.x.prop;
+    pr.cargasCrm = pp && Array.isArray(pp.cargas) && !(pp.tipoSistema === 'offgrid' && pp.ogDemanda === 'consumo')
+      ? pp.cargas.map(function (x) { return str(x && x.descricao); }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join(', ') : '';
     if (inst.homologacao) lerCompartilhados(pr, inst.homologacao);
     pr.atualizadoEm = new Date().toISOString();
     return pr;
@@ -614,7 +627,7 @@ window.App = window.App || {};
         bit_ca_lig: str(pr.ca.bit) ? '#' + str(pr.ca.bit) : '', bit_terra_lig: terraCA(pr) ? '#' + terraCA(pr) : ''
       });
       const lista = inversores(pr);
-      return valoresAmpl(pr, lista.length > 1 ? valoresMulti(pr, v, lista) : v, lista, 'A');
+      return valoresSistema(pr, valoresAmpl(pr, lista.length > 1 ? valoresMulti(pr, v, lista) : v, lista, 'A'));
     }
     // estilo B
     Object.assign(v, {
@@ -639,7 +652,15 @@ window.App = window.App || {};
       dps_ca_in_esp: str(d.in) ? 'In = ' + str(d.in) + ' kA' : '', dps_ca_imax_esp: str(d.imax) ? 'In Max = ' + str(d.imax) + ' kA' : '',
       sb_cc: str(pr.sbCc)
     });
-    return valoresAmpl(pr, v, inversores(pr), 'B');
+    return valoresSistema(pr, valoresAmpl(pr, v, inversores(pr), 'B'));
+  }
+
+  /** Híbrido / off-grid: o descritivo é reescrito pelo desenho (com as baterias e, no off-grid, sem a rede). */
+  function valoresSistema(pr, v) {
+    const sis = sistemaDe(pr);
+    if (sis === 'ongrid') return v;
+    v.descritivo = null;
+    return v;
   }
 
   /**
@@ -823,6 +844,7 @@ window.App = window.App || {};
     if (pr.ligacao === 'tri') multifilarTri(pr, [{ p: pr }], cmds);
     caboCAMultifilar(pr, [{ p: pr }], cmds, [0]);
     compactos1F(pr, inversores(pr), cmds);
+    armazenamentoA(pr, inversores(pr), cmds);
     return cmds;
 
     // ---- unifilares: um ramo por string com o "Campo Fotov.", o rótulo e a bitola, e a marca e o texto do cabo CC
@@ -899,6 +921,82 @@ window.App = window.App || {};
         });
       });
     }
+  }
+
+  // ------------------------------------------------------------ híbrido e off-grid (banco de baterias)
+  const SISTEMAS = { ongrid: 'On-Grid', hibrido: 'Híbrido', offgrid: 'Off-Grid' };
+  function sistemaDe(pr) { const s = pr && pr.sistema; return s === 'hibrido' || s === 'offgrid' ? s : 'ongrid'; }
+  function comBaterias(pr) { return sistemaDe(pr) !== 'ongrid'; }
+  /** Banco de baterias da proposta (cálculo do CRM): modelo, quantidade, arranjo e os dados da unidade. */
+  function dadosBateria(r) {
+    const hb = r && r.hibrido, b = hb && hb.bateria;
+    if (!b || !(hb.nBaterias > 0)) return null;
+    const g = function (v) { return v != null && v !== '' && isFinite(U.num(v)) ? String(v) : ''; };
+    return {
+      fab: b.fabricante || '', modelo: b.modelo || '', qtd: String(hb.nBaterias), kwh: g(b.energia), v: g(b.tensao), serie: String(hb.serie || 1),
+      dod: hb.dod > 0 ? String(U.round(hb.dod * 100, 1)) : g(b.dod), quimica: b.quimica || ''
+    };
+  }
+  // disjuntores CC (caixa moldada / DC) usuais no circuito das baterias
+  const DISJ_CC = [16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400];
+  function proxDisjCC(i) { return DISJ_CC.find(function (d) { return d >= i - 1e-9; }) || null; }
+  /** Menor bitola (NBR 5410, cobre/PVC 70 °C, B1) com Iz ≥ a corrente: 2 condutores carregados (CC e monofásico) ou 3 (trifásico). */
+  function caboPara(i, fases) {
+    return Object.keys(IZ).map(Number).sort(function (a, b) { return a - b; }).find(function (s) { return izCabo(s, fases) >= i - 1e-9; }) || null;
+  }
+  /**
+   * Banco e circuitos das baterias: arranjo (série × paralelo), energia, tensão do banco, corrente do circuito CC (a máxima de
+   * carga/descarga do inversor; sem ela, potência de bateria ÷ tensão do banco), disjuntor CC (≥ 1,25 × I) e cabo (Iz ≥ disjuntor);
+   * no híbrido, a saída de backup (EPS) para o quadro de cargas críticas. Os valores do projetista prevalecem sobre os sugeridos.
+   */
+  function calcBat(pr) {
+    const b = pr.bat || {}, iv = pr.inv || {}, sis = sistemaDe(pr), bk = pr.bk || {};
+    const n = Math.round(num(b.qtd)), serie = Math.max(1, Math.round(num(b.serie)) || 1), par = n > 0 ? Math.max(1, Math.floor(n / serie)) : 0;
+    const vUn = num(b.v), vBanco = vUn * serie, kwhUn = num(b.kwh), kwh = n * kwhUn;
+    const dod = num(b.dod) > 0 ? num(b.dod) / 100 : 0, util = dod ? kwh * dod : 0;
+    let iBat = Math.max(num(iv.iBatCarga), num(iv.iBatDesc)), origem = 'inversor';
+    if (!(iBat > 0) && vBanco > 0 && (num(iv.pBat) || num(iv.kw)) > 0) {
+      iBat = (num(iv.pBat) || num(iv.kw)) * 1000 / vBanco;
+      origem = num(iv.pBat) ? 'potência de bateria' : 'potência do inversor';
+    }
+    const disjAuto = iBat > 0 ? proxDisjCC(1.25 * iBat) : null, disj = num(pr.batDisj) || disjAuto || 0;
+    const bitAuto = disj > 0 ? caboPara(disj, 'mono') : null, bit = num(pr.batBit) || bitAuto || 0;
+    const kwBk = num(iv.kwBackup) || num(iv.kw), tri = iv.fases === 'tri', vCa = num(iv.tensao) || 220;
+    const iBk = kwBk > 0 ? kwBk * 1000 / (tri ? Math.sqrt(3) * vCa : vCa) : 0;
+    const bkDisjAuto = iBk > 0 ? proxDisjuntor(1.25 * iBk) : null, bkDisj = num(bk.disj) || bkDisjAuto || 0;
+    const bkBitAuto = bkDisj > 0 ? caboPara(bkDisj, tri ? 'tri' : 'mono') : null, bkBit = num(bk.bit) || bkBitAuto || 0;
+    return {
+      sis: sis, n: n, serie: serie, par: par, vUn: vUn, vBanco: vBanco, kwhUn: kwhUn, kwh: kwh, dod: dod, util: util, iBat: iBat, origem: origem,
+      disjAuto: disjAuto, disj: disj, bitAuto: bitAuto, bit: bit, kwBk: kwBk, iBk: iBk, bkDisjAuto: bkDisjAuto, bkDisj: bkDisj, bkBitAuto: bkBitAuto, bkBit: bkBit, tri: tri,
+      dist: num(pr.batDist), cargas: str(bk.cargas) || str(pr.cargasCrm)
+    };
+  }
+  function conferirBat(pr) {
+    if (!comBaterias(pr)) return [];
+    const out = [], add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); }, b = calcBat(pr), iv = pr.inv || {};
+    const f2 = function (v) { return U.fmtSmart ? U.fmtSmart(v, 2) : String(U.round(v, 2)); };
+    if (!(b.n > 0)) {
+      add('aviso', 'Sistema ' + SISTEMAS[b.sis] + ' sem banco de baterias: use ↻ Puxar dados do CRM (proposta com baterias) ou informe as baterias.');
+      return out;
+    }
+    if (!(b.iBat > 0) && !(num(pr.batDisj) > 0)) add('aviso', 'Sem a corrente de bateria do inversor (datasheet) nem a tensão do banco: informe o disjuntor CC das baterias.');
+    if (b.iBat > 0 && num(pr.batDisj) > 0 && num(pr.batDisj) < 1.25 * b.iBat - 1e-9) {
+      add('aviso', 'Disjuntor CC das baterias de ' + num(pr.batDisj) + ' A abaixo de 1,25 × a corrente máxima do circuito (' + f2(1.25 * b.iBat) + ' A).');
+    }
+    const iz = izCabo(b.bit, 'mono');
+    if (iz && b.disj > 0 && iz < b.disj - 1e-9) add('erro', 'Cabo das baterias de ' + pt(b.bit) + ' mm² (Iz ' + iz + ' A) abaixo do disjuntor CC (' + b.disj + ' A).');
+    const vmin = num(iv.vBatMin), vmax = num(iv.vBatMax);
+    if (b.vBanco > 0 && vmin > 0 && vmax > 0 && (b.vBanco < vmin - 1e-9 || b.vBanco > vmax + 1e-9)) {
+      add('erro', 'Banco de ' + f2(b.vBanco) + ' V fora da faixa de tensão de bateria do inversor (' + vmin + '–' + vmax + ' V).');
+    }
+    if (b.sis === 'hibrido') {
+      const izB = izCabo(b.bkBit, b.tri ? 'tri' : 'mono');
+      if (izB && b.bkDisj > 0 && izB < b.bkDisj - 1e-9) add('erro', 'Cabo do backup de ' + pt(b.bkBit) + ' mm² (Iz ' + izB + ' A) abaixo do disjuntor do backup (' + b.bkDisj + ' A).');
+      if (b.iBk > 0 && num(pr.bk && pr.bk.disj) > 0 && num(pr.bk.disj) < b.iBk - 1e-9) {
+        add('aviso', 'Disjuntor do backup de ' + num(pr.bk.disj) + ' A abaixo da corrente de backup do inversor (' + f2(b.iBk) + ' A).');
+      }
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ fases dos circuitos CA (diagramas do estilo A)
@@ -1184,23 +1282,44 @@ window.App = window.App || {};
     const tInv = lista.map(function (x) { return terraCA(x.p); }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join('/') || tb;
     const nomeInv = function (x) { return [maiusc(x.inv.fab), str(x.inv.modelo)].filter(Boolean).join(' '); };
 
-    // diagrama de blocos: GERADOR FV → STRING BOX CC → INVERSOR → STRING BOX CA na 1ª linha; QGBT ← MEDIDOR ← REDE na 2ª
-    const B = BLOCOS_1F, g = 40, w = (B[2] - B[0] - 3 * g) / 4, h = 42, y1 = B[3] - 28, y2 = y1 - h - 40;
+    // diagrama de blocos: GERADOR FV → STRING BOX CC → INVERSOR → STRING BOX CA na 1ª linha; QGBT ← MEDIDOR ← REDE na 2ª.
+    // Híbrido: baterias e quadro de cargas críticas na 2ª linha, medidor e rede na 3ª; off-grid: baterias e o QDC, sem rede.
+    const sis = sistemaDe(pr), hib = sis === 'hibrido', og = sis === 'offgrid', bb = hib || og ? calcBat(pr) : null;
+    const B = BLOCOS_1F, g = 40, w = (B[2] - B[0] - 3 * g) / 4, h = hib ? 34 : 42, y1 = B[3] - 28, y2 = y1 - h - (hib ? 20 : 40), y3 = y2 - h - 20;
     em(tT, 'DIAGRAMA DE BLOCOS', { x: B[0], y: B[3] - 12 });
     const X = [0, 1, 2, 3].map(function (i) { return B[0] + i * (w + g); });
     caixa(X[0], y1, w, h, ['GERADOR FV', modulosTxt(cs) + ' = ' + fx(kwp, 2, ',') + ' kWp', tams.length + (tams.length > 1 ? ' strings de ' : ' string de ') + difs.join('/') + ' módulos']);
     caixa(X[1], y1, w, h, ['STRING BOX CC', 'DPS CC' + (str(pr.dpsCcUcpv) ? ' ' + str(pr.dpsCcUcpv) + ' V' : '') + (str(pr.sbCc) ? ' - ' + str(pr.sbCc) : ''), 'terra #' + tm + ' mm2']);
     caixa(X[2], y1, w, h, nI > 1
       ? ['INVERSORES', lista.map(function (x, j) { return 'INV' + (j + 1) + ' ' + pt(cs[j].kw, 2) + ' kW'; }).join(' + '), lista.map(function (x) { return maiusc(x.inv.fab); }).filter(Boolean).join(' + ')]
-      : ['INVERSOR INV1', nomeInv(lista[0]), pt(c0.kw, 2) + ' kW - ' + (triInv(lista[0].p) ? 'trifásico' : 'monofásico') + ' ' + pt(c0.vInv, 0) + ' V']);
+      : [hib ? 'INVERSOR HÍBRIDO INV1' : og ? 'INVERSOR OFF-GRID INV1' : 'INVERSOR INV1', nomeInv(lista[0]), pt(c0.kw, 2) + ' kW - ' + (triInv(lista[0].p) ? 'trifásico' : 'monofásico') + ' ' + pt(c0.vInv, 0) + ' V']);
     const disj = lista.map(function (x, j) { return 'INV' + (j + 1) + ' ' + (str(x.p.disjCa) || '?') + ' A'; }).join(' + ');
     caixa(X[3], y1, w, h, ['STRING BOX CA', (nI > 1 ? 'disjuntores: ' : 'disjuntor: ') + disj, 'DPS CA classe ' + (str(d.classe) || 'II') + (str(d.uc) ? ' - Uc ' + str(d.uc) + ' V' : '')]);
     seta(X[0] + w, y1 - h / 2, X[1], y1 - h / 2, 'CC', mm(ccBit));
     seta(X[1] + w, y1 - h / 2, X[2], y1 - h / 2, 'CC', mm(ccBit));
     seta(X[2] + w, y1 - h / 2, X[3], y1 - h / 2, 'CA', mm(caBit));
-    caixa(X[3], y2, w, h, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da UC - ' + lig]);
-    caixa(X[2], y2, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
-    caixa(X[1], y2, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
+    if (bb) {
+      const nb = [maiusc(pr.bat && pr.bat.fab), str(pr.bat && pr.bat.modelo)].filter(Boolean).join(' ');
+      caixa(X[2], y2, w, h, ['BANCO DE BATERIAS', bb.n > 0 ? bb.n + ' x ' + nb : '', bb.n > 0 ? fx(bb.kwh, 2, ',') + ' kWh' + (bb.vBanco > 0 ? ' - ' + fx(bb.vBanco, 1, ',') + ' V' : '') + (bb.disj ? ' - disj. CC ' + bb.disj + ' A' : '') : '']);
+      // baterias: carga e descarga (seta nos dois sentidos)
+      const xb = X[2] + w / 2;
+      seta(xb, y1 - h, xb, y2, 'CC bateria', bb.bit ? '#' + pt(bb.bit) + ' mm2' : '');
+      linha([[xb - 2.4, y1 - h - 5], [xb, y1 - h], [xb + 2.4, y1 - h - 5]]);
+    }
+    if (og) caixa(X[3], y2, w, h, ['QUADRO DE DISTRIBUIÇÃO (QDC)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da instalação - sem rede']);
+    else caixa(X[3], y2, w, h, ['QUADRO GERAL (QGBT)', 'disjuntor geral ' + (str(pr.disjGeral) || '?') + ' A', 'cargas da UC - ' + lig]);
+    if (hib) {
+      caixa(X[1], y2, w, h, ['QUADRO DE CARGAS CRÍTICAS (QCC)', 'saída de backup (EPS)' + (bb.kwBk ? ' ' + fx(bb.kwBk, 2, ',') + ' kW' : ''), (bb.bkDisj ? 'disjuntor ' + bb.bkDisj + ' A' : '') + (bb.bkBit ? ' - #' + pt(bb.bkBit) + ' mm2' : '')]);
+      // backup: do inversor (por baixo) ao QCC, pelo meio do espaço entre as linhas
+      const xs = X[2] + 10, ym = y1 - h - 10, xq = X[1] + w / 2;
+      linha([[xs, y1 - h], [xs, ym], [xq, ym], [xq, y2]]); linha([[xq - 2.4, y2 + 5], [xq, y2], [xq + 2.4, y2 + 5]]);
+      em(Object.assign({}, t2, { s: 4.0 }), 'backup', { x: (xs + xq) / 2, y: ym + 2.5 });
+      caixa(X[3], y3, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
+      caixa(X[2], y3, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
+    } else if (!og) {
+      caixa(X[2], y2, w, h, ['MEDIDOR BIDIRECIONAL', 'UC ' + (str(pr.uc) || ''), 'energia injetada e consumida']);
+      caixa(X[1], y2, w, h, ['REDE BT DA DISTRIBUIDORA', 'ligação ' + lig, '']);
+    }
     // ampliação (ou o 2º modelo de módulo): um bloco abaixo do gerador, ligado a ele — em destaque na ampliação
     const acs = cs.map(function (c, j) { return c.acr ? { a: c.acr, j: j, m: (c.rotMppt || [])[c.grupos.length - 1] || c.grupos.length } : null; }).filter(Boolean);
     if (acs.length) {
@@ -1211,8 +1330,13 @@ window.App = window.App || {};
       seta(X[0] + w / 2, y2, X[0] + w / 2, y1 - h, '', '');
     }
     seta(X[3] + w / 2, y1 - h, X[3] + w / 2, y2, 'CA', mm(caboComum(pr, lista).bit));
-    seta(X[3], y2 - h / 2, X[2] + w, y2 - h / 2, 'entrada', mm(pr.entrada.bit));
-    seta(X[2], y2 - h / 2, X[1] + w, y2 - h / 2, 'ramal', mm(pr.ramal.bit));
+    if (hib) {
+      seta(X[3] + w / 2, y2 - h, X[3] + w / 2, y3, 'entrada', mm(pr.entrada.bit));
+      seta(X[3], y3 - h / 2, X[2] + w, y3 - h / 2, 'ramal', mm(pr.ramal.bit));
+    } else if (!og) {
+      seta(X[3], y2 - h / 2, X[2] + w, y2 - h / 2, 'entrada', mm(pr.entrada.bit));
+      seta(X[2], y2 - h / 2, X[1] + w, y2 - h / 2, 'ramal', mm(pr.ramal.bit));
+    }
 
     // aterramento: as massas (módulos, String Box CC, inversores, String Box CA, QGBT) ligadas pelo PE ao BEP, à caixa de
     // inspeção e à haste
@@ -1247,6 +1371,228 @@ window.App = window.App || {};
     const notas = ['Massas metálicas (molduras, estruturas, carcaças dos inversores e quadros) interligadas ao BEP pelo condutor de',
       'proteção (PE), verde ou verde-amarelo - NBR 5410 e NBR 16690. Módulos #' + tm + ' mm2, PE dos inversores #' + tInv + ' mm2, aterramento #' + tb + ' mm2.'];
     notas.forEach(function (t, i) { em(Object.assign({}, tl, { s: 4.0 }), t, { x: A[0], y: yBus - 22 - i * 9, w: xBep - A[0] - 12 }); });
+  }
+
+  // ---- híbrido e off-grid no estilo A: o diagrama do armazenamento (no espaço livre entre o multifilar, o croqui e as strings),
+  // a seção 5 (banco de baterias), a legenda e as notas, o descritivo e o título; no off-grid, sem rede, medidor e padrão de entrada
+  const AREA_BAT = [1300, 828, 1852, 1036];
+  // trechos do modelo que só existem com a rede (off-grid): unifilar e multifilar acima do quadro, padrão de entrada do detalhe,
+  // legenda do medidor
+  const SEM_REDE = { uni: [752, 1362, 925, 1569], multi: [1095, 1357, 1273, 1650], padrao: [[1430, 549, 1732, 636], [1543, 242, 1732, 549], [1567, 220, 1732, 242]], medidor: [2125, 1084, 2330, 1150] };
+  const AZUL_CAB = [0.247, 0, 1];
+  function armazenamentoA(pr, lista, cmds, folha) {
+    const sis = sistemaDe(pr);
+    if (sis === 'ongrid') return;
+    const og = sis === 'offgrid', b = calcBat(pr), bt = pr.bat || {}, iv = (lista[0] && lista[0].inv) || pr.inv || {};
+    const azul = [0, 0, 1], preto = [0, 0, 0], verde = [0, 0.62, 0], roxo = [0.498, 0, 1];
+    const em = function (oc, txt, extra) { if (txt) cmds.push({ t: 'texto', txt: txt, oc: Object.assign({}, oc, extra || {}) }); };
+    const par = function (oc, txt, q) { if (txt && (!Array.isArray(txt) || txt.length)) cmds.push({ t: 'texto', txt: Array.isArray(txt) ? '' : txt, itens: Array.isArray(txt) ? txt : null, oc: oc, quebra: q }); };
+    const linha = function (pts, cor, traco) { cmds.push({ t: 'linha', pts: pts, cor: cor || preto, traco: traco || null }); };
+    const branco = function (r, pularCampos) { cmds.push({ t: 'branco', r: r }); if (pularCampos !== false) (cmds.pularRegioes = cmds.pularRegioes || []).push(r); };
+    const ret = function (x0, y0, x1, y1, cor, traco) { linha([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], cor, traco); };
+    const T = function (s, al, cor) { return { t: 'txt', s: s, fl: 0.92, ang: 0, cor: cor || azul, al: al || 'l' }; };
+    const A = function (s, al, cor) { return { t: 'tt', s: s, ang: 0, cor: cor || preto, al: al || 'l' }; };
+    const nomeBat = [maiusc(bt.fab), str(bt.modelo)].filter(Boolean).join(' - ');
+    const nomeInv = [maiusc(iv.fab), str(iv.modelo)].filter(Boolean).join(' - ');
+    const kwhTxt = function (v) { return fx(v, 2, ','); };
+    const c = calcular(lista[0] ? lista[0].p : pr);
+    const umaFolha = !folha, f1 = folha !== 2;
+
+    // símbolo de uma bateria (IEC 60617): placa longa (+) e curta (−) dentro do módulo, com os terminais em cima
+    const bateria = function (xc, yc, w, h) {
+      ret(xc - w / 2, yc - h / 2, xc + w / 2, yc + h / 2);
+      linha([[xc - 2.2, yc - 0.32 * h], [xc - 2.2, yc + 0.32 * h]]);
+      [-0.6, 0, 0.6].forEach(function (d) { linha([[xc + 2.2 + d, yc - 0.17 * h], [xc + 2.2 + d, yc + 0.17 * h]]); });
+      em(T(Math.min(5, h * 0.3), 'c', preto), '+', { x: xc - 0.3 * w, y: yc - 1.6 });
+      em(T(Math.min(5, h * 0.3), 'c', preto), '-', { x: xc + 0.3 * w, y: yc - 1.6 });
+    };
+    // disjuntor (contato com o x no fixo), na vertical (de cima para baixo) ou na horizontal (da esquerda para a direita)
+    const disjuntor = function (x, y, comp, horiz) {
+      const a = comp * 0.3;
+      if (horiz) {
+        linha([[x, y], [x + a, y]]); linha([[x + a, y], [x + comp - a, y + 6]]); linha([[x + comp - a, y], [x + comp, y]]);
+        linha([[x + comp - a - 2, y - 2], [x + comp - a + 2, y + 2]]); linha([[x + comp - a - 2, y + 2], [x + comp - a + 2, y - 2]]);
+      } else {
+        linha([[x, y], [x, y - a]]); linha([[x, y - a], [x - 6, y - comp + a]]); linha([[x, y - comp + a], [x, y - comp]]);
+        linha([[x - 2, y - comp + a - 2], [x + 2, y - comp + a + 2]]); linha([[x - 2, y - comp + a + 2], [x + 2, y - comp + a - 2]]);
+      }
+    };
+    // inversor: quadrado com a diagonal, ~ (CA) em cima à esquerda e = (CC) embaixo à direita
+    const inversor = function (x0, y0, l) {
+      ret(x0, y0, x0 + l, y0 + l); linha([[x0, y0], [x0 + l, y0 + l]]);
+      const sx = x0 + l * 0.12, sy = y0 + l * 0.75, ow = l * 0.34;
+      linha(Array.from({ length: 13 }, function (_, i) { return [sx + ow * i / 12, sy + Math.sin(i / 12 * 2 * Math.PI) * l * 0.06]; }));
+      linha([[x0 + l * 0.55, y0 + l * 0.27], [x0 + l * 0.88, y0 + l * 0.27]]);
+      [0, 1, 2].forEach(function (k) { const xx = x0 + l * (0.55 + k * 0.12); linha([[xx, y0 + l * 0.18], [xx + l * 0.07, y0 + l * 0.18]]); });
+    };
+
+    // ---- legenda específica: o inversor pelo tipo e o banco de baterias (folhas com o carimbo: todas)
+    branco([1955, 797, 2205, 816], false);
+    em(A(12.67), og ? 'Inversor Off-Grid (sistema isolado).' : 'Inversor Híbrido (rede e baterias).', { x: 1958, y: 802.5 });
+    bateria(2156, 742, 26, 20);
+    linha([[2150, 752], [2150, 758]]); linha([[2162, 752], [2162, 758]]);
+    em(A(12.67), 'Banco de Baterias', { x: 2190, y: 737.5 });
+    if (og) { branco(SEM_REDE.medidor, false); }
+
+    // ---- notas obrigatórias
+    if (og) {
+      branco([1900, 1362, 2366, 1612], false);
+      par(A(11.4), [
+        'O sistema é isolado (off-grid): não tem conexão com a rede da distribuidora e não injeta energia nela;',
+        'O inversor e as baterias serão instalados em local ventilado, protegido do sol e da chuva, de fácil acesso;',
+        'As instalações serão executadas de acordo com a NBR 5410 e a NBR 16690 da ABNT;',
+        'Todos os disjuntores serão certificados pelo INMETRO;',
+        'O circuito CC das baterias terá disjuntor CC (ou fusível) junto ao banco, para a corrente máxima do inversor;',
+        'A execução será acompanhada da ART (CREA) ou do TRT (CFT) do responsável técnico;',
+        'Placa de advertência: sistema com baterias, risco de choque elétrico mesmo com o sistema desligado;',
+        'O(s) inversor(es) ficarão em local de fácil e permanente acesso, com o visor a no máximo 1,60 m do piso.'
+      ], { w: 425, lh: 14.2, max: 17, x: 1933, y: 1596, rotulo: { x: 1907.5, fmt: 'n.' } });
+    } else {
+      par(A(10.6), ['O inversor híbrido tem proteção anti-ilhamento: na falta da rede ele se desconecta dela e a saída de backup alimenta somente o quadro de cargas críticas (QCC).'],
+        { w: 425, lh: 12.4, max: 2, x: 1933, y: 1354, rotulo: { x: 1907.5, fmt: 'n.', ini: 9 } });
+    }
+
+    // ---- breve descritivo (com as baterias)
+    branco([1868, 1250, 2366, 1297], false);
+    const nModTxt = c.nMod > 0 ? pad2(c.nMod) : '', w = c.w > 0 ? pt(c.w, 1) : '', kwInv = c.kw > 0 ? fx(c.kw, 2, ',') : '';
+    const lig = LIGACOES[pr.ligacao] || 'bifásico', dg = str(pr.disjGeral);
+    const bancoTxt = b.n > 0 ? 'banco de baterias de ' + kwhTxt(b.kwh) + ' kWh (' + b.n + ' x ' + nomeBat + ')' : 'banco de baterias';
+    const desc = og
+      ? 'O projeto prevê a instalação de um sistema de energia solar fotovoltaica isolado (off-grid), sem conexão com a rede de distribuição, com armazenamento em baterias. ' +
+        'O sistema é composto por ' + nModTxt + ' módulos de ' + w + ' Wp, inversor off-grid de ' + kwInv + ' kW e ' + bancoTxt + ', que alimenta o quadro de distribuição das cargas da instalação.'
+      : 'O projeto prevê a instalação de um sistema de energia solar fotovoltaica híbrido, com armazenamento em baterias, conectado ao sistema de distribuição em BT da Energisa ' +
+        'para acesso à microgeração, com potência instalada menor que 75 KW e com adesão ao sistema de compensação de energia. O sistema é composto por ' + nModTxt + ' módulos de ' + w +
+        ' Wp, inversor híbrido de ' + kwInv + ' kW e ' + bancoTxt + ', que alimenta o quadro de cargas críticas na falta da rede. A instalação elétrica da casa existente com ramal de entrada ' +
+        lig + ' de ' + str(pr.entrada.bit) + ' mm2, disjuntor de ' + dg + ' A e ramal de saída ' + lig + ' de ' + str(pr.saida.bit) + ' mm2, disjuntor de ' + dg + ' A.';
+    par(A(11.88), desc, { w: 486, lh: 14, max: 7, x: 1872, y: 1283.5 });
+
+    // ---- off-grid no carimbo: o tipo do projeto e a nota da distribuidora
+    if (og) {
+      branco([1985, 204, 2245, 223], false);
+      em(A(12, 'c', AZUL_CAB), 'PROJETO DE SISTEMA FOTOVOLTAICO ISOLADO (OFF-GRID)', { x: 2112, y: 209.5, w: 480 });
+      branco([1868, 231, 2366, 292], false);
+      par(A(10.3), 'Sistema isolado (off-grid), sem conexão com a rede de distribuição: não se aplicam o parecer de acesso, a vistoria e a troca do medidor pela distribuidora.',
+        { w: 486, lh: 12.6, max: 4, x: 1872, y: 279.5 });
+    }
+    if (!f1) return;
+
+    // ---- título da coluna
+    branco([158, 803, 376, 821], false);
+    em(Object.assign(T(8.5), { fl: 0.95 }), og ? 'Projeto Fotovoltaico OFF-GRID (ISOLADO)' : 'Projeto Fotovoltaico HÍBRIDO (COM BATERIAS)', { x: 160.5, y: 806.5 });
+
+    // ---- 5) banco de baterias, à direita do "4) Total" (desce junto quando a tabela cresce)
+    const regra = (Array.isArray(cmds.desloc) ? cmds.desloc : (cmds.desloc ? [cmds.desloc] : [])).filter(function (d) { return 354 < d.x && 184 < d.y; })
+      .sort(function (a, b2) { return a.y - b2.y; })[0];
+    const yTop = 213 + (regra ? regra.dy : 0), x5 = 600;
+    const l5 = b.n > 0 ? [
+      nomeBat,
+      'Quantidade: ' + b.n + ' (' + b.serie + ' em série x ' + b.par + ' em paralelo)',
+      'Energia (kWh): ' + kwhTxt(b.kwh) + (b.util ? ' - útil ' + kwhTxt(b.util) + ' (DoD ' + fx(b.dod * 100, 0) + '%)' : ''),
+      'Tensão do banco (V): ' + (b.vBanco > 0 ? fx(b.vBanco, 1, ',') : '-'),
+      'Proteção CC: disjuntor ' + (b.disj ? b.disj + ' A' : '-') + ' - cabo #' + (b.bit ? pt(b.bit) : '-') + ' mm2',
+      og ? null : 'Backup (EPS): ' + fx(b.kwBk, 2, ',') + ' kW - disjuntor ' + (b.bkDisj || '-') + ' A - cabo #' + (b.bkBit ? pt(b.bkBit) : '-') + ' mm2'
+    ].filter(Boolean) : ['Informe o banco de baterias (Puxar dados do CRM).'];
+    const lh5 = Math.min(14.8, (yTop - 34) / l5.length);
+    em(Object.assign(T(7.48), { fl: 1.04 }), '5) Banco de Baterias', { x: x5, y: yTop });
+    l5.forEach(function (t, i) { em(Object.assign(T(7.4), { fl: 1.04 }), t, { x: x5 + 22, y: yTop - (i + 1) * lh5 - (i === 0 ? 4 : 4) }); });
+
+    if (!umaFolha) return;
+    // ---- multifilar: o inversor remete ao diagrama do armazenamento
+    em(T(4.56), og ? '+ BATERIAS:' : '+ BATERIAS E BACKUP:', { x: 1067, y: 975, w: 88 });
+    em(T(4.56), 'ver diagrama ao lado', { x: 1067, y: 967, w: 88 });
+
+    // ---- off-grid: sem rede, medidor e padrão de entrada
+    if (og) {
+      branco(SEM_REDE.uni);
+      em(T(5.2, 'c'), 'QUADRO DE DISTRIBUIÇÃO (QDC)', { x: 838, y: 1372 });
+      em(T(4.3, 'c'), 'sistema isolado - sem ligação com a rede', { x: 838, y: 1363.5 });
+      branco(SEM_REDE.multi);
+      em(T(5.5, 'c'), 'QUADRO DE DISTRIBUIÇÃO (QDC) - CARGAS', { x: 1160, y: 1390 });
+      em(T(4.6, 'c'), 'sistema isolado: sem ligação com a rede da distribuidora', { x: 1160, y: 1380 });
+      SEM_REDE.padrao.forEach(function (r) { branco(r); });
+      par(T(5.4, 'l', preto), 'SISTEMA ISOLADO (OFF-GRID): SEM PADRÃO DE ENTRADA, RAMAL DE LIGAÇÃO E MEDIDOR DA DISTRIBUIDORA.', { w: 170, lh: 8.5, max: 4, x: 1555, y: 470 });
+    }
+
+    // ---- diagrama do armazenamento: entrada FV à esquerda, rede/saída CA e backup à direita, baterias embaixo
+    const Z = AREA_BAT;
+    em(T(8.5), og ? 'DIAGRAMA DO SISTEMA ISOLADO (BATERIAS E CARGAS)' : 'DIAGRAMA DO ARMAZENAMENTO (BATERIAS) E DO BACKUP', { x: Z[0] + 4, y: Z[3] - 9 });
+    const L = 50, xi = 1402, yi = 932, xm = xi + L / 2, ym = yi + L / 2, xr = xi + L;
+    inversor(xi, yi, L);
+    em(T(5.6, 'c'), 'INV1 - ' + (og ? 'INVERSOR OFF-GRID' : 'INVERSOR HÍBRIDO'), { x: xm, y: yi + L + 18, w: 170 });
+    em(T(4.6, 'c'), [nomeInv, kwInv ? kwInv + ' kW' : ''].filter(Boolean).join(' - '), { x: xm, y: yi + L + 9, w: 170 });
+    const seta = function (x0, y0, x1) { linha([[x0, y0], [x1, y0]]); linha([[x1 - 6, y0 + 2.5], [x1, y0], [x1 - 6, y0 - 2.5]]); };
+    // entrada FV (esquerda)
+    seta(Z[0] + 6, ym, xi);
+    em(T(4.8), 'ENTRADA FV (CC)', { x: Z[0] + 6, y: ym + 4, w: xi - Z[0] - 10 });
+    em(T(4.2), c.nStr ? c.nStr + (c.nStr > 1 ? ' strings - ver multifilar' : ' string - ver multifilar') : 'ver multifilar', { x: Z[0] + 6, y: ym - 8, w: xi - Z[0] - 10 });
+    // rede (híbrido): à direita, em cima — no off-grid a saída CA vai ao quadro das cargas (desenhado abaixo)
+    const yR = yi + L - 9;
+    if (!og) {
+      seta(xr, yR, xr + 34);
+      em(T(4.4), 'REDE (GRID): String Box CA - QGBT', { x: xr + 38, y: yR - 1.5, w: 102 });
+      em(T(4.0), 'conexão com a rede - ver multifilar', { x: xr + 38, y: yR - 9, w: 102 });
+    }
+    // baterias (embaixo): disjuntor CC, cabo e o banco em paralelo; os textos à esquerda
+    const compD = 22, yD = yi - 6;
+    linha([[xm, yi], [xm, yD]]);
+    disjuntor(xm, yD, compD, false);
+    em(T(4.8, 'r'), 'DISJUNTOR CC ' + (b.disj ? b.disj + ' A' : ''), { x: xm - 10, y: yD - 9 });
+    em(T(4.0, 'r'), 'bipolar (+ e -), junto ao banco', { x: xm - 10, y: yD - 16 });
+    const yBus = yD - compD - 10;
+    linha([[xm, yD - compD], [xm, yBus]]);
+    em(T(4.2, 'r'), (b.bit ? '#' + pt(b.bit) + ' mm2 (+/-)' : '') + (b.dist ? ' - ' + pt(b.dist) + ' m' : ''), { x: xm - 4, y: yBus + 3 });
+    const nDes = Math.min(Math.max(b.n, 1), 6), wB = 24, hB = 18, gB = 8, totB = nDes * wB + (nDes - 1) * gB;
+    const xB0 = Math.max(Z[0] + 8, xm - totB / 2), yB = yBus - 6 - hB / 2;
+    linha([[Math.min(xm, xB0 + wB / 2), yBus], [Math.max(xm, xB0 + totB - wB / 2), yBus]]);
+    for (let i = 0; i < nDes; i++) {
+      const xc = xB0 + wB / 2 + i * (wB + gB);
+      linha([[xc, yBus], [xc, yB + hB / 2]]);
+      if (nDes < b.n && i === nDes - 2) { em(T(6, 'c', preto), '...', { x: xc, y: yB - 2 }); continue; }
+      bateria(xc, yB, wB, hB);
+    }
+    cmds.push({ t: 'ponto', x: xm, y: yBus, r: 1.2 });
+    const yTxtB = yB - hB / 2 - 8;
+    em(T(5.2), 'BANCO DE BATERIAS: ' + (b.n > 0 ? b.n + ' x ' + nomeBat : '-'), { x: xB0, y: yTxtB, w: 300 });
+    if (b.n > 0) em(T(4.4), kwhTxt(b.kwh) + ' kWh - ' + (b.vBanco > 0 ? fx(b.vBanco, 1, ',') + ' V - ' : '') + b.serie + 'S' + b.par + 'P' + (b.util ? ' - útil ' + kwhTxt(b.util) + ' kWh (DoD ' + fx(b.dod * 100, 0) + '%)' : ''),
+      { x: xB0, y: yTxtB - 8, w: 300 });
+    // BMS: comunicação banco ↔ inversor (tracejado), pela direita do banco
+    const xBms = Math.max(xr + 12, xB0 + totB + 12), yBh = yi - 30;
+    linha([[xr - 6, yi], [xr - 6, yBh], [xBms, yBh], [xBms, yB], [xB0 + totB, yB]], verde, [3, 2]);
+    em(T(4.2, 'l', verde), 'BMS (CAN/RS485)', { x: xBms + 3, y: yBh - 9 });
+
+    // quadro das cargas (híbrido: QCC na saída de backup; off-grid: QDC na saída CA), com as cargas da proposta
+    const q0 = xr + 150, q1 = q0 + 130, qt = yi + L + 6, qb = yi - 46;
+    const quadro = function (titulo, sub, yIn) {
+      ret(q0, qb, q1, qt, roxo, [6, 3]);
+      em(T(5.4, 'c'), titulo, { x: (q0 + q1) / 2, y: qt - 9, w: q1 - q0 - 6 });
+      em(T(5.0, 'c'), sub, { x: (q0 + q1) / 2, y: qt - 17, w: q1 - q0 - 6 });
+      let cargas = (b.cargas ? b.cargas.split(/[,;\n]+/) : (og ? ['Cargas da instalação'] : ['Iluminação', 'Tomadas', 'Geladeira / internet'])).map(str).filter(Boolean);
+      if (cargas.length > 5) cargas = cargas.slice(0, 4).concat(['+ ' + (cargas.length - 4) + ' circuitos']);
+      const yC0 = qt - 30, yCn = yC0 - 13 * (cargas.length - 1);
+      linha([[q0, yIn], [q0 + 10, yIn]]);
+      linha([[q0 + 10, Math.max(yC0 + 4, yIn)], [q0 + 10, Math.min(yCn, yIn)]]);
+      cargas.forEach(function (t, i) {
+        const y = yC0 - i * 13;
+        linha([[q0 + 10, y], [q0 + 18, y]]); disjuntor(q0 + 18, y, 12, true); linha([[q0 + 30, y], [q0 + 38, y]]);
+        em(T(4.6), t, { x: q0 + 41, y: y - 1.8, w: q1 - q0 - 44 });
+      });
+    };
+    if (!og) {
+      const yBk = yi + 10, xd = xr + 34;
+      linha([[xr, yBk], [xd, yBk]]); disjuntor(xd, yBk, 20, true); linha([[xd + 20, yBk], [q0, yBk]]);
+      em(T(4.8), 'BACKUP (EPS) ' + (b.kwBk ? fx(b.kwBk, 2, ',') + ' kW' : ''), { x: xr + 4, y: yBk + 5 });
+      em(T(4.2), 'disj. ' + (b.bkDisj ? b.bkDisj + ' A' : '-') + ' - #' + (b.bkBit ? pt(b.bkBit) : '-') + ' mm2', { x: xd + 24, y: yBk - 8 });
+      quadro('QUADRO DE CARGAS CRÍTICAS', '(QCC)', yBk);
+      par(T(4.4, 'l', preto), 'Na falta da rede o inversor abre o relé da rede (anti-ilhamento) e alimenta só o QCC pela saída de backup: o QCC não tem ligação com a rede nem com o QGBT. ' +
+        'Carcaças das baterias e do inversor ligadas ao BEP (PE).', { w: Z[2] - q1 - 10, lh: 7, max: 14, x: q1 + 7, y: qt - 4 });
+    } else {
+      linha([[xr, yR], [q0, yR]]);
+      em(T(4.8), 'SAÍDA CA (LOAD)', { x: xr + 4, y: yR + 4 });
+      em(T(4.2), 'via String Box CA - ver multifilar', { x: xr + 4, y: yR - 8, w: q0 - xr - 8 });
+      quadro('QUADRO DE DISTRIBUIÇÃO', '(QDC) - CARGAS', yR);
+      par(T(4.4, 'l', preto), 'Sistema isolado: toda a energia das cargas vem do gerador FV e das baterias, pelo inversor off-grid, sem ligação com a rede da distribuidora. ' +
+        'Proteção CC do banco junto às baterias; carcaças das baterias e do inversor ligadas ao BEP (PE).', { w: Z[2] - q1 - 10, lh: 7, max: 14, x: q1 + 7, y: qt - 4 });
+    }
   }
 
   // ---- ampliação: destaque do acréscimo (strings novas e inversor novo). As marcas {t:'novo', z, bb, rot} juntam-se por zona;
@@ -1541,6 +1887,7 @@ window.App = window.App || {};
       // folha única: a nota da ampliação embaixo, à esquerda
       notaAmpliacao().forEach(function (t, i) { em({ t: 'txt', s: 6.5, fl: 0.92, ang: 0, cor: VERMELHO, al: 'l', w: 1020 }, t, { x: 135, y: 44 - i * 10 }); });
     }
+    armazenamentoA(pr, lista, cmds, folha);
     destacar(cmds, (pr.ampl && pr.ampl.destaque) || ESTILOS_DESTAQUE[0].v);
     return cmds;
 
@@ -1904,7 +2251,7 @@ window.App = window.App || {};
     const semNovo = !parte && ampliacao(pr) && !lista.some(function (x) { return acrescimo(x.p) || (destaqueAmpl(pr) && x.inv && x.inv.novo); })
       ? [{ nivel: 'aviso', texto: destaqueAmpl(pr) ? 'Ampliação marcada, mas sem módulos acrescentados nem inversor novo: informe o acréscimo (módulos e MPPT livre) ou marque o inversor novo.'
         : 'Obra com dois modelos de módulo marcada, mas sem módulos do 2º modelo: informe, no inversor, os módulos do 2º modelo e o MPPT deles.' }] : [];
-    if (lista.length > 1) return conferirMulti(pr, estilos, lista).concat(semNovo);
+    if (lista.length > 1) return conferirMulti(pr, estilos, lista).concat(semNovo, parte ? [] : conferirBat(pr));
     const c = calcular(pr), out = semNovo.slice();
     const add = function (nivel, texto) { out.push({ nivel: nivel, texto: texto }); };
     const f2 = function (v) { return U.fmtSmart ? U.fmtSmart(v, 2) : String(U.round(v, 2)); };
@@ -1990,7 +2337,7 @@ window.App = window.App || {};
     const refCc = quedaRef(pr.cc.bit, false), refCa = quedaRef(pr.ca.bit, triInv(pr));
     if (refCc && num(pr.cc.un) > 0 && num(pr.cc.un) < refCc / 2) add('info', 'Queda unitária CC de ' + pr.cc.un + ' V/A·km: a referência para ' + pr.cc.bit + ' mm² (cobre a 70 °C, 2ρ/S) é ≈ ' + U.round(refCc, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
     if (refCa && num(pr.ca.un) > 0 && num(pr.ca.un) < refCa / 2) add('info', 'Queda unitária CA de ' + pr.ca.un + ' V/A·km: a referência para ' + pr.ca.bit + ' mm² é ≈ ' + U.round(refCa, 2).toString().replace('.', ',') + ' V/A·km. Confira a tabela usada.');
-    return out;
+    return parte ? out : out.concat(conferirBat(pr));
   }
 
   /** Folhas do estilo A, escolhidas pelo projetista (a tela pergunta ao gerar): '1' = uma folha só (projetos menores, com o
@@ -2161,6 +2508,7 @@ window.App = window.App || {};
     correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum, terraCA: terraCA, acrescimo: acrescimo, ampliacao: ampliacao, destaqueAmpl: destaqueAmpl, TIPOS_AMPL: TIPOS_AMPL, MULTILINHA: MULTILINHA, modulosDaObra: modulosDaObra, gruposInversores: gruposInversores, modulosTxt: modulosTxt, dadosModulo: dadosModulo, ESTILOS_DESTAQUE: ESTILOS_DESTAQUE,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
+    SISTEMAS: SISTEMAS, sistemaDe: sistemaDe, comBaterias: comBaterias, dadosBateria: dadosBateria, calcBat: calcBat, conferirBat: conferirBat, DISJ_CC: DISJ_CC,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }
   };
 })(window.App);
