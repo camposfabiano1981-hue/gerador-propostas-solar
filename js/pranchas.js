@@ -2508,6 +2508,7 @@ window.App = window.App || {};
     correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum, terraCA: terraCA, acrescimo: acrescimo, ampliacao: ampliacao, destaqueAmpl: destaqueAmpl, TIPOS_AMPL: TIPOS_AMPL, MULTILINHA: MULTILINHA, modulosDaObra: modulosDaObra, gruposInversores: gruposInversores, modulosTxt: modulosTxt, dadosModulo: dadosModulo, ESTILOS_DESTAQUE: ESTILOS_DESTAQUE,
     estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
+    LIMITE_ENVIO_MB: 4.4, FOLGA_ASSINATURA_MB: 1,
     SISTEMAS: SISTEMAS, sistemaDe: sistemaDe, comBaterias: comBaterias, dadosBateria: dadosBateria, calcBat: calcBat, conferirBat: conferirBat, DISJ_CC: DISJ_CC,
     fmt: { pt: pt, fx: fx, dig: dig, pad2: pad2, documento: documento, dataBR: dataBR }
   };

@@ -133,9 +133,8 @@ window.App = window.App || {};
    * Executa o desenho das strings do estilo A: blocos do desenho original (com recorte opcional), linhas, textos (em traços ou
    * Arial), trechos copiados do modelo (regiões já embutidas em regioes, na ordem), retângulos brancos e pontos de ligação.
    */
-  function desenharStringsA(pg, cmds, FT, P, fonte, regioes) {
+  function desenharStringsA(pg, cmds, FT, P, fonte) {
     const Op = P.PDFOperator, n = P.PDFNumber;
-    let r = 0;
     cmds.forEach(function (c) {
       if (c.t === 'forma') {
         const ops = [Op.of('q')];
@@ -146,9 +145,12 @@ window.App = window.App || {};
       else if (c.t === 'texto' && c.quebra) desenharParagrafo(pg, c, FT, P, fonte);
       else if (c.t === 'texto') { if (c.oc.t === 'tt') { if (fonte) desenharArial(pg, c.oc, c.txt, fonte, P); } else desenharTracos(pg, c.oc, c.txt, FT, P); }
       else if (c.t === 'regiao') {
-        // trecho do modelo na nova posição; w/h: o trecho ampliado (ex.: o inversor maior das 3 fases)
-        const e = regioes && regioes[r++];
-        if (e) pg.drawPage(e, { x: c.bb[0] + c.dx, y: c.bb[1] + c.dy, width: c.w || (c.bb[2] - c.bb[0]), height: c.h || (c.bb[3] - c.bb[1]) });
+        // trecho do modelo na nova posição (w/h: ampliado, ex.: o inversor maior das 3 fases): o mesmo bloco do modelo inteiro
+        // (/CRMPagina), recortado e levado ao lugar — o desenho do modelo entra uma vez só no PDF, por maior que seja a obra
+        const b = c.bb, bw = b[2] - b[0], bh = b[3] - b[1], w = c.w || bw, hh = c.h || bh, kx = w / bw, ky = hh / bh, x = b[0] + c.dx, y = b[1] + c.dy;
+        const r4 = function (v) { return n.of(Math.round(v * 10000) / 10000); };
+        pg.pushOperators(Op.of('q'), Op.of('re', [r4(x), r4(y), r4(w), r4(hh)]), Op.of('W'), Op.of('n'),
+          Op.of('cm', [r4(kx), n.of(0), n.of(0), r4(ky), r4(x - kx * b[0]), r4(y - ky * b[1])]), Op.of('Do', [P.PDFName.of(MODELO_XO)]), Op.of('Q'));
       }
       else if (c.t === 'branco') pg.drawRectangle({ x: c.r[0], y: c.r[1], width: c.r[2] - c.r[0], height: c.r[3] - c.r[1], color: P.rgb(1, 1, 1) });
       else if (c.t === 'ponto') pg.drawCircle({ x: c.x, y: c.y, size: c.r, color: P.rgb(0, 0, 0) });
@@ -157,12 +159,64 @@ window.App = window.App || {};
     });
   }
 
+  // nome do bloco com o desenho inteiro do modelo (na página e nos trechos copiados)
+  const MODELO_XO = 'CRMPagina';
+  /**
+   * Folhas de um estilo sobre o modelo, sem repetir o desenho: as n folhas vêm de uma cópia só da página do modelo, e o conteúdo
+   * dela vira um bloco (Form XObject) chamado por cada folha e por cada trecho copiado. Antes, cada folha e cada trecho levava o
+   * desenho inteiro (≈ 0,5 MB cada), e a prancha de 2 folhas passava de 9 MB.
+   */
+  async function folhasDoModelo(doc, bytes, nFolhas, P) {
+    const src = await P.PDFDocument.load(bytes);
+    const pags = await doc.copyPages(src, Array.from({ length: nFolhas }, function () { return 0; }));
+    const ctx = doc.context, N = P.PDFName, node = pags[0].node;
+    const cont = node.Contents();
+    const refs = cont instanceof P.PDFArray ? cont.asArray() : [node.get(N.of('Contents'))];
+    const partes = refs.map(function (r) { const s = ctx.lookup(r); return s instanceof P.PDFRawStream ? P.decodePDFRawStream(s).decode() : s.getContents(); });
+    const tot = partes.reduce(function (a, p) { return a + p.length + 1; }, 0), bytesC = new Uint8Array(tot);
+    let k = 0;
+    partes.forEach(function (p) { bytesC.set(p, k); k += p.length; bytesC[k++] = 10; });
+    const mb = pags[0].getMediaBox();
+    const res = node.Resources();
+    const form = ctx.register(ctx.flateStream(bytesC, { Type: 'XObject', Subtype: 'Form', BBox: [mb.x, mb.y, mb.x + mb.width, mb.y + mb.height], Resources: res }));
+    // recursos das folhas: os do modelo (os blocos /CRMMod… continuam com o mesmo nome) + o bloco do desenho
+    const resF = res.clone(ctx), xo = res.lookup(N.of('XObject'));
+    const xoF = xo instanceof P.PDFDict ? xo.clone(ctx) : ctx.obj({});
+    xoF.set(N.of(MODELO_XO), form);
+    resF.set(N.of('XObject'), xoF);
+    pags.forEach(function (pg) {
+      const chama = ctx.register(ctx.flateStream('q /' + MODELO_XO + ' Do Q\n'));
+      pg.node.set(N.of('Contents'), ctx.obj([chama]));
+      pg.node.set(N.of('Resources'), resF.clone(ctx));
+    });
+    refs.forEach(function (r) { if (r instanceof P.PDFRef) ctx.delete(r); });
+    return pags;
+  }
+
+  /** Imagem da assinatura com no máximo maxW px de largura (PNG com transparência): a foto original pode ter vários MB. */
+  function reduzirImagem(dataURL, maxW) {
+    return new Promise(function (res) {
+      if (typeof document === 'undefined' || !/^data:image\//.test(String(dataURL))) return res(dataURL);
+      const im = new Image();
+      im.onload = function () {
+        if (!(im.naturalWidth > maxW)) return res(dataURL);
+        const cv = document.createElement('canvas'), k = maxW / im.naturalWidth;
+        cv.width = maxW; cv.height = Math.max(1, Math.round(im.naturalHeight * k));
+        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+        try { res(cv.toDataURL('image/png')); } catch (e) { res(dataURL); }
+      };
+      im.onerror = function () { res(dataURL); };
+      im.src = dataURL;
+    });
+  }
+
   async function assinaturaRt(doc) {
     if (!App.Assinatura || !App.Assinatura.guardada) return null;
     const g = App.Assinatura.guardada();
     const f = g && App.Fotos ? await App.Fotos.obter(g.fotoId) : null;
     if (!f || !f.dataURL) return null;
-    try { return /^data:image\/png/.test(f.dataURL) ? await doc.embedPng(bytesDeDataUrl(f.dataURL)) : await doc.embedJpg(bytesDeDataUrl(f.dataURL)); } catch (e) { return null; }
+    const d = await reduzirImagem(f.dataURL, 900);
+    try { return /^data:image\/png/.test(d) ? await doc.embedPng(bytesDeDataUrl(d)) : await doc.embedJpg(bytesDeDataUrl(d)); } catch (e) { return null; }
   }
 
   /**
@@ -188,10 +242,13 @@ window.App = window.App || {};
       const n = e === 'A' && Pr.folhasA ? Pr.folhasA(pr) : 1;
       for (let f = 1; f <= n; f++) folhas.push({ e: e, i: i, folha: n > 1 ? f : undefined });
     });
+    // as folhas de cada estilo, copiadas de uma vez do modelo (o desenho dele entra uma vez só)
+    const pagsEstilo = [];
+    for (let i = 0; i < estilos.length; i++) pagsEstilo.push(await folhasDoModelo(doc, modelos[i], folhas.filter(function (f) { return f.i === i; }).length, P));
+    const usadas = estilos.map(function () { return 0; });
     for (const fo of folhas) {
       const e = fo.e, i = fo.i;
-      const src = await P.PDFDocument.load(modelos[i]);
-      const pg = (await doc.copyPages(src, [0]))[0];
+      const pg = pagsEstilo[i][usadas[i]++];
       doc.addPage(pg);
       const vals = Pr.valores(pr, e, o.ctx);
       const campos = mapa[e] || {};
@@ -204,10 +261,8 @@ window.App = window.App || {};
         desloc = d.desloc || null;
         (d.pular || []).forEach(function (k) { pular[k] = true; });
         pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo; pularRegiao = d.pularRegiao || null; pularRegioes = d.pularRegioes || []; manterRegiao = d.manterRegiao || null; mover = (d.moverRegiao ? [d.moverRegiao] : []).concat(d.moverMF || []);
-        // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): embutidos antes, na ordem dos comandos
-        const regioes = [];
-        for (const c of d) if (c.t === 'regiao') regioes.push(await doc.embedPage(src.getPage(0), { left: c.bb[0], bottom: c.bb[1], right: c.bb[2], top: c.bb[3] }));
-        desenharStringsA(pg, d, FT, P, fonte, regioes);
+        // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): o bloco do modelo recortado
+        desenharStringsA(pg, d, FT, P, fonte);
       }
       Object.keys(campos).forEach(function (cid) {
         if (pular[cid]) return;

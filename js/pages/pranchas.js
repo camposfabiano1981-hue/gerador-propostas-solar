@@ -146,7 +146,10 @@ window.App = window.App || {};
         pr.geradoEm = new Date().toISOString();
         if (o.registrar) o.registrar('📐 Prancha do projeto elétrico gerada (' + g.estilos.map(function (e) { return P.ESTILOS[e].nome; }).join(' e ') + ')' + (g.assinado ? ', com a assinatura do responsável técnico' : '') + '.');
         o.mudou();
-        UI.toast('Prancha gerada: ' + g.nome, 'ok');
+        // portal da Energisa: até 4,4 MB por arquivo — com folga para a assinatura digital (gov.br/ICP), que aumenta o PDF
+        const mb = g.blob.size / 1048576, lim = P.LIMITE_ENVIO_MB;
+        if (mb > lim - P.FOLGA_ASSINATURA_MB) UI.toast('Prancha gerada com ' + U.fmtSmart(mb, 2) + ' MB: perto do limite de ' + U.fmtSmart(lim, 1) + ' MB do portal da Energisa, sem contar a assinatura digital.', 'aviso', 8000);
+        else UI.toast('Prancha gerada: ' + g.nome + ' (' + U.fmtSmart(mb, 2) + ' MB)', 'ok');
       } catch (e) {
         console.error(e);
         UI.toast(e.message, 'erro');
