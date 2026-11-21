@@ -816,13 +816,46 @@
     });
   });
 
+  /** Aplica a referência de nov/2026 (CET e carência) às modalidades BV e Solfácil cadastradas, com confirmação. */
+  async function atualizarReferencia(ctrl) {
+    const ref = D.REF_FINANCIAMENTO;
+    const alvos = S.list('pagamentos').filter(function (p) { return p.tipo === 'pmt'; }).map(function (p) {
+      const it = ref.itens.find(function (x) { return new RegExp(x.re, 'i').test(p.nome || ''); });
+      return it ? { p: p, it: it } : null;
+    }).filter(Boolean);
+    if (!alvos.length) { UI.toast('Nenhuma modalidade de financiamento BV ou Solfácil cadastrada.', 'aviso'); return; }
+    const linhas = alvos.map(function (a) {
+      return a.p.nome + ' ' + a.p.parcelas + 'x: ' + C.taxaTxt(U.numOr(a.p.taxa, 0)) + ' → CET ' + C.taxaTxt(a.it.taxa) + ' a.m., 1ª parcela em ' + ref.carenciaDias + ' dias';
+    });
+    const ok = await new Promise(function (res) {
+      UI.modal({
+        titulo: 'Taxas de referência dos financiamentos (' + ref.data + ')',
+        corpo: h('div',
+          h('p', 'Atualizar ' + alvos.length + ' modalidade(s) para o CET de referência, com a 1ª parcela em ' + ref.carenciaDias + ' dias:'),
+          h('ul.lista-ref-financ', linhas.map(function (l) { return h('li', l); })),
+          h('p.ajuda-sec', ref.itens.map(function (x) { return x.nome + ': ' + x.nota; }).join(' · ') + '.'),
+          h('p.ajuda-sec', 'As propostas em aberto passam a usar os novos valores. O CET varia com o perfil de crédito do cliente: confirme no simulador do banco.')),
+        acoes: [{ label: 'Cancelar', onClick: function () { res(false); } }, { label: 'Atualizar', primario: true, onClick: function () { res(true); } }],
+        aoFechar: function () { res(false); }
+      });
+    });
+    if (!ok) return;
+    alvos.forEach(function (a) { S.save('pagamentos', Object.assign({}, a.p, { taxa: a.it.taxa, carenciaDias: ref.carenciaDias })); });
+    if (ctrl && ctrl.atualizar) ctrl.atualizar();
+    UI.toast(alvos.length + ' modalidade(s) atualizada(s): CET e carência de ' + ref.carenciaDias + ' dias.', 'ok');
+  }
+
   UI.rota('/pagamentos', function (cont) {
     UI.crud(cont, {
       colecao: 'pagamentos',
       titulo: 'Condições de pagamento',
-      subtitulo: 'Modalidades exibidas na proposta. Cartão usa acréscimo fixo sobre o valor; financiamento usa juros compostos (PMT).',
+      subtitulo: 'Modalidades exibidas na proposta. Cartão usa acréscimo fixo sobre o valor; financiamento usa o CET (custo efetivo total: juros, IOF, tarifas e seguro) ' +
+        'em juros compostos, com a carência até a 1ª parcela.',
       rotuloNovo: '+ Nova modalidade',
-      novo: function () { return { nome: '', tipo: 'pmt', parcelas: 48, taxa: 0.0149, obs: '', ativo: true }; },
+      novo: function () { return { nome: '', tipo: 'pmt', parcelas: 48, taxa: 0.0159, carenciaDias: D.REF_FINANCIAMENTO.carenciaDias, obs: '', ativo: true }; },
+      acoesTopo: function (ctrl) {
+        return [h('button.btn.btn-ref-financ', { type: 'button', onclick: function () { atualizarReferencia(ctrl); } }, '↻ Taxas de referência (' + D.REF_FINANCIAMENTO.data + ')')];
+      },
       ordenar: function (a, b) {
         const ord = { avista: 0, acrescimo: 1, pmt: 2 };
         return (ord[a.tipo] - ord[b.tipo]) || String(a.nome).localeCompare(String(b.nome)) || (a.parcelas - b.parcelas);
@@ -835,12 +868,13 @@
       ],
       validar: function (p) { return String(p.nome || '').trim() ? null : 'Informe o nome (ex.: BV, Solfácil, Cartão).'; },
       campos: function (p, redesenhar) {
-        const rot = { avista: 'Desconto à vista', acrescimo: 'Acréscimo sobre o valor', pmt: 'Taxa de juros (a.m.)' }[p.tipo];
+        const rot = { avista: 'Desconto à vista', acrescimo: 'Acréscimo sobre o valor', pmt: 'CET — custo efetivo total (a.m.)' }[p.tipo];
         return [
           { k: 'nome', label: 'Nome / instituição', required: true, placeholder: 'Ex.: BV, Solfácil, Cartão' },
           { k: 'tipo', label: 'Tipo', type: 'select', options: [{ v: 'avista', t: 'À vista' }, { v: 'acrescimo', t: 'Cartão — acréscimo fixo sobre o valor' }, { v: 'pmt', t: 'Financiamento — juros compostos (PMT)' }], onChange: function () { redesenhar(); } },
           p.tipo === 'avista' ? null : { k: 'parcelas', label: 'Nº de parcelas', type: 'int' },
-          { k: 'taxa', label: rot, type: 'pct' },
+          { k: 'taxa', label: rot, type: 'pct', help: p.tipo === 'pmt' ? 'Use o CET da simulação do banco (juros + IOF + tarifas + seguro), não só a taxa de juros. CET ao ano → ao mês: (1 + CET)^(1/12) − 1.' : '' },
+          p.tipo === 'pmt' ? { k: 'carenciaDias', label: '1ª parcela em', type: 'int', suffix: 'dias', help: 'Carência: 90 dias = 1ª parcela 3 meses depois (os juros do CET correm no período). 30 = sem carência.' } : null,
           { k: 'obs', label: 'Observação (aparece entre parênteses)', placeholder: 'Ex.: Visa / Amex' },
           { k: 'ativo', label: 'Ativa (pré-selecionada em novas propostas)', type: 'checkbox' }
         ];

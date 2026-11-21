@@ -59,7 +59,7 @@
     copia.data = U.todayISO();
     copia.status = 'rascunho';
     S.save('propostas', copia);
-    S.reservarNumero(n.dia, n.seq);
+    S.reservarNumero(n.dia, n.seq, n.chave);
     UI.toast('Proposta duplicada como ' + copia.numero + '.', 'ok');
     UI.ir('#/proposta/' + copia.id);
   }

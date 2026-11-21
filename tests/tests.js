@@ -142,7 +142,14 @@
   perto('BV 48x 2,7%', pg[3].parcela, 475.17);
   perto('BV 60x 2,7%', pg[4].parcela, 429.81);
   perto('BV 72x 2,7%', pg[5].parcela, 401.93);
-  igual('rótulo PMT', pg[3].label, 'BV 48x — 2,7% a.m.');
+  igual('rótulo PMT', pg[3].label, 'BV 48x — CET 2,7% a.m.');
+  // financiamento pelo CET com carência: a 1ª parcela em 90 dias (o saldo corre 2 meses a mais pelo CET)
+  const pgCar = C.pagamentos(12700, [{ id: 'x', nome: 'BV', tipo: 'pmt', parcelas: 48, taxa: 0.027, carenciaDias: 90 }])[0];
+  perto('BV 48x CET 2,7% com 1ª parcela em 90 dias = PMT(valor × 1,027², 2,7%, 48)', pgCar.parcela, C.pmt(12700 * Math.pow(1.027, 2), 0.027, 48), 1e-9);
+  ok('carência de 90 dias: parcela maior que sem carência e o rótulo com a 1ª parcela', pgCar.parcela > pg[3].parcela && pgCar.label === 'BV 48x — CET 2,7% a.m. · 1ª parcela em 90 dias' && pgCar.carenciaDias === 90, pgCar.label);
+  perto('carência de 30 dias = sem carência', C.pagamentos(12700, [{ id: 'y', nome: 'BV', tipo: 'pmt', parcelas: 48, taxa: 0.027, carenciaDias: 30 }])[0].parcela, pg[3].parcela, 1e-9);
+  perto('referência BV: CET 20,86% a.a. ≈ 1,59% a.m.', Math.pow(1.2086, 1 / 12) - 1, D.REF_FINANCIAMENTO.itens[0].taxa, 0.0001);
+  ok('pagamentos padrão: BV e Solfácil pelo CET com 1ª parcela em 90 dias', D.pagamentos.filter(function (x) { return x.tipo === 'pmt'; }).every(function (x) { return x.carenciaDias === 90 && x.taxa >= 0.015 && x.taxa <= 0.016; }));
 
   // ---------------------------------------------------------------- cartão com acréscimo (padrão)
   const pgPad = C.pagamentos(10000, D.pagamentos);
@@ -1196,7 +1203,7 @@
 
     // numeração e coleção
     ok('compras: coleção sincronizada e no backup', S.COLECOES.indexOf('compras') >= 0 && Array.isArray(S.exportar().colecoes.compras));
-    ok('compras: número PC-AAAAMMDD-NNN com sequência própria', /^PC-20261030-\d{3}$/.test(S.proximoNumero('2026-10-30', 'compra').numero) && S.proximoNumero('2026-10-30', 'compra').chave === 'PC:20261030');
+    ok('compras: número PC-AAAA-NNNN com sequência própria', /^PC-2026-\d{4}$/.test(S.proximoNumero('2026-10-30', 'compra').numero) && S.proximoNumero('2026-10-30', 'compra').chave === 'PC:ANO:2026');
   })();
 
   // ---------------------------------------------------------------- coordenadas: UTM, leitura do texto e ruas do croqui
@@ -1539,7 +1546,7 @@
     const os = Ord.nova(ctxI, inst2);
     ok('OS: ligada à instalação traz cliente, telefone e endereço', os.instalacaoId === 'inst-teste' && os.clienteNome === inst2.clienteNome && os.telefone === '(67) 99999-0000' &&
       os.endereco === inst2.endereco && os.status === 'aberta' && os.responsavel === ctxI.empresa.responsavel);
-    ok('OS: numeração própria OS-AAAAMMDD-NNN, separada da das propostas', /^OS-20261029-\d{3}$/.test(App.Store.proximoNumero('2026-10-29', 'os').numero) && !/^OS-/.test(App.Store.proximoNumero('2026-10-29').numero));
+    ok('OS: numeração própria OS-AAAA-NNNN, separada da das propostas', /^OS-2026-\d{4}$/.test(App.Store.proximoNumero('2026-10-29', 'os').numero) && !/^OS-/.test(App.Store.proximoNumero('2026-10-29').numero));
     os.agendadaPara = '2026-11-10';
     ok('OS: agendada vencida aparece como atrasada', Ord.atrasada(os, '2026-11-11') && !Ord.atrasada(os, '2026-11-10'));
     Ord.mudarStatus(os, 'concluida', '2026-11-12');
@@ -1625,7 +1632,12 @@
 
   // ---------------------------------------------------------------- numeração automática (somente leitura do armazenamento)
   const num = App.Store.proximoNumero('2026-09-29');
-  ok('número automático no formato PREFIXO-AAAAMMDD-NNN', /^[A-Z0-9]+-20260929-\d{3}$/.test(num.numero), num.numero);
+  ok('número automático sequencial por ano: PREFIXO-AAAA-NNNN', /^[A-Z0-9]+-2026-\d{4}$/.test(num.numero) && num.chave === 'ANO:2026', num.numero);
+  const S0 = App.Store;
+  igual('numeração: os quatro formatos', ['ano', 'anoBarra', 'continuo', 'dia'].map(function (f) { return S0.formatarNumero('GE', f, '20261121', 7); }).join(' | '),
+    'GE-2026-0007 | GE-0007/2026 | GE-00007 | GE-20261121-007');
+  ok('numeração: o formato antigo (por dia) continua disponível', /^OS-20261029-\d{3}$/.test(S0.proximoNumero('2026-10-29', 'os', { formato: 'dia' }).numero));
+  ok('numeração: contínua com chave própria por tipo', S0.proximoNumero('2026-10-29', 'contrato', { formato: 'continuo' }).chave === 'CT:SEQ' && /^[A-Z0-9]+-\d{5}$/.test(S0.proximoNumero('2026-10-29', 'contrato', { formato: 'continuo' }).numero));
 
   // ---------------------------------------------------------------- proposta amigável: seções novas
   (function () {

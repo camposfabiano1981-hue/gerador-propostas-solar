@@ -78,7 +78,7 @@
       { k: 'telefone', label: 'Telefone' },
       { k: 'email', label: 'E-mail', type: 'email' },
       { secao: 'Proposta' },
-      { k: 'prefixo', label: 'Prefixo do nº da proposta', help: 'Formato: PREFIXO-AAAAMMDD-NNN' },
+      { k: 'prefixo', label: 'Prefixo do nº da proposta', help: 'Ex.: GE → GE-2026-0001 (formato em Numeração dos documentos, abaixo).' },
       { k: 'validadeDias', label: 'Validade padrão', type: 'int', suffix: 'dias' },
       { k: 'projetosNaProposta', label: 'Projetos realizados por proposta', type: 'int', help: 'Seção após a apresentação (Cadastros › Projetos realizados). 0 = não incluir.' },
       { k: 'papel', label: 'Tamanho do papel', type: 'select', options: [{ v: 'letter', t: 'Carta (igual ao modelo)' }, { v: 'a4', t: 'A4' }] },
@@ -92,7 +92,7 @@
       { k: 'cep', label: 'CEP' },
       { k: 'horarioAtendimento', label: 'Horário de atendimento' },
       { k: 'sloganContrato', label: 'Frase do cabeçalho do contrato', cls: 'span2' },
-      { k: 'prefixoContrato', label: 'Prefixo do nº do contrato', help: 'Formato: PREFIXO-AAAAMMDD-NNN' },
+      { k: 'prefixoContrato', label: 'Prefixo do nº do contrato', help: 'Ex.: CT → CT-2026-0001.' },
       { secao: 'Dados bancários (aparecem no contrato)' },
       { k: 'banco.banco', label: 'Banco' },
       { k: 'banco.agencia', label: 'Agência' },
@@ -101,6 +101,28 @@
       { k: 'banco.documento', label: 'CPF/CNPJ do titular' },
       { k: 'banco.pix', label: 'Chave PIX' }
     ], emp, marcar)));
+    // numeração dos documentos: o formato vai com o "Salvar alterações"; o próximo número de cada tipo, também
+    const prox = { proposta: '', contrato: '', os: '', compra: '' };
+    const previa = h('p.ajuda-sec.numeracao-previa');
+    const pintarPrevia = function () {
+      const fmt = emp.numeracao || 'ano';
+      previa.textContent = 'Próximos números: ' + Object.keys(S.TIPOS_NUMERO).map(function (t) {
+        const n = S.proximoNumero(U.todayISO(), t, { formato: fmt, empresa: emp });
+        const seq = U.num(prox[t]) > 0 ? Math.max(Math.round(U.num(prox[t])), 1) : n.seq;
+        return S.TIPOS_NUMERO[t].rotulo.toLowerCase() + ' ' + S.formatarNumero(S.prefixoNumero(t, emp), fmt, n.dia, seq);
+      }).join(' · ') + '.';
+    };
+    const cardNum = h('div.card.numeracao-card', h('h3', 'Numeração dos documentos'),
+      h('p.ajuda-sec', 'Propostas (solares e avulsas), contratos, ordens de serviço e pedidos de compra numerados em sequência. Os documentos já emitidos mantêm o número; ' +
+        'ao trocar de formato, a sequência continua da quantidade de documentos do ano (ou do número que você informar abaixo).'),
+      UI.grade([{ k: 'numeracao', label: 'Formato', type: 'select', cls: 'span2', options: S.FORMATOS_NUMERO }], emp, function () { marcar(); pintarPrevia(); }, 2),
+      UI.grade(Object.keys(S.TIPOS_NUMERO).map(function (t) {
+        return { k: t, label: 'Próximo nº — ' + S.TIPOS_NUMERO[t].rotulo.toLowerCase(), type: 'int', placeholder: 'Auto: ' + S.proximoNumero(U.todayISO(), t).seq,
+          help: t === 'proposta' ? 'Em branco = automático. Não volta abaixo de um número já emitido no formato.' : '' };
+      }), prox, function () { marcar(); pintarPrevia(); }, 4),
+      previa);
+    pintarPrevia();
+    cont.appendChild(cardNum);
     // assinatura guardada do responsável técnico: gravada na hora (independe do "Salvar alterações")
     const assResp = Object.assign(App.Assinatura.vazia(), emp.assinaturaResponsavel || {});
     cont.appendChild(h('div.card.assinatura-guardada-card', h('h3', 'Assinatura do responsável técnico'),
@@ -115,6 +137,8 @@
     cont.appendChild(rodapeSalvar(function () {
       if (!String(emp.razao || '').trim()) { UI.toast('Informe a razão social.', 'erro'); return; }
       try { S.salvarConfig('empresa', emp); } catch (e) { UI.toast(e.message, 'erro'); return; }
+      Object.keys(prox).forEach(function (t) { if (U.num(prox[t]) > 0) { S.definirProximo(t, prox[t], { empresa: emp }); prox[t] = ''; } });
+      pintarPrevia();
       sujo = false;
       App.atualizarMarca();
       UI.toast('Dados da empresa salvos.', 'ok');

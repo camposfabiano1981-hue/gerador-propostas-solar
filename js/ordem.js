@@ -1,6 +1,6 @@
 /*
  * Ordens de serviço (OS) das instalações: manutenção, limpeza, visita técnica, garantia e outras demandas depois (ou fora) da obra.
- * Numeração própria OS-AAAAMMDD-NNN; quando ligada a uma instalação, a abertura e a conclusão entram no histórico da obra.
+ * Numeração própria OS-AAAA-NNNN (formato em Configurações › Empresa); quando ligada a uma instalação, a abertura e a conclusão entram no histórico da obra.
  */
 window.App = window.App || {};
 

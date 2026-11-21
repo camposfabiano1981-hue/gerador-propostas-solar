@@ -1431,7 +1431,7 @@
         cenario: r.comparar && r.cen ? r.cen.nome : '', grupo: r.grupo + ' ' + r.modalidade.curto
       };
       try { S.save('propostas', p); } catch (e) { UI.toast(e.message, 'erro'); return false; }
-      if (seq) S.reservarNumero(seq.dia, seq.seq);
+      if (seq) S.reservarNumero(seq.dia, seq.seq, seq.chave);
       sujo = false;
       if (novo) UI.substituirHash('#/proposta/' + p.id);
       desenhar('ident');

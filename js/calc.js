@@ -132,9 +132,14 @@ window.App = window.App || {};
         parcela = totalPago / n;
         label = (pg.nome || 'Cartão') + ' ' + n + 'x — ' + (taxa > 0 ? 'acréscimo de ' + C.taxaTxt(taxa) : 'sem acréscimo') + obs;
       } else {
-        parcela = C.pmt(total, taxa, n);
+        // financiamento pelo CET (juros + IOF + tarifas + seguro) com carência: a 1ª parcela vence em carenciaDias (sem carência,
+        // em 30 dias); o saldo corre pelo CET até lá — parcela = PMT(valor × (1 + CET)^((carência − 30) / 30), CET, n)
+        const car = Math.max(0, U.numOr(pg.carenciaDias, 0));
+        const mesesCar = car > 30 ? (car - 30) / 30 : 0;
+        parcela = C.pmt(total * Math.pow(1 + taxa, mesesCar), taxa, n);
         totalPago = parcela * n;
-        label = (pg.nome || 'Financiamento') + ' ' + n + 'x — ' + C.taxaTxt(taxa) + ' a.m.' + obs;
+        label = (pg.nome || 'Financiamento') + ' ' + n + 'x — CET ' + C.taxaTxt(taxa) + ' a.m.' + (car > 30 ? ' · 1ª parcela em ' + Math.round(car) + ' dias' : '') + obs;
+        return { id: pg.id, label: label, prazo: n + 'x', parcela: parcela, total: totalPago, cet: taxa, carenciaDias: car };
       }
       return { id: pg.id, label: label, prazo: n + 'x', parcela: parcela, total: totalPago };
     });

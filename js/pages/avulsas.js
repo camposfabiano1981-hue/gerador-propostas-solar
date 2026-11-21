@@ -392,7 +392,7 @@
       a.clienteNome = cli ? cli.nome : '';
       a.total = A.calcular(a, ctx).total;
       try { S.save('avulsas', a); } catch (e) { UI.toast(e.message, 'erro'); return false; }
-      if (seq) S.reservarNumero(seq.dia, seq.seq);
+      if (seq) S.reservarNumero(seq.dia, seq.seq, seq.chave);
       sujo = false;
       if (novo) { UI.substituirHash('#/avulsa/' + a.id); titulo.textContent = 'Proposta ' + a.numero; }
       desenhar('ident');

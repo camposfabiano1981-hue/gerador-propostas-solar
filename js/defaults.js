@@ -88,6 +88,8 @@ window.App = window.App || {};
     responsavel: 'Fabiano Guimarães Campos',
     cargo: 'Engenheiro Responsável',
     prefixo: 'GE',
+    // numeração dos documentos (propostas, contratos, OS e pedidos): sequencial por ano, PREFIXO-AAAA-NNNN
+    numeracao: 'ano',
     validadeDias: 5,
     papel: 'letter',
     logo: null,
@@ -619,13 +621,28 @@ window.App = window.App || {};
     { id: 'pg-c12', nome: 'Cartão', tipo: 'acrescimo', parcelas: 12, taxa: 0.1149, obs: 'Outras bandeiras', ativo: true },
     { id: 'pg-c18', nome: 'Cartão', tipo: 'acrescimo', parcelas: 18, taxa: 0.1620, obs: 'Mastercard / Elo', ativo: true },
     { id: 'pg-c24', nome: 'Cartão', tipo: 'acrescimo', parcelas: 24, taxa: 0.2105, obs: 'Visa / Amex', ativo: true },
-    { id: 'pg-bv48', nome: 'BV', tipo: 'pmt', parcelas: 48, taxa: 0.0149, obs: '', ativo: true },
-    { id: 'pg-bv60', nome: 'BV', tipo: 'pmt', parcelas: 60, taxa: 0.0159, obs: '', ativo: true },
-    { id: 'pg-bv72', nome: 'BV', tipo: 'pmt', parcelas: 72, taxa: 0.0169, obs: '', ativo: true },
-    { id: 'pg-sf48', nome: 'Solfácil', tipo: 'pmt', parcelas: 48, taxa: 0.0149, obs: '', ativo: true },
-    { id: 'pg-sf60', nome: 'Solfácil', tipo: 'pmt', parcelas: 60, taxa: 0.0155, obs: '', ativo: true },
-    { id: 'pg-sf72', nome: 'Solfácil', tipo: 'pmt', parcelas: 72, taxa: 0.0165, obs: '', ativo: true }
+    { id: 'pg-bv48', nome: 'BV', tipo: 'pmt', parcelas: 48, taxa: 0.0159, carenciaDias: 90, obs: '', ativo: true },
+    { id: 'pg-bv60', nome: 'BV', tipo: 'pmt', parcelas: 60, taxa: 0.0159, carenciaDias: 90, obs: '', ativo: true },
+    { id: 'pg-bv72', nome: 'BV', tipo: 'pmt', parcelas: 72, taxa: 0.0159, carenciaDias: 90, obs: '', ativo: true },
+    { id: 'pg-sf48', nome: 'Solfácil', tipo: 'pmt', parcelas: 48, taxa: 0.015, carenciaDias: 90, obs: '', ativo: true },
+    { id: 'pg-sf60', nome: 'Solfácil', tipo: 'pmt', parcelas: 60, taxa: 0.015, carenciaDias: 90, obs: '', ativo: true },
+    { id: 'pg-sf72', nome: 'Solfácil', tipo: 'pmt', parcelas: 72, taxa: 0.015, carenciaDias: 90, obs: '', ativo: true }
   ];
+
+  /**
+   * Referência dos financiamentos solares (pesquisa de nov/2026), aplicada pelo botão de Cadastros › Pagamentos:
+   *  - BV (página oficial): juros 1,38% a.m. (17,81% a.a.), CET 20,86% a.a. ≈ 1,59% a.m.; 12 a 96 meses; 1ª parcela em até 120 dias;
+   *  - Solfácil: CET de 1,17% a 1,50% a.m. conforme o perfil de crédito; 24 a 120 meses; carência de até 3 meses —
+   *    adotado o CET mais alto da faixa (proposta conservadora).
+   * Carência de 90 dias nos dois. O CET (juros + IOF + tarifas + seguro) é o que define a parcela; confirme no simulador do banco.
+   */
+  D.REF_FINANCIAMENTO = {
+    data: 'nov/2026', carenciaDias: 90,
+    itens: [
+      { re: '\\bbv\\b|banco bv|votorantim', nome: 'BV', taxa: 0.0159, nota: 'CET 20,86% a.a. (juros 1,38% a.m.), página oficial do BV' },
+      { re: 'solf[aá]cil', nome: 'Solfácil', taxa: 0.015, nota: 'CET de 1,17% a 1,50% a.m. conforme o perfil (adotado 1,50%)' }
+    ]
+  };
 
   /*
    * Construtores do catálogo (estruturas e materiais). Módulos, inversores, microinversores, híbridos e baterias não têm

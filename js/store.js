@@ -381,26 +381,73 @@ window.App = window.App || {};
     return adiantado;
   };
 
+  // numeração dos documentos: propostas (solares e avulsas compartilham a sequência), contratos, ordens de serviço e pedidos de compra
+  const TIPOS_NUM = {
+    proposta: { pre: '', cols: ['propostas', 'avulsas'], rotulo: 'Propostas' },
+    contrato: { pre: 'CT:', cols: ['contratos'], rotulo: 'Contratos' },
+    os: { pre: 'OS:', cols: ['ordens'], rotulo: 'Ordens de serviço' },
+    compra: { pre: 'PC:', cols: ['compras'], rotulo: 'Pedidos de compra' }
+  };
+  Store.TIPOS_NUMERO = TIPOS_NUM;
+  Store.FORMATOS_NUMERO = [
+    { v: 'ano', t: 'Sequencial por ano — GE-2026-0001' },
+    { v: 'anoBarra', t: 'Sequencial por ano — GE-0001/2026' },
+    { v: 'continuo', t: 'Sequencial contínuo — GE-00001' },
+    { v: 'dia', t: 'Por dia (antigo) — GE-20261121-001' }
+  ];
+  function prefixoNum(emp, tipo) {
+    if (tipo === 'contrato') return String(emp.prefixoContrato || 'CT').trim() || 'CT';
+    if (tipo === 'os') return 'OS';
+    if (tipo === 'compra') return 'PC';
+    return String(emp.prefixo || 'PR').trim() || 'PR';
+  }
+  function escRe(t) { return String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  /** Número no formato: 'ano' GE-2026-0001, 'anoBarra' GE-0001/2026, 'continuo' GE-00001, 'dia' GE-20261121-001. */
+  Store.formatarNumero = function (prefixo, fmt, dia, seq) {
+    const ano = String(dia).slice(0, 4);
+    if (fmt === 'dia') return prefixo + '-' + dia + '-' + String(seq).padStart(3, '0');
+    if (fmt === 'anoBarra') return prefixo + '-' + String(seq).padStart(4, '0') + '/' + ano;
+    if (fmt === 'continuo') return prefixo + '-' + String(seq).padStart(5, '0');
+    return prefixo + '-' + ano + '-' + String(seq).padStart(4, '0');
+  };
+  Store.prefixoNumero = function (tipo, emp) { return prefixoNum(emp || Store.config().empresa, TIPOS_NUM[tipo] ? tipo : 'proposta'); };
+
   /**
-   * Próximo número no formato PREFIXO-AAAAMMDD-NNN.
-   * tipo 'proposta' (propostas solares e avulsas compartilham a sequência), 'contrato', 'os' (ordem de serviço) ou 'compra' (pedido de compra).
+   * Próximo número do documento. Formatos (Configurações › Empresa): 'ano' PREFIXO-AAAA-NNNN (padrão: sequência que recomeça a cada
+   * ano), 'anoBarra' PREFIXO-NNNN/AAAA, 'continuo' PREFIXO-NNNNN (nunca recomeça) e 'dia' PREFIXO-AAAAMMDD-NNN (o antigo).
+   * tipo 'proposta' (propostas solares e avulsas), 'contrato', 'os' ou 'compra'. A sequência continua da maior entre: o número já
+   * reservado (em qualquer aparelho), o maior emitido no formato e — sem "próximo número" definido à mão — a quantidade de documentos
+   * do período (ao trocar de formato, a numeração segue a contagem do ano em vez de voltar a 1).
+   * o: {formato, empresa} para a prévia na tela de configurações.
    */
-  Store.proximoNumero = function (dataISO, tipo) {
-    const c = Store.config();
-    const contrato = tipo === 'contrato', os = tipo === 'os', compra = tipo === 'compra';
-    const dia = String(dataISO || U.todayISO()).replace(/-/g, '').slice(0, 8);
-    const chave = contrato ? 'CT:' + dia : (os ? 'OS:' + dia : (compra ? 'PC:' + dia : dia));
-    const cols = contrato ? ['contratos'] : (os ? ['ordens'] : (compra ? ['compras'] : ['propostas', 'avulsas']));
-    const usados = [];
-    cols.forEach(function (col) {
+  Store.proximoNumero = function (dataISO, tipo, o) {
+    o = o || {};
+    const c = Store.config(), emp = o.empresa || c.empresa, t = TIPOS_NUM[tipo] || TIPOS_NUM.proposta;
+    const tp = TIPOS_NUM[tipo] ? tipo : 'proposta';
+    const dia = String(dataISO || U.todayISO()).replace(/-/g, '').slice(0, 8), ano = dia.slice(0, 4);
+    const fmt = o.formato || emp.numeracao || 'ano', prefixo = prefixoNum(emp, tp);
+    if (fmt === 'dia') {
+      const chaveD = t.pre + dia, usadosD = [];
+      t.cols.forEach(function (col) {
+        Store.list(col).forEach(function (p) { const n = p.numero || ''; if (n.indexOf('-' + dia + '-') >= 0) usadosD.push(parseInt(n.split('-').pop(), 10) || 0); });
+      });
+      const sq = Math.max(c.seq[chaveD] || 0, usadosD.length ? Math.max.apply(null, usadosD) : 0) + 1;
+      return { numero: Store.formatarNumero(prefixo, 'dia', dia, sq), dia: dia, seq: sq, chave: chaveD };
+    }
+    const chave = t.pre + (fmt === 'continuo' ? 'SEQ' : 'ANO:' + ano);
+    const re = fmt === 'anoBarra' ? new RegExp('^' + escRe(prefixo) + '-(\\d+)/' + ano + '$')
+      : (fmt === 'continuo' ? new RegExp('^' + escRe(prefixo) + '-(\\d+)$') : new RegExp('^' + escRe(prefixo) + '-' + ano + '-(\\d+)$'));
+    let maior = 0, qtd = 0;
+    t.cols.forEach(function (col) {
       Store.list(col).forEach(function (p) {
-        const n = p.numero || '';
-        if (n.indexOf('-' + dia + '-') >= 0) usados.push(parseInt(n.split('-').pop(), 10) || 0);
+        const m = String(p.numero || '').match(re);
+        if (m) maior = Math.max(maior, parseInt(m[1], 10) || 0);
+        if (fmt === 'continuo' || String(p.data || '').slice(0, 4) === ano) qtd++;
       });
     });
-    const seq = Math.max(c.seq[chave] || 0, usados.length ? Math.max.apply(null, usados) : 0) + 1;
-    const prefixo = contrato ? (c.empresa.prefixoContrato || 'CT') : (os ? 'OS' : (compra ? 'PC' : (c.empresa.prefixo || 'PR')));
-    return { numero: prefixo + '-' + dia + '-' + String(seq).padStart(3, '0'), dia: dia, seq: seq, chave: chave };
+    const manual = !!(c.seqManual && c.seqManual[chave]);
+    const seq = Math.max(c.seq[chave] || 0, maior, manual ? 0 : qtd) + 1;
+    return { numero: Store.formatarNumero(prefixo, fmt, dia, seq), dia: dia, seq: seq, chave: chave };
   };
 
   Store.reservarNumero = function (dia, seq, chave) {
@@ -410,6 +457,26 @@ window.App = window.App || {};
     c.atualizadoEm = new Date().toISOString();
     gravar('config', c);
     avisar('aoSalvarConfig', c);
+  };
+
+  /**
+   * Define o próximo número de um tipo no formato e no período atuais (Configurações › Empresa): a sequência passa a seguir este
+   * número (não volta abaixo de um número já emitido no formato).
+   */
+  Store.definirProximo = function (tipo, proximo, o) {
+    o = o || {};
+    const n = Math.max(1, Math.round(U.num(proximo)));
+    if (!isFinite(n)) return null;
+    const c = configBruta(), emp = Object.assign({}, c.empresa || {}, o.empresa || {});
+    const fmt = o.formato || emp.numeracao || 'ano';
+    const ref = Store.proximoNumero(U.todayISO(), tipo, { formato: fmt, empresa: emp });
+    c.seq = c.seq || {}; c.seqManual = c.seqManual || {};
+    c.seq[ref.chave] = n - 1;
+    if (fmt !== 'dia') c.seqManual[ref.chave] = true;
+    c.atualizadoEm = new Date().toISOString();
+    gravar('config', c);
+    avisar('aoSalvarConfig', c);
+    return Store.proximoNumero(U.todayISO(), tipo, { formato: fmt, empresa: emp });
   };
 
   Store.exportar = function () {
