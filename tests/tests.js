@@ -2940,5 +2940,48 @@
     ok('energisa: sem coordenadas, nada', E.coordenadas({ utm: { fuso: '21K', x: '', y: '' } }) === null);
   })();
 
+  // ---------------------------------------------------------------- croqui pelas ruas do mapa
+  (function () {
+    const K = App.Croqui, P = App.Pranchas, lat0 = -19.0087, lon0 = -57.653;
+    // quadras em grade (metros, com o ponto da UC na origem): A ao sul (eixo a 20 m), B a leste (40 m), C atrás de A, D a oeste, E ao norte (22 m)
+    const dados = function (vias, dx, dy) {
+      const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
+      return { elements: vias.map(function (v) { return { type: 'way', tags: v.tags, geometry: v.p.map(function (q) { return { lat: lat0 + (q[1] - (dy || 0)) / ky, lon: lon0 + (q[0] - (dx || 0)) / kx }; }) }; }) };
+    };
+    const grade = [
+      { tags: { name: 'Rua A', highway: 'residential' }, p: [[-300, -20], [300, -20]] },
+      { tags: { name: 'Rua B', highway: 'residential' }, p: [[40, -300], [40, 300]] },
+      { tags: { name: 'Rua C', highway: 'residential' }, p: [[-300, -180], [300, -180]] },
+      { tags: { name: 'Rua D', highway: 'secondary' }, p: [[-150, -300], [-150, 300]] },
+      { tags: { name: 'Calçadão', highway: 'footway' }, p: [[-10, 5], [10, 5]] },
+      { tags: { highway: 'residential' }, p: [[-10, 8], [10, 8]] }
+    ];
+    const g = K.geometria(dados(grade), lat0, lon0);
+    igual('croqui: vias com nome, sem as de pedestre', g.vias.map(function (v) { return v.n; }).join(','), 'Rua A,Rua B,Rua C,Rua D');
+    ok('croqui: geometria em metros (x leste, y norte)', Math.abs(g.vias[0].p[0][0] + 300) < 0.2 && Math.abs(g.vias[0].p[0][1] + 20) < 0.2 && Math.abs(g.vias[1].p[0][0] - 40) < 0.2, g.vias[0].p);
+    ok('croqui: a gravada vale até 3 m do ponto', K.confere(g, lat0, lon0) && K.confere(g, lat0 + 2 / 110540, lon0) && !K.confere(g, lat0 + 10 / 110540, lon0) && !K.confere(null, lat0, lon0));
+    const L = K.lote(g);
+    const xs = L.pts.map(function (q) { return q[0]; }), ys = L.pts.map(function (q) { return q[1]; });
+    ok('croqui: lote na frente da rua mais próxima (A), do lado do ponto, 12 × 30 m a partir da divisa',
+      L.via === 'Rua A' && Math.abs(Math.min.apply(null, xs) + 6) < 0.3 && Math.abs(Math.max.apply(null, xs) - 6) < 0.3 && Math.abs(Math.min.apply(null, ys) + 14) < 0.3 && Math.abs(Math.max.apply(null, ys) - 16) < 0.3, L.pts);
+    const Lc = K.lote(K.geometria(dados(grade, 28, -10), lat0, lon0));
+    ok('croqui: perto da esquina, o lote não entra na transversal', Lc.via === 'Rua A' && Math.max.apply(null, Lc.pts.map(function (q) { return q[0]; })) <= 5.3, Lc.pts);
+    const gE = K.geometria(dados(grade.concat([{ tags: { name: 'Rua E', highway: 'residential' }, p: [[-300, 22], [300, 22]] }])), lat0, lon0);
+    perto('croqui: o fundo do lote para antes da rua de trás', K.lote(gE).prof, 29, 0.3);
+    perto('croqui: testada e profundidade da prancha', K.lote(g, { testada: '10', profundidade: '25' }).prof + K.lote(g, { testada: '10', profundidade: '25' }).testada, 35, 0.01);
+    igual('croqui: nome da rua como digitado na prancha', K.nomes(g, { uc: 'R. A (Centro)' })['rua a'], 'R. A (Centro)');
+    const k = K.escala(500, 400, g, L);
+    ok('croqui: escala mostra as ruas vizinhas (entre 160 e 520 m na largura)', k >= 500 / 520 && k <= 500 / 160 && 400 / k >= 2 * 150, k);
+    igual('croqui: selo do titular', K.selo('Fulano', '123', { fuso: '21K', x: '431274', y: '7898082' }).join('|'), 'Titular da U.C|Fulano|UC: 123|Coordenada em UTM|Fuso: 21K|X: 431274|Y: 7898082');
+    ok('croqui: pelo mapa é o padrão; "modelo" mantém o desenho do modelo', K.peloMapa({}) && !K.peloMapa({ croqui: 'modelo' }));
+    const l1 = P.lugarCroqui('A'), l2 = P.lugarCroqui('A', 1);
+    ok('croqui: lugares na prancha (A 1 folha, A 2 folhas ao lado das tabelas, B; folha 2 sem croqui)',
+      l1.fundo && l1.titulo && !l2.fundo && Math.abs(l2.caixa[2] - 501 * 1.35) < 0.01 && P.lugarCroqui('A', 2) === null && P.lugarCroqui('B').fundo && !P.lugarCroqui('B').titulo, [l1, l2]);
+    const cmds = [{ t: 'regiao', bb: P.CROQUI.r }, { t: 'linha' }];
+    cmds.moverRegiao = { r: P.CROQUI.r }; cmds.pularRegioes = [];
+    P.semCroquiDoModelo(cmds, l2);
+    ok('croqui: sem a cópia do croqui do modelo e sem os campos dele', cmds.length === 1 && cmds[0].t === 'linha' && !cmds.moverRegiao && cmds.pularRegioes[0] === P.CROQUI.r);
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

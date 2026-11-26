@@ -143,8 +143,10 @@ window.App = window.App || {};
       try {
         const g = await App.PranchasPdf.gerar(pr, { ctx: ctx });
         U.download(g.blob, g.nome);
+        (g.avisos || []).forEach(function (a) { UI.toast(a, 'aviso', 9000); });
         S.salvarConfig('pranchas', Object.assign({}, S.configBruta().pranchas || {}, { padroes: P.padroesDe(pr) }));
         pr.geradoEm = new Date().toISOString();
+        if (g.croquiMapa && g.croquiMapa !== pr.croquiMapa) pr.croquiMapa = g.croquiMapa;
         if (o.registrar) o.registrar('📐 Prancha do projeto elétrico gerada (' + g.estilos.map(function (e) { return P.ESTILOS[e].nome; }).join(' e ') + ')' + (g.assinado ? ', com a assinatura do responsável técnico' : '') + '.');
         o.mudou();
         // portal da Energisa: até 4,4 MB por arquivo — com folga para a assinatura digital (gov.br/ICP), que aumenta o PDF
@@ -185,6 +187,12 @@ window.App = window.App || {};
       coord,
       h('h4.secao-form', 'Croqui de localização (ruas)'),
       UI.grade([{ k: 'ruas.uc', label: 'Rua da UC' }, { k: 'ruas.r2', label: 'Rua 2 (transversal do outro lado)' }, { k: 'ruas.r3', label: 'Rua 3 (transversal ao lado do lote)' }, { k: 'ruas.r4', label: 'Rua 4 (de trás)' }], pr, function () { mudou(); }, 4),
+      UI.grade([
+        { k: 'croqui', label: 'Desenho do croqui', type: 'select', options: App.Croqui.OPCOES, cls: 'span2',
+          help: 'Pelas ruas do mapa: o croqui sai com as ruas reais em volta do ponto (OpenStreetMap), o norte para cima e o lote da UC hachurado na posição do marcador da planta de localização. Sem as ruas no mapa (ou sem internet), sai o desenho padrão do modelo.' },
+        { k: 'croquiLote.testada', label: 'Testada do lote (m)', type: 'number', placeholder: 'Auto: ' + App.Croqui.LOTE.testada },
+        { k: 'croquiLote.profundidade', label: 'Profundidade do lote (m)', type: 'number', placeholder: 'Auto: ' + App.Croqui.LOTE.profundidade }
+      ], pr, function () { mudou(); }, 4),
       h('h4.secao-form', 'Empresa e responsável técnico (em branco = Configurações › Empresa)'),
       UI.grade([
         { k: 'emp.endereco', label: 'Endereço da empresa', placeholder: ph(auto.empEndereco), cls: 'span2' },
@@ -571,6 +579,8 @@ window.App = window.App || {};
       try {
         const g = await App.PranchasEnergisa.gerar(pr, { ctx: ctx, distribuidora: distribuidora() });
         g.avisos.forEach(function (a) { UI.toast(a, 'aviso', 9000); });
+        // as ruas do croqui ficam gravadas na prancha (a próxima geração não consulta o mapa de novo)
+        if (g.croquiMapa && g.croquiMapa !== pr.croquiMapa) { pr.croquiMapa = g.croquiMapa; o.mudou(); }
         const mb = function (x) { return U.fmtSmart(x.blob.size / 1048576, 2) + ' MB'; };
         const lim = P.LIMITE_ENVIO_MB - P.FOLGA_ASSINATURA_MB;
         UI.modal({

@@ -236,6 +236,19 @@ window.App = window.App || {};
     doc.registerFontkit(window.fontkit);
     const fonte = await doc.embedFont(arial, { subset: false });
     const ass = pr.assinarRt !== false && !o.semAssinatura ? await assinaturaRt(doc) : null;
+    // croqui de localização pelas ruas do mapa (norte para cima, lote na posição da UC): a geometria gravada na prancha ou a do
+    // OpenStreetMap; sem ela, fica o desenho do modelo (o.croqui: a geometria já obtida, ou null para não buscar)
+    const avisos = [], K = App.Croqui;
+    let geo = o.croqui;
+    if (geo === undefined) {
+      geo = null;
+      const ll = K && K.peloMapa(pr) && estilos.some(function (e) { return e === 'A' || e === 'B'; }) ? K.ponto(pr) : null;
+      if (ll) {
+        try { geo = await K.obter(ll.lat, ll.lon, pr.croquiMapa, 20000); } catch (e) {
+          avisos.push('Croqui de localização: as ruas do mapa (OpenStreetMap) não vieram agora (' + e.message + '); saiu o desenho padrão do modelo. Tente de novo em instantes.');
+        }
+      }
+    }
     // folhas: o estilo A com mais de um inversor sai em 2 folhas A1 (1/2: tabelas e diagramas; 2/2: o desenho das strings)
     const folhas = [];
     estilos.forEach(function (e, i) {
@@ -255,15 +268,18 @@ window.App = window.App || {};
       // estilo A: strings, tabela e unifilares com a quantidade real da obra
       const pular = {};
       let desloc = null, pularOc = {}, soCarimbo = false, pularRegiao = null, manterRegiao = null, mover = null, pularRegioes = [];
+      const lc = geo && Pr.lugarCroqui ? Pr.lugarCroqui(e, fo.folha) : null;
       if (e === 'A' && mapa.stringsA) {
         Pr.CAMPOS_STRINGS_A.forEach(function (k) { pular[k] = true; });
         const d = Pr.desenhoStringsA(pr, campos, mapa.stringsA, fo.folha);
+        if (lc) Pr.semCroquiDoModelo(d, lc);
         desloc = d.desloc || null;
         (d.pular || []).forEach(function (k) { pular[k] = true; });
         pularOc = d.pularOc || {}; soCarimbo = !!d.soCarimbo; pularRegiao = d.pularRegiao || null; pularRegioes = d.pularRegioes || []; manterRegiao = d.manterRegiao || null; mover = (d.moverRegiao ? [d.moverRegiao] : []).concat(d.moverMF || []);
         // trechos do modelo copiados pelo desenho (ex.: o símbolo do 2º inversor): o bloco do modelo recortado
         desenharStringsA(pg, d, FT, P, fonte);
       }
+      if (lc && pularRegioes.indexOf(lc.r) < 0) pularRegioes = pularRegioes.concat([lc.r]);
       Object.keys(campos).forEach(function (cid) {
         if (pular[cid]) return;
         const v = vals[cid];
@@ -297,6 +313,11 @@ window.App = window.App || {};
           escreve(oc, s);
         });
       });
+      if (lc) {
+        const cli = pr.cliente || {};
+        K.desenhar(pg, P, lc.caixa, geo, { fonte: fonte, selo: K.selo(cli.nome, pr.uc, pr.utm), nomes: K.nomes(geo, pr.ruas), lote: pr.croquiLote,
+          titulo: lc.titulo, fundo: lc.fundo, tam: lc.tam, tamSelo: lc.tamSelo, tamTitulo: lc.tamTitulo });
+      }
       const bb = Pr.ASSINATURA[e];
       if (ass && bb) {
         const cx = campos.rt_nome_mai && campos.rt_nome_mai[0] ? campos.rt_nome_mai[0].x : (bb[0] + bb[2]) / 2;
@@ -311,7 +332,7 @@ window.App = window.App || {};
     doc.setProducer('CRM Solar');
     doc.setCreator('CRM Solar — pranchas fotovoltaicas');
     const bytes = await doc.save();
-    return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: Pr.nomeArquivo(pr), paginas: folhas.length, estilos: estilos, assinado: !!ass };
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: Pr.nomeArquivo(pr), paginas: folhas.length, estilos: estilos, assinado: !!ass, avisos: avisos, croquiMapa: geo };
   }
 
   App.PranchasPdf = { gerar: gerar, carregarLibs: carregarLibs, bytesDeDataUrl: bytesDeDataUrl };

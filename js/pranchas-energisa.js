@@ -39,13 +39,7 @@ window.App = window.App || {};
   };
 
   /** Latitude e longitude da UC: as do GPS/digitadas (quando batem com o UTM) ou convertidas do UTM da prancha. */
-  E.coordenadas = function (pr) {
-    const C = App.Coordenadas, u = pr.utm || {};
-    const g = pr.geo;
-    if (g && isFinite(g.lat) && isFinite(g.lon)) return { lat: Number(g.lat), lon: Number(g.lon) };
-    const ll = C && C.latLonDeUtm ? C.latLonDeUtm(u.fuso, u.x, u.y) : null;
-    return ll && isFinite(ll.lat) && isFinite(ll.lon) ? ll : null;
-  };
+  E.coordenadas = function (pr) { return App.Croqui.ponto(pr); };
 
   /** Dados do carimbo. */
   E.dadosCarimbo = function (pr, ctx, o) {
@@ -186,6 +180,14 @@ window.App = window.App || {};
     const k = cobrir(P, pg, img, x, y, w, h, m.larg, m.alt);
     T.ret(x, y, w, h);
     const cx = x + w / 2, cy = y + h / 2, comEscala = m.mPorPx > 0, tam = o.tam || 7.5, lh = tam + 3.5, qw = o.qLarg || 204;
+    // área mostrada no croqui (mesma posição e norte): a correspondência entre a imagem e o desenho
+    if (o.area && comEscala) {
+      const mpt = m.mPorPx / k, a = o.area, aw = a.w / mpt, ah = a.h / mpt, ax = cx + a.dx / mpt - aw / 2, ay = cy + a.dy / mpt - ah / 2, AM = P.rgb(1, 0.84, 0);
+      pg.drawRectangle({ x: ax, y: ay, width: aw, height: ah, borderColor: AM, borderWidth: 1.5, borderDashArray: [6, 3] });
+      const rot = 'ÁREA DO CROQUI', rw = f.widthOfTextAtSize(wa(rot), 6) + 6;
+      pg.drawRectangle({ x: ax, y: ay + ah, width: rw, height: 9, color: AM });
+      T.t(rot, ax + 3, ay + ah + 2.5, 6, { b: true });
+    }
     if (comEscala) pino(P, pg, T, cx, cy);
     const quadro = function (qx, qy, titulo, ls, alvo) {
       const qh = 16 + ls.length * lh;
@@ -245,7 +247,7 @@ window.App = window.App || {};
    * Folha A3 da planta de localização: o mapa da A4 (satélite com ruas, quadros, norte e escala) ocupando a esquerda e, na coluna
    * da direita, com a mesma largura, o mapa de situação, os dados da localização e o croqui do projeto.
    */
-  async function plantaA3(P, doc, f, fb, d, ll, m, s, emb, arq) {
+  async function plantaA3(P, doc, f, fb, d, ll, m, s, emb, arq, cq) {
     const W = A3[0], H = A3[1], pg = doc.addPage(A3);
     const T = Object.assign(ferramentas(P, pg, f, fb), { fonte: f });
     T.ret(15, 15, W - 30, H - 30, { borderWidth: 1.2 });
@@ -254,20 +256,28 @@ window.App = window.App || {};
     const topo = H - 74, base = 108, gap = 14, tH = 16;
     // coluna da direita com largura fixa (o croqui inteiro, sem cortes); o mapa ocupa o resto, da base ao topo
     const cw = 410, mx = 30, mw = W - 30 - mx - 16 - cw, my = base, mh = topo - base, cx = mx + mw + 16;
-    const r = await mapaComDados(P, doc, pg, T, f, m, mx, my, mw, mh, d, ll, { qLarg: 236, tam: 8.5 });
-    const tit = function (t, y) { T.t(t, cx, y + 5, 9.5, { b: true }); };
-    let y = topo;
-    // situação (a cidade)
-    if (s) {
-      const sh = 185;
-      y -= tH; tit('SITUAÇÃO — ' + (d.cidadeObra || 'MUNICÍPIO'), y - 1);
-      await situacao(P, doc, pg, T, s, m, r.k, cx, y - sh - 4, cw, sh, [mw, mh]);
-      y -= sh + 4 + gap;
-    }
+    const sh = 185;
     // dados da localização
     const dados = [['Latitude', ll.lat.toFixed(6).replace('.', ',') + '°'], ['Longitude', ll.lon.toFixed(6).replace('.', ',') + '°'],
       ['UTM (SIRGAS 2000)', 'Fuso ' + str(d.utm.fuso) + '  ·  X ' + str(d.utm.x) + '  ·  Y ' + str(d.utm.y)], ['Unidade consumidora', (d.uc || '—') + '  ·  ' + d.distribuidora]];
     const dh = 12 + dados.length * 15;
+    // quadro do croqui (o que sobra até a base) e, com o croqui pelo mapa, a área dele marcada na imagem
+    const qTop = topo - (s ? tH + sh + 4 + gap : 0) - (tH + dh + 4 + gap) - tH - 4, qh = qTop - base;
+    const K = App.Croqui, caixaC = [cx + 1, base + 1, cw - 2, qh - 2];
+    let area = null;
+    if (cq) {
+      const L = K.lote(cq.geo, cq.lote), kc = L ? K.escala(caixaC[2], caixaC[3], cq.geo, L) : 0;
+      if (L) area = { dx: L.centro[0], dy: L.centro[1], w: caixaC[2] / kc, h: caixaC[3] / kc };
+    }
+    const r = await mapaComDados(P, doc, pg, T, f, m, mx, my, mw, mh, d, ll, { qLarg: 236, tam: 8.5, area: area });
+    const tit = function (t, y) { T.t(t, cx, y + 5, 9.5, { b: true }); };
+    let y = topo;
+    // situação (a cidade)
+    if (s) {
+      y -= tH; tit('SITUAÇÃO — ' + (d.cidadeObra || 'MUNICÍPIO'), y - 1);
+      await situacao(P, doc, pg, T, s, m, r.k, cx, y - sh - 4, cw, sh, [mw, mh]);
+      y -= sh + 4 + gap;
+    }
     y -= tH; tit('DADOS DA LOCALIZAÇÃO', y - 1);
     T.ret(cx, y - dh - 4, cw, dh);
     dados.forEach(function (l, i) {
@@ -276,11 +286,15 @@ window.App = window.App || {};
       T.t(l[1], cx + 110, yy, 9, { b: i === 3, max: cw - 118 });
     });
     y -= dh + 4 + gap;
-    // croqui do projeto (vetor, inteiro): ocupa a largura da coluna e o que sobra até a base, centralizado no quadro
-    if (emb) {
+    // croqui pelas ruas do mapa (norte para cima, o lote da UC na posição do marcador), o mesmo do projeto elétrico
+    if (area) {
+      y -= tH; tit('CROQUI DE LOCALIZAÇÃO (DO PROJETO)', y - 1);
+      T.ret(cx, base, cw, qh);
+      K.desenhar(pg, P, caixaC, cq.geo, { fonte: f, selo: cq.selo, nomes: cq.nomes, lote: cq.lote, tam: 6.5, tamSelo: 6, linha: 0.7 });
+    } else if (emb) {
+      // croqui do desenho do modelo (vetor, inteiro): ocupa a largura da coluna e o que sobra até a base, centralizado no quadro
       const c = E.RECORTE.croqui, pad = 6;
       y -= tH; tit('CROQUI DE LOCALIZAÇÃO (DO PROJETO)', y - 1);
-      const qTop = y - 4, qh = qTop - base;
       const kc = Math.min((cw - 2 * pad) / (c[2] - c[0]), (qh - 2 * pad) / (c[3] - c[1]));
       const cwi = (c[2] - c[0]) * kc, chi = (c[3] - c[1]) * kc;
       T.ret(cx, base, cw, qh);
@@ -345,14 +359,22 @@ window.App = window.App || {};
     if (!ll) throw new Error('Informe as coordenadas da UC na prancha (UTM ou GPS) para gerar a planta de localização.');
     const d = E.dadosCarimbo(pr, ctx, o), avisos = [], so = o.so || ['planta', 'projeto', 'diagramas'], arqs = [];
     const arq = function (id) { return E.ARQUIVOS.find(function (x) { return x.id === id; }); };
-    // projeto elétrico: a prancha como configurada; a prancha A de uma folha dá os recortes (diagramas e croqui)
+    // croqui de localização pelas ruas do mapa (o mesmo na planta A3 e no projeto elétrico); sem as ruas, o desenho do modelo
+    const K = App.Croqui, querA3 = so.indexOf('planta') >= 0 && (pr.planta && pr.planta.modelo) === 'a3';
+    let geo = null;
+    if (K.peloMapa(pr) && (querA3 || so.indexOf('projeto') >= 0)) {
+      try { geo = await K.obter(ll.lat, ll.lon, pr.croquiMapa, 25000); } catch (e) {
+        avisos.push('Croqui de localização: as ruas do mapa (OpenStreetMap) não vieram agora (' + e.message + '); saiu o desenho padrão do modelo. Tente de novo em instantes.');
+      }
+    }
+    // projeto elétrico: a prancha como configurada; a prancha A de uma folha dá os recortes (diagramas e, sem as ruas, o croqui)
     let proj = null;
-    if (so.indexOf('projeto') >= 0) proj = await App.PranchasPdf.gerar(pr, { ctx: ctx });
-    const precisaA1 = so.indexOf('diagramas') >= 0 || (so.indexOf('planta') >= 0 && (pr.planta && pr.planta.modelo) === 'a3');
+    if (so.indexOf('projeto') >= 0) proj = await App.PranchasPdf.gerar(pr, { ctx: ctx, croqui: geo });
+    const precisaA1 = so.indexOf('diagramas') >= 0 || (querA3 && !geo);
     let a1 = null;
     if (precisaA1) {
       const mesma = proj && Pr.estilosDe(pr).join() === 'A' && Pr.folhasA(pr) === 1;
-      const b = mesma ? proj.blob : (await App.PranchasPdf.gerar(Object.assign(U.clone(pr), { estilo: 'A', folhasA: '1' }), { ctx: ctx })).blob;
+      const b = mesma ? proj.blob : (await App.PranchasPdf.gerar(Object.assign(U.clone(pr), { estilo: 'A', folhasA: '1' }), { ctx: ctx, croqui: null })).blob;
       a1 = await P.PDFDocument.load(await bytesDe(b));
     }
     if (so.indexOf('planta') >= 0) {
@@ -360,8 +382,9 @@ window.App = window.App || {};
       const mp = await mapasDaPlanta(pr, ctx, ll, modelo, avisos);
       const n = await novoDoc(P, 'Planta de localização', d);
       if (modelo === 'a3') {
-        const c = E.RECORTE.croqui, emb = a1 ? await n.doc.embedPage(a1.getPage(0), { left: c[0], bottom: c[1], right: c[2], top: c[3] }) : null;
-        await plantaA3(P, n.doc, n.f, n.fb, d, ll, mp.m, mp.s, emb, a);
+        const c = E.RECORTE.croqui, emb = !geo && a1 ? await n.doc.embedPage(a1.getPage(0), { left: c[0], bottom: c[1], right: c[2], top: c[3] }) : null;
+        const cq = geo ? { geo: geo, lote: pr.croquiLote, selo: K.selo(d.cliente, d.uc, d.utm), nomes: K.nomes(geo, pr.ruas) } : null;
+        await plantaA3(P, n.doc, n.f, n.fb, d, ll, mp.m, mp.s, emb, a, cq);
       } else await plantaA4(P, n.doc, n.f, n.fb, d, ll, mp.m, mp.s, a);
       arqs.push({ id: 'planta', titulo: a.titulo, nome: E.nomeArquivo(pr, 'planta'), blob: new Blob([await n.doc.save()], { type: 'application/pdf' }), paginas: 1 });
     }
@@ -371,7 +394,8 @@ window.App = window.App || {};
       await diagramas(P, n.doc, n.f, n.fb, d, a1, comArm, ll, a);
       arqs.push({ id: 'diagramas', titulo: a.titulo, nome: E.nomeArquivo(pr, 'diagramas'), blob: new Blob([await n.doc.save()], { type: 'application/pdf' }), paginas: comArm ? 2 : 1 });
     }
-    return { arquivos: arqs, avisos: avisos };
+    if (proj && proj.avisos) proj.avisos.forEach(function (x) { if (avisos.indexOf(x) < 0) avisos.push(x); });
+    return { arquivos: arqs, avisos: avisos, croquiMapa: geo };
   };
 
   /** Os arquivos num ZIP (para guardar ou enviar de uma vez). */

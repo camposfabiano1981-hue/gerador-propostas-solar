@@ -282,7 +282,10 @@ window.App = window.App || {};
   /** Ruas do croqui pelas coordenadas: consulta o OpenStreetMap e escolhe a da UC, as transversais e a de trás. */
   async function buscarRuas(lat, lon) {
     try {
-      return ruasDoCroqui(await vias(lat, lon, 300), lat, lon);
+      const dados = await vias(lat, lon, 300), r = ruasDoCroqui(dados, lat, lon);
+      // o desenho das ruas, para o croqui pelo mapa (App.Croqui)
+      if (App.Croqui) { const g = App.Croqui.geometria(dados, lat, lon); if (g.vias.length) r.geo = g; }
+      return r;
     } catch (e) {
       // o serviço das vias não respondeu: pelo menos a rua da UC, pelo endereço do ponto
       let uc = '';
@@ -352,6 +355,9 @@ window.App = window.App || {};
         marcar(m, 'erro'); UI.toast(m, 'erro', 10000); return false;
       }
       if (!r.uc) { const m = 'Nenhuma rua com nome a 300 m do ponto no OpenStreetMap (comum na zona rural). Digite as ruas do croqui.'; marcar(m, 'aviso'); UI.toast(m, 'aviso', 8000); return false; }
+      // o desenho das ruas fica gravado para o croqui pelo mapa
+      const novoGeo = !!r.geo;
+      if (r.geo) o.alvo.croquiMapa = r.geo;
       const novo = { uc: r.uc, r2: r.r2, r3: r.r3, r4: r.r4 }, rot = { uc: 'Rua da UC', r2: 'Rua 2', r3: 'Rua 3', r4: 'Rua 4' };
       const dif = Object.keys(novo).filter(function (k) { return novo[k] && String(o.ruas[k] || '').trim() && chave(o.ruas[k]) !== chave(novo[k]); });
       const subst = dif.length ? await UI.confirmar('No mapa: ' + dif.map(function (k) { return rot[k] + ' = ' + novo[k] + ' (hoje: ' + o.ruas[k] + ')'; }).join('; ') +
@@ -364,7 +370,7 @@ window.App = window.App || {};
         (r.parcial ? ' Só a rua da UC veio do mapa: o serviço das ruas vizinhas não respondeu agora — busque de novo em instantes ou digite as outras.'
           : (vazios.length ? ' Não identificada(s): ' + vazios.join(', ') + '.' : '')) + ' Confira no croqui — os campos continuam editáveis.', tipoMsg = r.parcial || vazios.length || r.distUc > 60 ? 'aviso' : 'ok';
       marcar(msg, tipoMsg); UI.toast(msg, tipoMsg, 8000);
-      return n > 0;
+      return n > 0 || novoGeo;
     }
     const btnGps = h('button.btn.pequeno.btn-coord-gps', {
       type: 'button', title: 'Use em campo, em frente ao padrão de entrada', onclick: async function () {

@@ -1025,6 +1025,27 @@ window.App = window.App || {};
   const DETALHE_INST = [1186, 205, 1756, 632];
   // croqui de localização (com o selo do titular e as ruas): com 2 folhas, vai para o lado das tabelas, ampliado
   const CROQUI = { r: [1343, 1043, 1844, 1433], k: 1.35, centro: [1480, 395] };
+  /**
+   * Onde entra o croqui pelas ruas do mapa (App.Croqui) em cada folha: r = área do croqui do modelo (os campos de ruas e selo dentro
+   * dela ficam de fora), caixa = [x, y, largura, altura] do desenho, fundo = apaga o desenho do modelo, titulo = escreve "CROQUI DE
+   * LOCALIZAÇÃO / S/Escala" (o do modelo fica dentro da área apagada). Folha 2 de 2: sem croqui.
+   */
+  function lugarCroqui(estilo, folha) {
+    if (estilo === 'B') return { r: [1195, 160, 1745, 702], caixa: [1195, 160, 550, 542], fundo: true, titulo: false, tam: 7, tamSelo: 6 };
+    if (estilo !== 'A' || folha === 2) return null;
+    if (folha === 1) {
+      const C = CROQUI.r, kc = CROQUI.k, x0 = CROQUI.centro[0] - kc * (C[2] - C[0]) / 2, y0 = CROQUI.centro[1] - kc * (C[3] - C[1]) / 2;
+      return { r: C, caixa: [x0, y0, kc * (C[2] - C[0]), kc * (C[3] - C[1])], fundo: false, titulo: true, tam: 8.5, tamSelo: 7.5, tamTitulo: 12 };
+    }
+    return { r: [1335, 1036, 1852, 1442], caixa: [1337, 1038, 513, 402], fundo: true, titulo: true, tam: 6.5, tamSelo: 5.8, tamTitulo: 9 };
+  }
+  /** Com o croqui pelo mapa, o do modelo não é copiado para o lado das tabelas (2 folhas) e os campos dele ficam de fora. */
+  function semCroquiDoModelo(cmds, lc) {
+    for (let j = cmds.length - 1; j >= 0; j--) if (cmds[j].t === 'regiao' && cmds[j].bb === CROQUI.r) cmds.splice(j, 1);
+    if (cmds.moverRegiao && cmds.moverRegiao.r === CROQUI.r) cmds.moverRegiao = null;
+    cmds.pularRegioes = (cmds.pularRegioes || []).concat([lc.r]);
+    return cmds;
+  }
   // condutores do diagrama multifilar do modelo (R e S) e o 3º condutor (R) da UC trifásica, à esquerda
   const MF = { xR: 1131.0, xS: 1151.8, xT: 1172.6, d: 20.8 };
   // inversor trifásico no multifilar: o símbolo do modelo ampliado (1,55×) com as 3 fases entrando por cima e as proteções afastadas
@@ -2506,7 +2527,7 @@ window.App = window.App || {};
     tamanhos: tamanhos, gruposMppt: gruposMppt, inversores: inversores, calcular: calcular, automaticos: automaticos, efetivos: efetivos, valores: valores, conferir: conferir, pendencias: pendencias,
     CONDUTORES_CA: CONDUTORES_CA, letrasCA: letrasCA, letrasInv: letrasInv, letrasUC: letrasUC, terraMod: terraMod, triInv: triInv, condCA: condCA,
     correnteInv: correnteInv, novoInversor: novoInversor, folhasA: folhasA, folhasEscolhidas: folhasEscolhidas, caboComum: caboComum, terraCA: terraCA, acrescimo: acrescimo, ampliacao: ampliacao, destaqueAmpl: destaqueAmpl, TIPOS_AMPL: TIPOS_AMPL, MULTILINHA: MULTILINHA, modulosDaObra: modulosDaObra, gruposInversores: gruposInversores, modulosTxt: modulosTxt, dadosModulo: dadosModulo, ESTILOS_DESTAQUE: ESTILOS_DESTAQUE,
-    estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
+    estilosDe: estilosDe, nomeArquivo: nomeArquivo, desenhoStringsA: desenhoStringsA, lugarCroqui: lugarCroqui, semCroquiDoModelo: semCroquiDoModelo, CROQUI: CROQUI, linhaTabela: linhaTabela, CAMPOS_STRINGS_A: CAMPOS_STRINGS_A, proxDisjuntor: proxDisjuntor, izCabo: izCabo, quedaRef: quedaRef, rua: rua,
     txtDispor: txtDispor, romDispor: romDispor, larguraTracos: larguraTracos, tracos: tracos, caber: caber,
     LIMITE_ENVIO_MB: 4.4, FOLGA_ASSINATURA_MB: 1,
     SISTEMAS: SISTEMAS, sistemaDe: sistemaDe, comBaterias: comBaterias, dadosBateria: dadosBateria, calcBat: calcBat, conferirBat: conferirBat, DISJ_CC: DISJ_CC,
