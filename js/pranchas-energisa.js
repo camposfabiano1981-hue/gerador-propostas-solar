@@ -20,7 +20,7 @@ window.App = window.App || {};
     { id: 'projeto', num: 'FV-002', titulo: 'PROJETO ELÉTRICO', arquivo: '2 - Projeto eletrico' },
     { id: 'diagramas', num: 'FV-003', titulo: 'DIAGRAMAS UNIFILAR E MULTIFILAR', arquivo: '3 - Diagramas unifilar e multifilar' }
   ];
-  E.MODELOS_PLANTA = [{ v: 'a4', t: 'A4 em pé — satélite com ruas, quadros, norte, escala e situação' }, { v: 'a3', t: 'A3 deitado — mapa de ruas, satélite e o croqui do projeto' }];
+  E.MODELOS_PLANTA = [{ v: 'a4', t: 'A4 em pé — satélite com ruas, quadros, norte, escala e situação' }, { v: 'a3', t: 'A3 deitado — o mapa da A4 com situação, dados da localização e o croqui do projeto' }];
   // trechos da prancha A de uma folha (pontos do modelo): diagramas com as legendas, o canto do diagrama de blocos que entra no recorte
   // (coberto de branco), o diagrama do armazenamento (híbrido/off-grid) e o croqui de localização
   E.RECORTE = { diagramas: [150, 845, 1295, 1640], blocos: [1277, 1440, 1295, 1640], armazenamento: [1298, 826, 1854, 1038], croqui: [1340, 1105, 1858, 1445] };
@@ -28,7 +28,7 @@ window.App = window.App || {};
 
   function str(v) { return v == null ? '' : String(v).trim(); }
   /** Texto nas fontes padrão do PDF (WinAnsi): o que não existe nelas sai do texto. */
-  function wa(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').replace(/[^\x20-\x7E\xA0-\xFF–—‘’“”•…]/g, ''); }
+  function wa(s) { return String(s == null ? '' : s).replace(/[\t\r\n]+/g, ' ').replace(/[^\x20-\x7E\xA0-\xFF–—‘’“”•…]/g, ''); }
   function semAcento(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
   /** Nome do arquivo: "1 - Planta de localizacao - Cliente - UC 123.pdf". */
@@ -54,11 +54,12 @@ window.App = window.App || {};
     const ef = App.Pranchas.efetivos(pr, ctx);
     const cli = pr.cliente || {};
     const end = str(cli.endereco).replace(/\.$/, '');
+    const mc = end.match(/-\s*([^-,]+?)\s*-\s*([A-Z]{2})$/);
     return {
       empresa: str(emp.razao) || str(emp.nomeCurto), logo: emp.logo || App.LOGO_PADRAO || null, cidade: [str(emp.cidade), str(emp.uf)].filter(Boolean).join('/'),
       rtNome: ef.rtNome, rtRegistro: ef.rtRegistro, art: str(pr.art), cliente: str(cli.nome), endereco: end, uc: str(pr.uc),
       distribuidora: str(o.distribuidora) || 'Energisa', data: App.Pranchas.fmt.dataBR(pr.data), revisao: str(pr.revisao) || '0',
-      utm: pr.utm || {}
+      utm: pr.utm || {}, cidadeObra: mc ? (mc[1] + '/' + mc[2]).toLocaleUpperCase('pt-BR') : ''
     };
   };
 
@@ -174,82 +175,117 @@ window.App = window.App || {};
     pg.drawCircle({ x: x, y: y + 20, size: 4, color: T.BR });
   }
 
+  /**
+   * O mapa da planta (satélite com ruas) num quadro: imagem cobrindo o quadro, marcador da UC, quadros do padrão de entrada e da UC
+   * com as linhas de chamada, norte, escala gráfica e o crédito da fonte. o: {qLarg (largura dos quadros), tam (letra)}.
+   * Devolve a escala da imagem (pontos por pixel).
+   */
+  async function mapaComDados(P, doc, pg, T, f, m, x, y, w, h, d, ll, o) {
+    o = o || {};
+    const img = await doc.embedJpg(m.bytes);
+    const k = cobrir(P, pg, img, x, y, w, h, m.larg, m.alt);
+    T.ret(x, y, w, h);
+    const cx = x + w / 2, cy = y + h / 2, comEscala = m.mPorPx > 0, tam = o.tam || 7.5, lh = tam + 3.5, qw = o.qLarg || 204;
+    if (comEscala) pino(P, pg, T, cx, cy);
+    const quadro = function (qx, qy, titulo, ls, alvo) {
+      const qh = 16 + ls.length * lh;
+      if (alvo) T.lin(alvo[0], alvo[1], qx, qy - qh / 2, 0.9);
+      pg.drawRectangle({ x: qx, y: qy - qh, width: qw, height: qh, color: T.BR, borderWidth: 0.8, borderColor: T.PRETO });
+      T.t(titulo, qx + 6, qy - 11, tam + 0.5, { b: true, cor: T.AZ });
+      ls.forEach(function (l, i) { T.t(l, qx + 6, qy - 11 - (i + 1) * lh, tam, { max: qw - 12 }); });
+      return qh;
+    };
+    const u = d.utm, lat = ll.lat.toFixed(6).replace('.', ','), lon = ll.lon.toFixed(6).replace('.', ',');
+    const endCurto = d.endereco.replace(/,?\s*Cep:?\s*[\d.-]+/i, '');
+    // quadros acima e à direita do marcador, sempre dentro do mapa
+    const qx = Math.min(cx + w * 0.12, x + w - qw - 8), q1 = Math.min(cy + h * 0.30, y + h - 10);
+    const h1 = quadro(qx, q1, 'PADRÃO DE ENTRADA', ['Latitude: ' + lat + '°   Longitude: ' + lon + '°', 'UTM (SIRGAS 2000) — Fuso ' + str(u.fuso), 'X: ' + str(u.x) + ' m   Y: ' + str(u.y) + ' m'],
+      comEscala ? [cx + 3, cy + 22] : null);
+    quadro(qx, q1 - h1 - 14, 'UNIDADE CONSUMIDORA', [d.cliente, 'UC: ' + (d.uc || '—') + '   ·   ' + d.distribuidora, endCurto], comEscala ? [cx + 8, cy + 14] : null);
+    norte(P, pg, T, x + 30, y + h - 34);
+    if (comEscala) escalaGrafica(P, pg, T, x + 12, y + 26, m.mPorPx / k);
+    if (m.credito) {
+      const wc = f.widthOfTextAtSize(wa(m.credito), 5.5) + 6;
+      pg.drawRectangle({ x: x + w - wc, y: y, width: wc, height: 10, color: T.BR, opacity: 0.85 });
+      T.t(m.credito, x + w - 3, y + 3, 5.5, { al: 'r' });
+    }
+    return { k: k, comEscala: comEscala };
+  }
+
+  /** Mapa de situação (a cidade) com a área da planta marcada. */
+  async function situacao(P, doc, pg, T, s, m, mk, x, y, w, h, area) {
+    const sit = await doc.embedJpg(s.bytes);
+    const ks = cobrir(P, pg, sit, x, y, w, h, s.larg, s.alt);
+    T.ret(x, y, w, h);
+    if (m.mPorPx > 0) {
+      const aw = area[0] / mk * m.mPorPx / s.mPorPx * ks, ah = area[1] / mk * m.mPorPx / s.mPorPx * ks;
+      pg.drawRectangle({ x: x + w / 2 - aw / 2, y: y + h / 2 - ah / 2, width: Math.max(aw, 3), height: Math.max(ah, 3), borderColor: T.VERM, borderWidth: 1.2 });
+    }
+    T.t(s.credito, x + 3, y + 3, 5, { cor: T.CIN });
+  }
+
   /** Folha A4 da planta de localização. m: mapa principal; s: mapa de situação (ou null). */
   async function plantaA4(P, doc, f, fb, d, ll, m, s, arq) {
     const W = A4[0], H = A4[1], pg = doc.addPage(A4);
     const T = Object.assign(ferramentas(P, pg, f, fb), { fonte: f });
     T.ret(20, 20, W - 40, H - 40, { borderWidth: 1 });
     const mx = 28, my = 186, mw = W - 56, mh = H - 28 - my;
-    const img = await doc.embedJpg(m.bytes);
-    const k = cobrir(P, pg, img, mx, my, mw, mh, m.larg, m.alt);
-    T.ret(mx, my, mw, mh);
-    const cx = mx + mw / 2, cy = my + mh / 2, comEscala = m.mPorPx > 0;
-    if (comEscala) pino(P, pg, T, cx, cy);
-    const quadro = function (x, y, w, titulo, ls, alvo) {
-      const h = 16 + ls.length * 11;
-      if (alvo) T.lin(alvo[0], alvo[1], x, y - h / 2, 0.9);
-      pg.drawRectangle({ x: x, y: y - h, width: w, height: h, color: T.BR, borderWidth: 0.8, borderColor: T.PRETO });
-      T.t(titulo, x + 6, y - 11, 8, { b: true, cor: T.AZ });
-      ls.forEach(function (l, i) { T.t(l, x + 6, y - 22 - i * 11, 7.5, { max: w - 12 }); });
-    };
-    const u = d.utm, qx = Math.min(cx + 70, mx + mw - 212), lat = ll.lat.toFixed(6).replace('.', ','), lon = ll.lon.toFixed(6).replace('.', ',');
-    quadro(qx, Math.min(cy + 190, my + mh - 12), 204, 'PADRÃO DE ENTRADA', ['Latitude: ' + lat + '°   Longitude: ' + lon + '°', 'UTM (SIRGAS 2000) — Fuso ' + str(u.fuso),
-      'X: ' + str(u.x) + ' m   Y: ' + str(u.y) + ' m'], comEscala ? [cx + 3, cy + 22] : null);
-    const endCurto = d.endereco.replace(/,?\s*Cep:?\s*[\d.-]+/i, '');
-    quadro(qx, Math.min(cy + 110, my + mh - 92), 204, 'UNIDADE CONSUMIDORA', [d.cliente, 'UC: ' + (d.uc || '—') + '   ·   ' + d.distribuidora, endCurto], comEscala ? [cx + 8, cy + 14] : null);
-    norte(P, pg, T, mx + 30, my + mh - 40);
-    if (comEscala) escalaGrafica(P, pg, T, mx + 12, my + 26, m.mPorPx / k);
+    const r = await mapaComDados(P, doc, pg, T, f, m, mx, my, mw, mh, d, ll);
     if (s) {
-      const sit = await doc.embedJpg(s.bytes);
-      const sw = 150, sh = sw * s.alt / s.larg, sx = mx + mw - sw - 8, sy = my + 8;
+      // no canto de baixo, à direita (acima do crédito do mapa)
+      const sw = 150, sh = sw * s.alt / s.larg, sx = mx + mw - sw - 8, sy = my + 16;
       pg.drawRectangle({ x: sx - 2, y: sy - 2, width: sw + 4, height: sh + 16, color: T.BR, borderColor: T.PRETO, borderWidth: 0.7 });
-      pg.drawImage(sit, { x: sx, y: sy, width: sw, height: sh });
       T.t('SITUAÇÃO', sx + 2, sy + sh + 4, 6.5, { b: true });
-      if (comEscala) {
-        // área da planta no mapa de situação
-        const ks = sw / s.larg, aw = (mw / k) * m.mPorPx / s.mPorPx * ks, ah = (mh / k) * m.mPorPx / s.mPorPx * ks;
-        pg.drawRectangle({ x: sx + sw / 2 - aw / 2, y: sy + sh / 2 - ah / 2, width: Math.max(aw, 3), height: Math.max(ah, 3), borderColor: T.VERM, borderWidth: 1.2 });
-      }
-      T.t(s.credito, sx + 2, sy + 2, 5, { cor: T.CIN });
+      await situacao(P, doc, pg, T, s, m, r.k, sx, sy, sw, sh, [mw, mh]);
     }
-    if (m.credito) {
-      const wc = f.widthOfTextAtSize(wa(m.credito), 5) + 6;
-      pg.drawRectangle({ x: mx, y: my, width: wc, height: 10, color: T.BR, opacity: 0.85 });
-      T.t(m.credito, mx + 3, my + 3, 5);
-    }
-    await carimboA4(doc, pg, T, f, d, arq, comEscala ? 'Gráfica' : 'Sem escala');
+    await carimboA4(doc, pg, T, f, d, arq, r.comEscala ? 'Gráfica' : 'Sem escala');
   }
 
-  /** Folha A3 da planta de localização: mapa de ruas, satélite e o croqui do projeto. */
-  async function plantaA3(P, doc, f, fb, d, ll, ruas, sat, emb, arq) {
+  /**
+   * Folha A3 da planta de localização: o mapa da A4 (satélite com ruas, quadros, norte e escala) ocupando a esquerda e, na coluna
+   * da direita, com a mesma largura, o mapa de situação, os dados da localização e o croqui do projeto.
+   */
+  async function plantaA3(P, doc, f, fb, d, ll, m, s, emb, arq) {
     const W = A3[0], H = A3[1], pg = doc.addPage(A3);
     const T = Object.assign(ferramentas(P, pg, f, fb), { fonte: f });
     T.ret(15, 15, W - 30, H - 30, { borderWidth: 1.2 });
-    T.t('PLANTA DE LOCALIZAÇÃO', 30, H - 48, 18, { b: true, cor: T.AZ });
-    T.t('Endereço: ' + d.endereco + '   ·   Coordenadas: ' + latLonTxt(ll) + '   ·   UTM ' + str(d.utm.fuso) + '  X ' + str(d.utm.x) + '  Y ' + str(d.utm.y), 30, H - 66, 8.5, { cor: T.CIN, max: W - 60 });
-    const mx = 30, my = 112, mw = 705, mh = Math.min(H - 92 - my, mw * ruas.alt / ruas.larg);
-    T.t('MAPA DE LOCALIZAÇÃO — RUAS', mx, my + mh + 8, 10, { b: true });
-    const ir = await doc.embedJpg(ruas.bytes);
-    const k = cobrir(P, pg, ir, mx, my, mw, mh, ruas.larg, ruas.alt);
-    T.ret(mx, my, mw, mh, { borderWidth: 0.8 });
-    pino(P, pg, T, mx + mw / 2, my + mh / 2);
-    norte(P, pg, T, mx + mw - 30, my + mh - 34);
-    escalaGrafica(P, pg, T, mx + 12, my + 26, ruas.mPorPx / k);
-    if (ruas.credito) T.t(ruas.credito, mx + mw - 4, my + 4, 6, { al: 'r', cor: T.CIN });
-    const sx = 755, sw = W - 30 - sx, sh = sw * 0.68, sy = H - 92 - sh;
-    T.t('IMAGEM DE SATÉLITE', sx, sy + sh + 8, 10, { b: true });
-    const is = await doc.embedJpg(sat.bytes);
-    cobrir(P, pg, is, sx, sy, sw, sh, sat.larg, sat.alt);
-    T.ret(sx, sy, sw, sh, { borderWidth: 0.8 });
-    if (sat.mPorPx > 0) pino(P, pg, T, sx + sw / 2, sy + sh / 2);
-    if (sat.credito) { const wc = f.widthOfTextAtSize(wa(sat.credito), 5.5) + 6; pg.drawRectangle({ x: sx + sw - wc, y: sy, width: wc, height: 10, color: T.BR, opacity: 0.85 }); T.t(sat.credito, sx + sw - 3, sy + 3, 5.5, { al: 'r' }); }
-    if (emb) {
-      const c = E.RECORTE.croqui, kc = Math.min(sw / (c[2] - c[0]), (sy - 30 - 112) / (c[3] - c[1])), cw = (c[2] - c[0]) * kc, ch = (c[3] - c[1]) * kc;
-      T.t('CROQUI DE LOCALIZAÇÃO (DO PROJETO)', sx, 112 + ch + 8, 10, { b: true });
-      pg.drawPage(emb, { x: sx, y: 112, width: cw, height: ch });
-      T.ret(sx, 112, cw, ch, { borderWidth: 0.8 });
+    T.t('PLANTA DE LOCALIZAÇÃO', 30, H - 45, 18, { b: true, cor: T.AZ });
+    T.t(d.endereco + '   ·   ' + latLonTxt(ll) + '   ·   UTM ' + str(d.utm.fuso) + '  X ' + str(d.utm.x) + '  Y ' + str(d.utm.y), 30, H - 62, 8.5, { cor: T.CIN, max: W - 60 });
+    const topo = H - 74, base = 108, gap = 14;
+    // mapa principal à esquerda, da base ao topo
+    const mx = 30, mw = 770, my = base, mh = topo - base;
+    const r = await mapaComDados(P, doc, pg, T, f, m, mx, my, mw, mh, d, ll, { qLarg: 236, tam: 8.5 });
+    // coluna da direita
+    const cx = mx + mw + 16, cw = W - 30 - cx, tit = function (t, y) { T.t(t, cx, y + 5, 9.5, { b: true }); };
+    let y = topo;
+    if (s) {
+      const sh = Math.round(cw * 0.70);
+      y -= 16; tit('SITUAÇÃO — ' + (d.cidadeObra || 'MUNICÍPIO'), y - 1);
+      await situacao(P, doc, pg, T, s, m, r.k, cx, y - sh - 4, cw, sh, [mw, mh]);
+      y -= sh + 4 + gap;
     }
-    await carimboA3(doc, pg, T, Object.assign({ latlon: latLonTxt(ll) }, d), arq, 'indicada');
+    // dados da localização
+    const dados = [['Latitude', ll.lat.toFixed(6).replace('.', ',') + '°'], ['Longitude', ll.lon.toFixed(6).replace('.', ',') + '°'],
+      ['UTM (SIRGAS 2000)', 'Fuso ' + str(d.utm.fuso) + '  ·  X ' + str(d.utm.x) + '  ·  Y ' + str(d.utm.y)], ['Unidade consumidora', (d.uc || '—') + '   ·   ' + d.distribuidora]];
+    const dh = 16 + dados.length * 15;
+    y -= 16; tit('DADOS DA LOCALIZAÇÃO', y - 1);
+    T.ret(cx, y - dh - 4, cw, dh);
+    dados.forEach(function (l, i) {
+      const yy = y - 4 - 14 - i * 15;
+      T.t(l[0], cx + 7, yy, 7, { cor: T.CIN });
+      T.t(l[1], cx + 92, yy, 8.5, { b: i === 3, max: cw - 98 });
+    });
+    y -= dh + 4 + gap;
+    // croqui do projeto (vetor), no espaço que sobra até a base
+    if (emb) {
+      const c = E.RECORTE.croqui, disp = y - 16 - base, kc = Math.min(cw / (c[2] - c[0]), disp / (c[3] - c[1]));
+      const cwi = (c[2] - c[0]) * kc, chi = (c[3] - c[1]) * kc;
+      y -= 16; tit('CROQUI DE LOCALIZAÇÃO (DO PROJETO)', y - 1);
+      const yc = y - 4 - chi;
+      pg.drawRectangle({ x: cx, y: base, width: cw, height: y - 4 - base, borderWidth: 0.7, borderColor: T.PRETO });
+      pg.drawPage(emb, { x: cx + (cw - cwi) / 2, y: Math.max(base, yc - (yc - base) / 2), width: cwi, height: chi });
+    }
+    await carimboA3(doc, pg, T, Object.assign({ latlon: latLonTxt(ll) }, d), arq, r.comEscala ? 'gráfica' : 'sem escala');
   }
 
   /** Folha(s) A3 dos diagramas recortados da prancha A de uma folha. */
@@ -288,16 +324,11 @@ window.App = window.App || {};
     if (pl.fonte === 'imagem' && pl.fotoId && App.Fotos) { const x = await App.Fotos.obter(pl.fotoId); foto = x && x.dataURL; }
     const zoom = Math.round(U.num(pl.zoom)) || Ma.ZOOM_PADRAO;
     const o = { lat: ll.lat, lon: ll.lon, zoom: zoom, fonte: pl.fonte || '', empresa: emp, imagemDataURL: foto };
-    if (modelo === 'a3') {
-      const sat = await Ma.imagem(Object.assign({}, o, { larg: 1000, alt: 680 }));
-      if (sat.aviso) avisos.push(sat.aviso);
-      const ruas = await Ma.imagem(Object.assign({}, o, { fonte: 'osm', zoom: Math.min(19, zoom + 1), larg: 1400, alt: 1040 }));
-      return { sat: sat, ruas: ruas };
-    }
-    const m = await Ma.imagem(Object.assign({}, o, { larg: 1100, alt: 1280 }));
+    // A4 em pé: 1100 × 1280; A3 deitado: 1280 × 1110 (no Google, 640 × 555 com escala 2)
+    const m = await Ma.imagem(Object.assign({}, o, modelo === 'a3' ? { larg: 1280, alt: 1110 } : { larg: 1100, alt: 1280 }));
     if (m.aviso) avisos.push(m.aviso);
     let s = null;
-    try { s = await Ma.situacao(ll.lat, ll.lon, 520, 400, 13); } catch (e) { avisos.push('Mapa de situação indisponível (' + e.message + ').'); }
+    try { s = modelo === 'a3' ? await Ma.situacao(ll.lat, ll.lon, 720, 504, 14) : await Ma.situacao(ll.lat, ll.lon, 520, 400, 13); } catch (e) { avisos.push('Mapa de situação indisponível (' + e.message + ').'); }
     return { m: m, s: s };
   }
 
@@ -329,7 +360,7 @@ window.App = window.App || {};
       const n = await novoDoc(P, 'Planta de localização', d);
       if (modelo === 'a3') {
         const c = E.RECORTE.croqui, emb = a1 ? await n.doc.embedPage(a1.getPage(0), { left: c[0], bottom: c[1], right: c[2], top: c[3] }) : null;
-        await plantaA3(P, n.doc, n.f, n.fb, d, ll, mp.ruas, mp.sat, emb, a);
+        await plantaA3(P, n.doc, n.f, n.fb, d, ll, mp.m, mp.s, emb, a);
       } else await plantaA4(P, n.doc, n.f, n.fb, d, ll, mp.m, mp.s, a);
       arqs.push({ id: 'planta', titulo: a.titulo, nome: E.nomeArquivo(pr, 'planta'), blob: new Blob([await n.doc.save()], { type: 'application/pdf' }), paginas: 1 });
     }
