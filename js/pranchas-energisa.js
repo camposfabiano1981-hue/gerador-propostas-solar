@@ -23,7 +23,7 @@ window.App = window.App || {};
   E.MODELOS_PLANTA = [{ v: 'a4', t: 'A4 em pé — satélite com ruas, quadros, norte, escala e situação' }, { v: 'a3', t: 'A3 deitado — o mapa da A4 com situação, dados da localização e o croqui do projeto' }];
   // trechos da prancha A de uma folha (pontos do modelo): diagramas com as legendas, o canto do diagrama de blocos que entra no recorte
   // (coberto de branco), o diagrama do armazenamento (híbrido/off-grid) e o croqui de localização
-  E.RECORTE = { diagramas: [150, 845, 1295, 1640], blocos: [1277, 1440, 1295, 1640], armazenamento: [1298, 826, 1854, 1038], croqui: [1340, 1105, 1858, 1445] };
+  E.RECORTE = { diagramas: [150, 845, 1295, 1640], blocos: [1277, 1440, 1295, 1640], armazenamento: [1298, 826, 1854, 1038], croqui: [1335, 1036, 1852, 1442] };
   const A4 = [595.28, 841.89], A3 = [1190.55, 841.89];
 
   function str(v) { return v == null ? '' : String(v).trim(); }
@@ -251,39 +251,40 @@ window.App = window.App || {};
     T.ret(15, 15, W - 30, H - 30, { borderWidth: 1.2 });
     T.t('PLANTA DE LOCALIZAÇÃO', 30, H - 45, 18, { b: true, cor: T.AZ });
     T.t(d.endereco + '   ·   ' + latLonTxt(ll) + '   ·   UTM ' + str(d.utm.fuso) + '  X ' + str(d.utm.x) + '  Y ' + str(d.utm.y), 30, H - 62, 8.5, { cor: T.CIN, max: W - 60 });
-    const topo = H - 74, base = 108, gap = 14;
-    // mapa principal à esquerda, da base ao topo
-    const mx = 30, mw = 770, my = base, mh = topo - base;
+    const topo = H - 74, base = 108, gap = 14, tH = 16;
+    // coluna da direita com largura fixa (o croqui inteiro, sem cortes); o mapa ocupa o resto, da base ao topo
+    const cw = 410, mx = 30, mw = W - 30 - mx - 16 - cw, my = base, mh = topo - base, cx = mx + mw + 16;
     const r = await mapaComDados(P, doc, pg, T, f, m, mx, my, mw, mh, d, ll, { qLarg: 236, tam: 8.5 });
-    // coluna da direita
-    const cx = mx + mw + 16, cw = W - 30 - cx, tit = function (t, y) { T.t(t, cx, y + 5, 9.5, { b: true }); };
+    const tit = function (t, y) { T.t(t, cx, y + 5, 9.5, { b: true }); };
     let y = topo;
+    // situação (a cidade)
     if (s) {
-      const sh = Math.round(cw * 0.70);
-      y -= 16; tit('SITUAÇÃO — ' + (d.cidadeObra || 'MUNICÍPIO'), y - 1);
+      const sh = 185;
+      y -= tH; tit('SITUAÇÃO — ' + (d.cidadeObra || 'MUNICÍPIO'), y - 1);
       await situacao(P, doc, pg, T, s, m, r.k, cx, y - sh - 4, cw, sh, [mw, mh]);
       y -= sh + 4 + gap;
     }
     // dados da localização
     const dados = [['Latitude', ll.lat.toFixed(6).replace('.', ',') + '°'], ['Longitude', ll.lon.toFixed(6).replace('.', ',') + '°'],
-      ['UTM (SIRGAS 2000)', 'Fuso ' + str(d.utm.fuso) + '  ·  X ' + str(d.utm.x) + '  ·  Y ' + str(d.utm.y)], ['Unidade consumidora', (d.uc || '—') + '   ·   ' + d.distribuidora]];
-    const dh = 16 + dados.length * 15;
-    y -= 16; tit('DADOS DA LOCALIZAÇÃO', y - 1);
+      ['UTM (SIRGAS 2000)', 'Fuso ' + str(d.utm.fuso) + '  ·  X ' + str(d.utm.x) + '  ·  Y ' + str(d.utm.y)], ['Unidade consumidora', (d.uc || '—') + '  ·  ' + d.distribuidora]];
+    const dh = 12 + dados.length * 15;
+    y -= tH; tit('DADOS DA LOCALIZAÇÃO', y - 1);
     T.ret(cx, y - dh - 4, cw, dh);
     dados.forEach(function (l, i) {
-      const yy = y - 4 - 14 - i * 15;
-      T.t(l[0], cx + 7, yy, 7, { cor: T.CIN });
-      T.t(l[1], cx + 92, yy, 8.5, { b: i === 3, max: cw - 98 });
+      const yy = y - 4 - 13 - i * 15;
+      T.t(l[0], cx + 8, yy, 7.5, { cor: T.CIN });
+      T.t(l[1], cx + 110, yy, 9, { b: i === 3, max: cw - 118 });
     });
     y -= dh + 4 + gap;
-    // croqui do projeto (vetor), no espaço que sobra até a base
+    // croqui do projeto (vetor, inteiro): ocupa a largura da coluna e o que sobra até a base, centralizado no quadro
     if (emb) {
-      const c = E.RECORTE.croqui, disp = y - 16 - base, kc = Math.min(cw / (c[2] - c[0]), disp / (c[3] - c[1]));
+      const c = E.RECORTE.croqui, pad = 6;
+      y -= tH; tit('CROQUI DE LOCALIZAÇÃO (DO PROJETO)', y - 1);
+      const qTop = y - 4, qh = qTop - base;
+      const kc = Math.min((cw - 2 * pad) / (c[2] - c[0]), (qh - 2 * pad) / (c[3] - c[1]));
       const cwi = (c[2] - c[0]) * kc, chi = (c[3] - c[1]) * kc;
-      y -= 16; tit('CROQUI DE LOCALIZAÇÃO (DO PROJETO)', y - 1);
-      const yc = y - 4 - chi;
-      pg.drawRectangle({ x: cx, y: base, width: cw, height: y - 4 - base, borderWidth: 0.7, borderColor: T.PRETO });
-      pg.drawPage(emb, { x: cx + (cw - cwi) / 2, y: Math.max(base, yc - (yc - base) / 2), width: cwi, height: chi });
+      T.ret(cx, base, cw, qh);
+      pg.drawPage(emb, { x: cx + (cw - cwi) / 2, y: base + (qh - chi) / 2, width: cwi, height: chi });
     }
     await carimboA3(doc, pg, T, Object.assign({ latlon: latLonTxt(ll) }, d), arq, r.comEscala ? 'gráfica' : 'sem escala');
   }
