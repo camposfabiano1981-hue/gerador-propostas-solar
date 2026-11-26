@@ -112,7 +112,7 @@ window.App = window.App || {};
         if (chave(v.n) === nomeUc) return;
         for (let i = 1; i < v.p.length; i++) {
           const d = raioSeg(o0, u, v.p[i - 1], v.p[i]);
-          if (d != null && d < 250) { const x = d - K.largura(v) / 2; if (m == null || x < m) m = x; }
+          if (d != null && d < 250) { const x = d - K.largura(v) / 2; if (!m || x < m.d) m = { d: x, nome: v.n }; }
         }
       });
       return m;
@@ -120,19 +120,24 @@ window.App = window.App || {};
     // esquinas dos dois lados: o lote não entra na rua transversal
     const folga = 1;
     const ladoA = bate(soma(F, n, 1), t), ladoB = bate(soma(F, n, 1), [-t[0], -t[1]]);
-    const livreA = ladoA == null ? Infinity : ladoA - folga, livreB = ladoB == null ? Infinity : ladoB - folga;
+    const livreA = ladoA ? ladoA.d - folga : Infinity, livreB = ladoB ? ladoB.d - folga : Infinity;
     if (livreA + livreB < testada) testada = Math.max(4, livreA + livreB);
     let desl = 0;
     if (livreA < testada / 2) desl = livreA - testada / 2;
     else if (livreB < testada / 2) desl = testada / 2 - livreB;
     F = soma(F, t, desl);
     // fundo: a profundidade, até o ponto (se estiver mais para dentro) e sem passar da rua de trás
-    let prof = Math.max(prof0, best.d - meia + 6);
+    let prof = Math.max(prof0, best.d - meia + 6), profQ = prof0;
     const tras = bate(soma(F, t, 0), n);
-    if (tras != null) prof = Math.min(prof, Math.max(8, tras - folga));
+    if (tras) { const lim = Math.max(8, tras.d - folga); prof = Math.min(prof, lim); profQ = Math.min(profQ, lim); }
     const a = soma(F, t, -testada / 2), b = soma(F, t, testada / 2);
     const pts = [a, b, soma(b, n, prof), soma(a, n, prof)];
-    return { pts: pts, centro: soma(F, n, prof / 2), frente: F, t: t, n: n, via: best.v.n, dist: best.d, testada: testada, prof: prof };
+    // esquinas dos dois lados: distância da divisa lateral do lote até o alinhamento da rua transversal
+    const esquinas = [];
+    if (ladoA) esquinas.push({ lado: 1, nome: ladoA.nome, d: Math.max(0, ladoA.d - testada / 2 - desl) });
+    if (ladoB) esquinas.push({ lado: -1, nome: ladoB.nome, d: Math.max(0, ladoB.d - testada / 2 + desl) });
+    return { pts: pts, centro: soma(F, n, prof / 2), frente: F, t: t, n: n, via: best.v.n, dist: best.d, testada: testada, prof: prof, profQ: profQ, meia: meia,
+      esquinas: esquinas, esquina: esquinas.filter(function (e) { return e.d < 150; }).sort(function (x, y) { return x.d - y.d; })[0] || null };
   };
 
   /** Nomes que saem no croqui: o da UC e os das ruas 2, 3 e 4 como digitados na prancha (o resto, como no mapa). */
@@ -195,7 +200,7 @@ window.App = window.App || {};
     const k = K.escala(bw, bh, geo, L);
     const cx = bx + bw / 2, cy = by + bh / 2, c0 = L.centro;
     const X = function (p) { return [cx + (p[0] - c0[0]) * k, cy + (p[1] - c0[1]) * k]; };
-    const fonte = o.fonte, lw = o.linha || 0.8;
+    const fonte = o.fonte, lw = o.linha || 0.8, tCota = o.tamCota || Math.max(5, (o.tamSelo || 6.5) * 0.9);
     const tw = function (s, t) { return fonte.widthOfTextAtSize(txt(s), t); };
     const texto = function (s, x, y, t, ang, cor) {
       pg.drawText(txt(s), { x: x, y: y, size: t, font: fonte, color: cor || P.rgb(0, 0, 0), rotate: P.degrees(ang || 0) });
@@ -214,6 +219,22 @@ window.App = window.App || {};
     visiveis.forEach(function (x) { ops.push(op('w', x.w + 2 * lw)); caminho(ops, x.q); ops.push(Op.of('S')); });
     ops.push(op('RG', 1, 1, 1));
     visiveis.forEach(function (x) { ops.push(op('w', x.w)); caminho(ops, x.q); ops.push(Op.of('S')); });
+    // lotes vizinhos na frente da quadra da UC, até as duas esquinas (como no desenho do projetista)
+    const eA = L.esquinas.find(function (e) { return e.lado === 1; }), eB = L.esquinas.find(function (e) { return e.lado === -1; });
+    if (o.vizinhos !== false && eA && eB && eA.d < 200 && eB.d < 200) {
+      ops.push(op('RG', 0, 0, 0), op('w', Math.max(0.35, lw * 0.55)));
+      [[1, eA.d], [-1, eB.d]].forEach(function (x) {
+        const sl = x[0], fim = L.testada / 2 + x[1];
+        let a = L.testada / 2, i = 0;
+        while (a < fim - 3 && i++ < 40) {
+          let b = Math.min(a + L.testada, fim);
+          if (fim - b < 4) b = fim;
+          const p1 = soma(L.frente, L.t, sl * a), p2 = soma(L.frente, L.t, sl * b);
+          caminho(ops, [p1, soma(p1, L.n, L.profQ), soma(p2, L.n, L.profQ), p2].map(X)); ops.push(Op.of('S'));
+          a = b;
+        }
+      });
+    }
     // lote da UC: hachura (vermelha, como o marcador da imagem) e contorno
     const Q = L.pts.map(X);
     const bb = [Math.min.apply(null, Q.map(function (p) { return p[0]; })), Math.min.apply(null, Q.map(function (p) { return p[1]; })),
@@ -229,11 +250,13 @@ window.App = window.App || {};
     // ocupados (para os nomes e o selo não ficarem por cima)
     const ocupados = [[bb[0] - 3, bb[1] - 3, bb[2] + 3, bb[3] + 3]];
     // norte (canto de cima, à direita)
-    const nx = R[2] - 16, ny = R[3] - 30;
-    pg.drawRectangle({ x: nx - 9, y: ny - 12, width: 18, height: 34, color: P.rgb(1, 1, 1) });
-    pg.drawSvgPath('M 0 -12 L 5.5 8 L 0 4 L -5.5 8 Z', { x: nx, y: ny, color: P.rgb(0, 0, 0) });
-    texto('N', nx - tw('N', 8) / 2, ny + 14, 8);
-    ocupados.push([nx - 10, ny - 13, nx + 10, ny + 23]);
+    const nx = R[2] - 18, ny = R[3] - 31;
+    pg.drawRectangle({ x: nx - 13, y: ny - 13, width: 26, height: 37, color: P.rgb(1, 1, 1) });
+    pg.drawCircle({ x: nx, y: ny, size: 11, color: P.rgb(1, 1, 1), borderColor: P.rgb(0, 0, 0), borderWidth: 0.7 });
+    pg.pushOperators(Op.of('q'), op('rg', 0, 0, 0), op('m', nx, ny + 9.5), op('l', nx - 4.8, ny - 7.5), op('l', nx, ny - 3.5), Op.of('h'), Op.of('f'),
+      op('RG', 0, 0, 0), op('w', 0.6), op('j', 1), op('m', nx, ny + 9.5), op('l', nx + 4.8, ny - 7.5), op('l', nx, ny - 3.5), Op.of('h'), Op.of('S'), Op.of('Q'));
+    texto('N', nx - tw('N', 8) / 2, ny + 13.5, 8);
+    ocupados.push([nx - 13, ny - 13, nx + 13, ny + 24]);
     // título (prancha): no canto de baixo, à direita
     if (o.titulo) {
       const t1 = 'CROQUI DE LOCALIZAÇÃO', t2 = 'S/Escala', tt = o.tamTitulo || 9, w1 = tw(t1, tt);
@@ -248,11 +271,48 @@ window.App = window.App || {};
     texto(cred, R[0] + 3, R[1] + 3, tc, 0, P.rgb(0.35, 0.35, 0.35));
     ocupados.push([R[0], R[1], R[0] + tw(cred, tc) + 6, R[1] + tc + 5]);
 
+    // cota: da divisa lateral do lote até a esquina mais próxima, na calçada em frente ao lote
+    const eq = L.esquina, nomeEq = eq ? ((o.nomes && o.nomes[chave(eq.nome)]) || eq.nome) : '';
+    if (eq && eq.d >= 1) {
+      const sl = eq.lado, off = Math.min(L.meia * 0.4, 3);
+      const a0 = soma(L.frente, L.t, sl * L.testada / 2), a1 = soma(L.frente, L.t, sl * (L.testada / 2 + eq.d));
+      const P0 = X(soma(a0, L.n, -off)), P1 = X(soma(a1, L.n, -off)), E0 = X(soma(a0, L.n, 0.6)), E1 = X(soma(a1, L.n, 0.6));
+      const dd = sub(P1, P0), ld = len(dd) || 1, u0 = [dd[0] / ld, dd[1] / ld], up0 = [-u0[1], u0[0]];
+      const tick = function (p) { const a = soma(soma(p, u0, -1.6), up0, -1.6), b = soma(soma(p, u0, 1.6), up0, 1.6); return [op('m', a[0], a[1]), op('l', b[0], b[1])]; };
+      const cotaOps = [Op.of('q'), op('RG', 0, 0, 0), op('w', 0.45), op('m', E0[0], E0[1]), op('l', P0[0], P0[1]), op('m', E1[0], E1[1]), op('l', P1[0], P1[1]), Op.of('S'),
+        op('w', 0.55), op('m', P0[0], P0[1]), op('l', P1[0], P1[1])].concat(tick(P0), tick(P1), [Op.of('S'), Op.of('Q')]);
+      pg.pushOperators.apply(pg, cotaOps);
+      const tc2 = tCota, rotTxt = Math.round(eq.d) + ' m', wr = tw(rotTxt, tc2);
+      // leitura da esquerda para a direita, do lado da rua (fora do lote)
+      let u = u0, ang = Math.atan2(u0[1], u0[0]) * 180 / Math.PI;
+      if (ang > 90.5 || ang <= -89.5) { ang += ang > 0 ? -180 : 180; u = [-u0[0], -u0[1]]; }
+      const up = [-u[1], u[0]], nRua = [-L.n[0], -L.n[1]];
+      const M = ld >= wr + 6 ? soma(P0, dd, 0.5) : soma(P1, u0, wr / 2 + 3);
+      const o0 = dot(up, nRua) > 0 ? soma(soma(M, u, -wr / 2), up, 1.3) : soma(soma(M, u, -wr / 2), up, -(tc2 * 0.75 + 1.3));
+      texto(rotTxt, o0[0], o0[1], tc2, ang);
+      const cs = [P0, P1, o0, soma(soma(o0, u, wr), up, tc2)];
+      ocupados.push([Math.min.apply(null, cs.map(function (p) { return p[0]; })) - 1, Math.min.apply(null, cs.map(function (p) { return p[1]; })) - 1,
+        Math.max.apply(null, cs.map(function (p) { return p[0]; })) + 1, Math.max.apply(null, cs.map(function (p) { return p[1]; })) + 1]);
+    }
+    // P.E. (padrão de entrada, o ponto das coordenadas): na frente do lote, na altura do ponto — o marcador da imagem de satélite
+    const ao = Math.max(-L.testada / 2 + 1, Math.min(L.testada / 2 - 1, dot(sub([0, 0], L.frente), L.t)));
+    const pe = X(soma(L.frente, L.t, ao));
+    if (pe[0] > R[0] + 4 && pe[0] < R[2] - 4 && pe[1] > R[1] + 4 && pe[1] < R[3] - 4) {
+      pg.drawCircle({ x: pe[0], y: pe[1], size: 2.6, color: P.rgb(0.85, 0.05, 0.05), borderColor: P.rgb(0, 0, 0), borderWidth: 0.7 });
+      // rótulo na calçada, fora do lote
+      const tp = tCota, wp = tw('P.E.', tp), nR = [-L.n[0], -L.n[1]];
+      const c = soma(pe, nR, 4.5 + tp * 0.6);
+      const xp = c[0] - wp / 2 + nR[0] * wp * 0.35, yp = c[1] - tp * 0.35;
+      pg.drawRectangle({ x: xp - 1, y: yp - 1.2, width: wp + 2, height: tp + 1.4, color: P.rgb(1, 1, 1) });
+      texto('P.E.', xp, yp, tp);
+      ocupados.push([Math.min(xp, pe[0]) - 3, Math.min(yp, pe[1]) - 3, Math.max(xp + wp, pe[0]) + 3, Math.max(yp + tp, pe[1]) + 3]);
+    }
     // selo do titular: no canto com menos rua por baixo, com a seta até o lote
-    const selo = (o.selo || []).filter(function (s) { return String(s || '').trim(); });
+    const extra = (o.selo && o.selo.length ? (eq ? ['Esquina mais próxima: ' + nomeEq + ' (aprox. ' + Math.round(eq.d) + ' m)'] : []).concat(['P.E. = padrão de entrada (coordenadas)']) : []);
+    const selo = (o.selo || []).concat(extra).filter(function (s) { return String(s || '').trim(); });
     if (selo.length) {
       const ts = o.tamSelo || 6.5, lh = ts * 1.3, sw = Math.max.apply(null, selo.map(function (s) { return tw(s, ts); })) + 10, sh = selo.length * lh + 6;
-      const m = 6, cand = [[R[0] + m, R[3] - m - sh], [R[0] + m, R[1] + m + 10], [R[2] - m - sw, R[1] + m + (o.titulo ? 34 : 10)], [R[2] - m - sw - 26, R[3] - m - sh],
+      const m = 6, cand = [[R[0] + m, R[3] - m - sh], [R[0] + m, R[1] + m + 10], [R[2] - m - sw, R[1] + m + (o.titulo ? 34 : 10)], [R[2] - m - sw - 32, R[3] - m - sh],
         [R[0] + m, cy - sh / 2], [R[2] - m - sw, cy - sh / 2]];
       const amostras = [];
       visiveis.forEach(function (x) {

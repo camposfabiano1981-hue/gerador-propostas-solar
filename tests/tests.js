@@ -2964,10 +2964,12 @@
     const xs = L.pts.map(function (q) { return q[0]; }), ys = L.pts.map(function (q) { return q[1]; });
     ok('croqui: lote na frente da rua mais próxima (A), do lado do ponto, 12 × 30 m a partir da divisa',
       L.via === 'Rua A' && Math.abs(Math.min.apply(null, xs) + 6) < 0.3 && Math.abs(Math.max.apply(null, xs) - 6) < 0.3 && Math.abs(Math.min.apply(null, ys) + 14) < 0.3 && Math.abs(Math.max.apply(null, ys) - 16) < 0.3, L.pts);
+    ok('croqui: esquina mais próxima (cota e selo): Rua B a 28 m da divisa do lote; a outra, Rua D',
+      L.esquina && L.esquina.nome === 'Rua B' && Math.abs(L.esquina.d - 28) < 0.5 && L.esquinas.length === 2 && L.esquinas.some(function (e) { return e.nome === 'Rua D' && Math.abs(e.d - 136) < 0.5; }), L.esquinas);
     const Lc = K.lote(K.geometria(dados(grade, 28, -10), lat0, lon0));
     ok('croqui: perto da esquina, o lote não entra na transversal', Lc.via === 'Rua A' && Math.max.apply(null, Lc.pts.map(function (q) { return q[0]; })) <= 5.3, Lc.pts);
     const gE = K.geometria(dados(grade.concat([{ tags: { name: 'Rua E', highway: 'residential' }, p: [[-300, 22], [300, 22]] }])), lat0, lon0);
-    perto('croqui: o fundo do lote para antes da rua de trás', K.lote(gE).prof, 29, 0.3);
+    perto('croqui: o fundo do lote (e dos vizinhos) para antes da rua de trás', K.lote(gE).prof + K.lote(gE).profQ, 58, 0.6);
     perto('croqui: testada e profundidade da prancha', K.lote(g, { testada: '10', profundidade: '25' }).prof + K.lote(g, { testada: '10', profundidade: '25' }).testada, 35, 0.01);
     igual('croqui: nome da rua como digitado na prancha', K.nomes(g, { uc: 'R. A (Centro)' })['rua a'], 'R. A (Centro)');
     const k = K.escala(500, 400, g, L);
