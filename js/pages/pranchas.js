@@ -95,7 +95,8 @@ window.App = window.App || {};
         h('div.barra-itens',
           h('button.btn.pequeno', { type: 'button', onclick: function () { P.puxarCrm(pr, inst, ctx); mudou(true); UI.toast('Dados do cliente, dos equipamentos e da Homologação atualizados.', 'ok'); } }, '↻ Puxar dados do CRM'),
           h('button.btn.pequeno.btn-prancha-ver', { type: 'button', onclick: async function () { if (!(await escolherFolhas())) return; App.Visualizar.abrir(function () { return App.PranchasPdf.gerar(pr, { ctx: ctx }); }, { titulo: 'Prancha — ' + ((pr.cliente && pr.cliente.nome) || '') }); } }, '👁 Visualizar'),
-          h('button.btn.pequeno.primario.btn-prancha-pdf', { type: 'button', onclick: baixar }, '⬇ Prancha em PDF')));
+          h('button.btn.pequeno.primario.btn-prancha-pdf', { type: 'button', onclick: baixar }, '⬇ Prancha em PDF'),
+          h('button.btn.pequeno.primario.btn-prancha-energisa', { type: 'button', onclick: arquivosEnergisa }, '⬇ Arquivos para a Energisa')));
     }
     // páginas do PDF: com o estilo A sem a escolha das folhas, as duas contas
     function paginasTxt() {
@@ -515,7 +516,87 @@ window.App = window.App || {};
       ], pr, function () { mudou(); }, 3),
       h('p.ajuda-sec', 'Fiação em branco = automática pelas strings, bitolas e ligação (ex.: 4#6(T#6) = 4 condutores de 6 mm² + terra de 6 mm²).')));
 
+    // ---------- 7. arquivos para a Energisa: planta de localização (mapa), projeto elétrico e diagramas
+    pr.planta = pr.planta || { modelo: 'a4', fonte: '', zoom: '', fotoId: null };
+    const Ma = App.Mapas, cfgM = Ma.config(ctx.empresa);
+    const fonteTxt = function () { const f = Ma.fonteEfetiva(pr.planta.fonte, cfgM); return { google: 'Google (satélite com ruas)', esri: 'Esri (satélite com ruas)', osm: 'OpenStreetMap (ruas)', imagem: 'imagem enviada' }[f]; };
+    const fotoInfo = h('small.ajuda');
+    const pintarFoto = function () { fotoInfo.textContent = pr.planta.fotoId ? 'Imagem enviada guardada (usada com a fonte "Imagem enviada").' : 'Nenhuma imagem enviada.'; };
+    const arqFoto = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', onchange: async function () {
+      const fl = arqFoto.files[0];
+      if (!fl) return;
+      try {
+        const url = await U.readFileAsDataURL(fl);
+        pr.planta.fotoId = await App.Fotos.salvar({ dataURL: url, nome: fl.name });
+        pr.planta.fonte = 'imagem';
+        mudou(true); UI.toast('Imagem do mapa guardada: a planta usa a imagem enviada.', 'ok');
+      } catch (e) { UI.toast('Não foi possível ler a imagem (' + e.message + ').', 'erro'); } finally { arqFoto.value = ''; }
+    } });
+    pintarFoto();
+    grupo('7. Arquivos para a Energisa (planta de localização, projeto elétrico e diagramas)', false, h('div',
+      h('p.ajuda-sec', 'Três PDFs com carimbo próprio para o portal da distribuidora: 1 — planta de localização (mapa pelas coordenadas da seção 1), 2 — projeto elétrico (a prancha completa, ' +
+        'como configurada acima) e 3 — diagramas unifilar e multifilar (A3, recortados da prancha A). Mapa atual: ' + fonteTxt() + '.'),
+      UI.grade([
+        { k: 'planta.modelo', label: 'Modelo da planta de localização', type: 'select', cls: 'span2', options: App.PranchasEnergisa.MODELOS_PLANTA },
+        { k: 'revisao', label: 'Revisão dos desenhos', placeholder: '0' },
+        { k: 'planta.fonte', label: 'Mapa', type: 'select', cls: 'span2', options: [{ v: '', t: 'Padrão da empresa (Configurações › Empresa › Mapas)' }].concat(Ma.FONTES) },
+        { k: 'planta.zoom', label: 'Aproximação (zoom)', type: 'select', options: [{ v: '', t: 'Padrão (17)' }, { v: '16', t: '16 — bairro' }, { v: '17', t: '17 — quadras' }, { v: '18', t: '18 — lote' }, { v: '19', t: '19 — telhado' }] }
+      ], pr, function () { mudou(true); }, 3),
+      h('div.campo', h('label', 'Imagem do mapa (opcional): print do Google Maps ou Google Earth centralizado na UC'), h('div', arqFoto,
+        pr.planta.fotoId ? h('button.btn.pequeno', { type: 'button', onclick: function () { pr.planta.fotoId = null; if (pr.planta.fonte === 'imagem') pr.planta.fonte = ''; mudou(true); } }, 'Remover imagem') : null), fotoInfo),
+      h('div.barra-itens',
+        h('button.btn.pequeno.btn-planta-ver', { type: 'button', onclick: function () {
+          App.Visualizar.abrir(async function () {
+            const g = await App.PranchasEnergisa.gerar(pr, { ctx: ctx, distribuidora: distribuidora(), so: ['planta'] });
+            g.avisos.forEach(function (a) { UI.toast(a, 'aviso', 8000); });
+            return { blob: g.arquivos[0].blob, nome: g.arquivos[0].nome };
+          }, { titulo: 'Planta de localização — ' + ((pr.cliente && pr.cliente.nome) || '') });
+        } }, '👁 Visualizar a planta de localização'),
+        h('button.btn.pequeno.primario.btn-energisa', { type: 'button', onclick: arquivosEnergisa }, '⬇ Arquivos para a Energisa'))));
+
     pintarResumo();
+
+    /** Distribuidora da obra (concessionária da proposta). */
+    function distribuidora() {
+      const prop = inst.propostaId ? S.get('propostas', inst.propostaId) : null;
+      const c = prop && prop.concessionariaId ? (ctx.concessionarias || []).find(function (x) { return x.id === prop.concessionariaId; }) : null;
+      return (c && c.nome) || 'Energisa';
+    }
+
+    /** Gera os 3 PDFs e mostra a lista com o tamanho de cada um, para baixar um a um ou todos num ZIP. */
+    async function arquivosEnergisa(ev) {
+      if (!(await escolherFolhas())) return;
+      const b = ev && ev.target, txt0 = b ? b.textContent : '';
+      if (b) { b.disabled = true; b.textContent = 'Gerando…'; }
+      try {
+        const g = await App.PranchasEnergisa.gerar(pr, { ctx: ctx, distribuidora: distribuidora() });
+        g.avisos.forEach(function (a) { UI.toast(a, 'aviso', 9000); });
+        const mb = function (x) { return U.fmtSmart(x.blob.size / 1048576, 2) + ' MB'; };
+        const lim = P.LIMITE_ENVIO_MB - P.FOLGA_ASSINATURA_MB;
+        UI.modal({
+          titulo: 'Arquivos para a Energisa',
+          largo: true,
+          corpo: h('div.energisa-arquivos',
+            h('p.ajuda-sec', 'Envie cada arquivo no campo correspondente do portal. Limite do portal: ' + U.fmtSmart(P.LIMITE_ENVIO_MB, 1) + ' MB por arquivo (deixe folga para a assinatura digital).'),
+            h('ul.lista-energisa', g.arquivos.map(function (a) {
+              return h('li', h('span', h('strong', a.titulo), h('small', ' ' + a.nome + ' · ' + mb(a) + (a.paginas > 1 ? ' · ' + a.paginas + ' páginas' : '') + (a.blob.size / 1048576 > lim ? ' ⚠ perto do limite' : ''))),
+                h('span.acoes-energisa',
+                  h('button.btn.pequeno', { type: 'button', onclick: function () { App.Visualizar.abrir(function () { return Promise.resolve({ blob: a.blob, nome: a.nome }); }, { titulo: a.titulo }); } }, '👁'),
+                  h('button.btn.pequeno.primario', { type: 'button', onclick: function () { U.download(a.blob, a.nome); } }, '⬇ Baixar')));
+            }))),
+          acoes: [
+            { label: '⬇ Baixar os ' + g.arquivos.length + ' (ZIP)', onClick: async function () { U.download(await App.PranchasEnergisa.zip(g.arquivos), App.PranchasEnergisa.nomeArquivo(pr, 'planta').replace(/^1 - Planta de localizacao/, 'Arquivos Energisa').replace(/\.pdf$/, '.zip')); }, manterAberto: true },
+            { label: 'Fechar', primario: true }
+          ]
+        });
+        if (o.registrar) o.registrar('📐 Arquivos para a Energisa gerados (planta de localização, projeto elétrico e diagramas).');
+      } catch (e) {
+        console.error(e);
+        UI.toast(e.message, 'erro', 8000);
+      } finally {
+        if (b) { b.disabled = false; b.textContent = txt0; }
+      }
+    }
   }
 
   App.PranchasTela = { secao: secao };

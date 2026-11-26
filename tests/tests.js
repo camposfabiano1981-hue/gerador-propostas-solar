@@ -2923,5 +2923,22 @@
     ok('ajuste à célula: estreita até 70% e depois diminui a altura', Math.abs(aj.fl - 0.7) < 1e-9 && Math.abs(aj.tam - 50 / 70 * 10) < 1e-9, aj);
   })();
 
+  // ---------------------------------------------------------------- arquivos para a Energisa: mapas e nomes
+  (function () {
+    const M = App.Mapas, E = App.PranchasEnergisa;
+    perto('mapas: metros por pixel no zoom 17 em Corumbá', M.metrosPorPixel(-19.0087, 17), 1.1291, 0.001);
+    igual('mapas: fonte automática (Google com chave, senão Esri; Google sem chave vira Esri)', [M.fonteEfetiva('auto', { googleKey: '' }), M.fonteEfetiva('', { googleKey: 'k', fonte: 'auto' }), M.fonteEfetiva('google', { googleKey: '' }), M.fonteEfetiva('osm', { googleKey: 'k' })].join(','), 'esri,google,esri,osm');
+    ok('mapas: Maps Static API com satélite e ruas (hybrid), escala 2 e tamanho até 640', /size=640x640&scale=2&maptype=hybrid&format=jpg/.test(M.urlGoogle(-19, -57.6, 17, 900, 700, 'K')) && /key=K$/.test(M.urlGoogle(-19, -57.6, 17, 900, 700, 'K')));
+    const bl = M.blocos(-19.0087, -57.653, 17, 512, 512);
+    ok('mapas: blocos cobrem a janela (3 × 3 para 512 px)', bl.length === 9 && bl.every(function (b) { return b.dx > -256 && b.dy > -256 && b.dx < 512 && b.dy < 512; }), bl.length);
+    const pr = { cliente: { nome: 'José da Silva' }, uc: '123', utm: { fuso: '21K', x: '431274', y: '7898082' } };
+    igual('energisa: nome dos arquivos', E.ARQUIVOS.map(function (a) { return E.nomeArquivo(pr, a.id); }).join(' | '),
+      '1 - Planta de localizacao - Jose da Silva - UC 123.pdf | 2 - Projeto eletrico - Jose da Silva - UC 123.pdf | 3 - Diagramas unifilar e multifilar - Jose da Silva - UC 123.pdf');
+    const ll = E.coordenadas(pr);
+    ok('energisa: coordenadas pelo UTM (21K)', ll && Math.abs(ll.lat + 19.0087) < 1e-4 && Math.abs(ll.lon + 57.653) < 1e-4, ll);
+    ok('energisa: GPS da prancha tem prioridade', E.coordenadas(Object.assign({}, pr, { geo: { lat: -19.1, lon: -57.7 } })).lat === -19.1);
+    ok('energisa: sem coordenadas, nada', E.coordenadas({ utm: { fuso: '21K', x: '', y: '' } }) === null);
+  })();
+
   window.__testes = { resultados: resultados, testarDocx: testarDocx, cenario: { p: p, ctx: ctx, r: r, pH: pH, ctxH: ctxH, rH: rH } };
 })();

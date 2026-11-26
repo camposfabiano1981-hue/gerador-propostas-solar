@@ -314,5 +314,5 @@ window.App = window.App || {};
     return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: Pr.nomeArquivo(pr), paginas: folhas.length, estilos: estilos, assinado: !!ass };
   }
 
-  App.PranchasPdf = { gerar: gerar };
+  App.PranchasPdf = { gerar: gerar, carregarLibs: carregarLibs, bytesDeDataUrl: bytesDeDataUrl };
 })(window.App);

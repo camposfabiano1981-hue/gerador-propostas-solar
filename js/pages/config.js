@@ -123,6 +123,22 @@
       previa);
     pintarPrevia();
     cont.appendChild(cardNum);
+    // mapas da planta de localização (arquivos para a Energisa): chave do Google (Maps Static API) e a fonte padrão
+    emp.mapas = Object.assign({ googleKey: '', fonte: 'auto' }, emp.mapas || {});
+    const notaChave = h('p.ajuda-sec.nota-chave');
+    const testar = h('button.btn.pequeno', { type: 'button', onclick: async function () {
+      testar.disabled = true; notaChave.textContent = 'Testando a chave…';
+      const r = await App.Mapas.testarChave(emp.mapas.googleKey);
+      notaChave.textContent = (r.ok ? '✅ ' : '⛔ ') + r.msg; testar.disabled = false;
+    } }, 'Testar a chave');
+    cont.appendChild(h('div.card.mapas-card', h('h3', 'Mapas da planta de localização'),
+      h('p.ajuda-sec', 'A planta de localização dos arquivos para a Energisa sai com o satélite e as ruas pelas coordenadas da UC. Com a chave do Google (Maps Static API), a imagem é a do Google; ' +
+        'sem ela, a da Esri (sem chave). Restrinja a chave ao endereço deste app e à Maps Static API no Google Cloud: ela fica visível no navegador.'),
+      UI.grade([
+        { k: 'mapas.googleKey', label: 'Chave da API do Google (Maps Static API)', cls: 'span2', placeholder: 'AIza…', autocomplete: 'off' },
+        { k: 'mapas.fonte', label: 'Mapa padrão', type: 'select', options: App.Mapas.FONTES.filter(function (x) { return x.v !== 'imagem'; }) }
+      ], emp, function () { marcar(); notaChave.textContent = ''; }, 3),
+      h('div.barra-itens', testar), notaChave));
     // assinatura guardada do responsável técnico: gravada na hora (independe do "Salvar alterações")
     const assResp = Object.assign(App.Assinatura.vazia(), emp.assinaturaResponsavel || {});
     cont.appendChild(h('div.card.assinatura-guardada-card', h('h3', 'Assinatura do responsável técnico'),
