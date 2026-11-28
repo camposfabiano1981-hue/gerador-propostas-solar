@@ -609,6 +609,81 @@ window.App = window.App || {};
     }
   };
 
+  /* ------------------------------------------------------------ imagens grandes sem reprocessar */
+
+  /*
+   * O jsPDF descompacta e recompacta em JavaScript todo PNG com canal de transparência — e o navegador sempre grava o PNG do
+   * canvas assim. Nos gráficos e desenhos dos documentos (o dobro dos pixels, para ficarem nítidos), isso levava segundos.
+   * Aqui a imagem grande e opaca vira PNG RGB (filtro Sub por linha, compactado pelo próprio navegador), que o jsPDF embute
+   * como está. Sem CompressionStream (navegador antigo) ou com transparência, segue a imagem original.
+   */
+  const CRC = (function () {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(b, ini, fim) {
+    let c = 0xFFFFFFFF;
+    for (let i = ini; i < fim; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function blocoPng(tipo, dados) {
+    const out = new Uint8Array(12 + dados.length), dv = new DataView(out.buffer);
+    dv.setUint32(0, dados.length);
+    for (let i = 0; i < 4; i++) out[4 + i] = tipo.charCodeAt(i);
+    out.set(dados, 8);
+    dv.setUint32(8 + dados.length, crc32(out, 4, 8 + dados.length));
+    return out;
+  }
+  function carregarImg(url) {
+    return new Promise(function (res, rej) { const im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { rej(new Error('imagem')); }; im.src = url; });
+  }
+  /** PNG RGB (sem transparência) da imagem, ou null se ela tiver transparência ou o navegador não compactar. */
+  async function pngRgb(url) {
+    if (typeof CompressionStream === 'undefined' || typeof Response === 'undefined') return null;
+    const im = await carregarImg(url);
+    const w = im.naturalWidth, h = im.naturalHeight;
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const g = cv.getContext('2d');
+    g.drawImage(im, 0, 0);
+    const px = g.getImageData(0, 0, w, h).data;
+    cv.width = 0; cv.height = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] !== 255) return null;
+    const ln = w * 3 + 1, raw = new Uint8Array(ln * h);
+    for (let y = 0, i = 0; y < h; y++) {
+      let o = y * ln, r0 = 0, g0 = 0, b0 = 0;
+      raw[o++] = 1;   // filtro Sub: diferença para o pixel da esquerda
+      for (let x = 0; x < w; x++, i += 4) {
+        const r = px[i], gg = px[i + 1], b = px[i + 2];
+        raw[o++] = (r - r0) & 255; raw[o++] = (gg - g0) & 255; raw[o++] = (b - b0) & 255;
+        r0 = r; g0 = gg; b0 = b;
+      }
+    }
+    const z = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+    const ihdr = new Uint8Array(13), dv = new DataView(ihdr.buffer);
+    dv.setUint32(0, w); dv.setUint32(4, h); ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+    const partes = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), blocoPng('IHDR', ihdr), blocoPng('IDAT', z), blocoPng('IEND', new Uint8Array(0))];
+    const out = new Uint8Array(partes.reduce(function (a, p) { return a + p.length; }, 0));
+    let k = 0;
+    partes.forEach(function (p) { out.set(p, k); k += p.length; });
+    return out;
+  }
+  /** As imagens PNG grandes (≥ 0,4 megapixel) dos recursos, trocadas pelo PNG RGB quando dá (em paralelo). */
+  async function otimizarImagens(recursos) {
+    await Promise.all(Object.keys(recursos).map(async function (ref) {
+      const r = recursos[ref];
+      if (!r || r.formato !== 'PNG' || typeof r.url !== 'string' || r.url.length < 60000) return;
+      try {
+        const im = await carregarImg(r.url);
+        if (im.naturalWidth * im.naturalHeight < 400000) return;
+        const b = await pngRgb(r.url);
+        if (b) r.url = b;
+      } catch (e) { /* segue a original */ }
+    }));
+  }
+  App.PdfImagens = { pngRgb: pngRgb, otimizar: otimizarImagens, crc32: crc32 };
+
   /* ------------------------------------------------------------ API */
 
   /**
@@ -646,6 +721,7 @@ window.App = window.App || {};
       const url = modelo.imagens[ref];
       recursos[ref] = { url: url, formato: /^data:image\/png/.test(url) ? 'PNG' : 'JPEG' };
     });
+    await otimizarImagens(recursos);
     new Render(doc, modelo, recursos, fonteOk).render();
     return { blob: doc.output('blob'), fonteOk: fonteOk };
   }

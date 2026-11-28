@@ -650,13 +650,19 @@ label.btn input[type=file] { display: none; }
 
 /* ---------- visualização dos documentos */
 dialog.modal.visualizar { width: min(940px, calc(100vw - 16px)); height: calc(100vh - 24px); }
-dialog.modal.visualizar .modal-corpo { flex: 1; background: #E2E8F0; padding: 12px; }
-.visualizador-status { margin: 0 0 10px !important; font-size: 13px; color: var(--texto-2); }
+dialog.modal.visualizar .modal-corpo { flex: 1; min-height: 0; background: #E2E8F0; padding: 10px 12px 0; overflow: hidden; display: flex; flex-direction: column; }
+.visualizador { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.visualizador-barra { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.visualizador-status { margin: 0 !important; font-size: 13px; color: var(--texto-2); }
 .visualizador-status.erro { color: var(--vermelho); font-weight: 600; }
-.visualizador-paginas { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.visualizador-pagina { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, .18); border-radius: 2px; }
+.visualizador-zoom { display: flex; align-items: center; gap: 4px; }
+.visualizador-zoom[hidden] { display: none; }
+.visualizador-zoom .btn { min-width: 34px; font-weight: 700; }
+.visualizador-zoom .zoom-valor { min-width: 70px; font-weight: 600; }
+.visualizador-paginas { flex: 1; min-height: 0; overflow: auto; display: block; padding-bottom: 12px; touch-action: pan-x pan-y; overscroll-behavior: contain; }
+.visualizador-pagina { display: block; max-width: none; margin: 0 auto 12px; background: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, .18); border-radius: 2px; }
 .btn-formato.ver { font-size: 12px; padding: 2px 6px; }
-@media (max-width: 700px) { dialog.modal.visualizar { width: calc(100vw - 8px); height: calc(100vh - 12px); } dialog.modal.visualizar .modal-corpo { padding: 6px; } }
+@media (max-width: 700px) { dialog.modal.visualizar { width: calc(100vw - 8px); height: calc(100vh - 12px); } dialog.modal.visualizar .modal-corpo { padding: 6px 6px 0; } .visualizador-barra { margin-bottom: 6px; } }
 
 /* ---------- avisos ao cliente (WhatsApp) e página de acompanhamento */
 .btn-avisar { border-color: #86EFAC; color: #15803D; }

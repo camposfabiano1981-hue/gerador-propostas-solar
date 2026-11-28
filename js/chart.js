@@ -27,24 +27,25 @@ window.App = window.App || {};
     const k = W / 1800;
     const AZUL = '#0D5B8F', LARANJA = '#E8A020';
     const g = cv.getContext('2d');
-    const fk = d.compacto ? 2.1 : 1.2; // textos legíveis com a imagem em ~14,7 cm (ou na miniatura da tela)
+    // textos legíveis com a imagem em ~15 cm (≥ 6,5 pt na folha) ou na miniatura da tela; r: espaçamentos acompanham as letras
+    const fk = d.compacto ? 2.1 : 1.6, r = d.compacto ? 1 : fk / 1.2;
     const px = function (v) { return Math.round(v * k * fk) + 'px '; };
     g.save();
     g.fillStyle = '#F5F9FD';
     g.fillRect(0, 0, W, H);
 
-    const m = d.compacto ? { l: 150 * k, r: 20 * k, t: 150 * k, b: 80 * k } : { l: 92 * k, r: 20 * k, t: 74 * k, b: 74 * k };
+    const m = d.compacto ? { l: 150 * k, r: 20 * k, t: 150 * k, b: 80 * k } : { l: 92 * r * k, r: 20 * k, t: 74 * r * k, b: 74 * r * k };
     const pw = W - m.l - m.r, ph = H - m.t - m.b;
 
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = AZUL;
     g.font = 'bold ' + px(25) + FONTE;
-    g.fillText(d.titulo || 'ESTIMATIVA DE PRODUÇÃO MENSAL', W / 2, (d.compacto ? 38 : 24) * k);
+    g.fillText(d.titulo || 'ESTIMATIVA DE PRODUÇÃO MENSAL', W / 2, (d.compacto ? 38 : 24 * r) * k);
     if (d.subtitulo && !d.compacto) {
       g.fillStyle = '#6B7280';
       g.font = px(16) + FONTE;
-      g.fillText(d.subtitulo, W / 2, 50 * k);
+      g.fillText(d.subtitulo, W / 2, 50 * r * k);
     }
 
     const meses = d.meses.map(function (v) { return isFinite(v) ? v : 0; });
@@ -52,7 +53,7 @@ window.App = window.App || {};
     const variaMes = !!(consMes && Math.max.apply(null, consMes) - Math.min.apply(null, consMes) >= 0.5);
     const consumo = consMes ? (variaMes ? 0 : consMes[0]) : (isFinite(d.consumo) && d.consumo > 0 ? d.consumo : 0);
     const vmax = Math.max.apply(null, meses.concat([consumo, 1], variaMes ? consMes : []));
-    const folga = d.compacto ? 1.12 : 1.35; // folga no topo para o quadro-resumo e a legenda
+    const folga = d.compacto ? 1.12 : 1.5; // folga no topo para o quadro-resumo e a legenda
     const passo = passoBonito(vmax * folga, d.compacto ? 4 : 7);
     const topo = Math.ceil((vmax * folga) / passo) * passo;
     const y = function (v) { return m.t + ph - (v / topo) * ph; };
@@ -74,16 +75,23 @@ window.App = window.App || {};
     meses.forEach(function (v, i) {
       g.fillStyle = AZUL;
       g.fillRect(cx(i) - bw / 2, y(v), bw, y(0) - y(v));
-      g.fillStyle = AZUL;
-      g.font = 'bold ' + px(16) + FONTE;
-      g.textAlign = 'center';
-      g.textBaseline = 'bottom';
-      g.fillText(U.fmt(v, 0), cx(i), y(v) - 5 * k);
       g.fillStyle = '#374151';
       g.font = px(18) + FONTE;
+      g.textAlign = 'center';
       g.textBaseline = 'top';
       g.fillText(U.MESES[i], cx(i), y(0) + 10 * k);
     });
+    // valores das barras: depois da linha do consumo, com contorno da cor do fundo (legíveis quando a linha passa por eles)
+    const valores = function () {
+      g.font = 'bold ' + px(16) + FONTE;
+      g.textAlign = 'center';
+      g.textBaseline = 'bottom';
+      g.lineJoin = 'round';
+      g.lineWidth = 7 * k;
+      g.strokeStyle = '#F5F9FD';
+      g.fillStyle = AZUL;
+      meses.forEach(function (v, i) { g.strokeText(U.fmt(v, 0), cx(i), y(v) - 5 * k); g.fillText(U.fmt(v, 0), cx(i), y(v) - 5 * k); });
+    };
 
     if (consumo || variaMes) {
       const yc = function (i) { return y(variaMes ? consMes[i] : consumo); };
@@ -97,6 +105,7 @@ window.App = window.App || {};
       g.fillStyle = LARANJA;
       meses.forEach(function (v, i) { g.beginPath(); g.arc(cx(i), yc(i), 6 * k, 0, Math.PI * 2); g.fill(); });
     }
+    valores();
 
     // legenda (canto superior direito)
     const itens = [];
@@ -123,8 +132,8 @@ window.App = window.App || {};
       g.restore();
       return;
     }
-    const lw = Math.max.apply(null, itens.map(function (it) { return g.measureText(it.t).width; })) + 72 * k;
-    const lh = 32 * k;
+    const lw = Math.max.apply(null, itens.map(function (it) { return g.measureText(it.t).width; })) + 72 * r * k;
+    const lh = 32 * r * k;
     const lx = m.l + pw - lw - 4 * k, ly = m.t - 8 * k;
     g.fillStyle = 'rgba(255,255,255,0.92)';
     g.strokeStyle = AZUL;
@@ -137,16 +146,16 @@ window.App = window.App || {};
       if (it.linha) {
         g.lineWidth = 4 * k;
         g.setLineDash([10 * k, 6 * k]);
-        g.beginPath(); g.moveTo(lx + 10 * k, yy); g.lineTo(lx + 50 * k, yy); g.stroke();
+        g.beginPath(); g.moveTo(lx + 10 * r * k, yy); g.lineTo(lx + 50 * r * k, yy); g.stroke();
         g.setLineDash([]);
-        g.beginPath(); g.arc(lx + 30 * k, yy, 6 * k, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(lx + 30 * r * k, yy, 6 * k, 0, Math.PI * 2); g.fill();
       } else {
-        g.fillRect(lx + 12 * k, yy - 7 * k, 36 * k, 14 * k);
+        g.fillRect(lx + 12 * r * k, yy - 7 * r * k, 36 * r * k, 14 * r * k);
       }
       g.fillStyle = '#111827';
       g.textAlign = 'left';
       g.textBaseline = 'middle';
-      g.fillText(it.t, lx + 60 * k, yy);
+      g.fillText(it.t, lx + 60 * r * k, yy);
     });
 
     // quadro-resumo (canto superior esquerdo)
@@ -161,9 +170,9 @@ window.App = window.App || {};
     ];
     const mono = px(16) + '"Consolas", "DejaVu Sans Mono", "Courier New", monospace';
     g.font = mono;
-    const c1 = Math.max.apply(null, linhas.map(function (l) { return g.measureText(l[0]).width; })) + 14 * k;
-    const bwq = c1 + Math.max.apply(null, linhas.map(function (l) { return g.measureText(l[1]).width; })) + 24 * k;
-    const bx = m.l + 10 * k, by = m.t - 8 * k, lhq = 28 * k;
+    const c1 = Math.max.apply(null, linhas.map(function (l) { return g.measureText(l[0]).width; })) + 14 * r * k;
+    const bwq = c1 + Math.max.apply(null, linhas.map(function (l) { return g.measureText(l[1]).width; })) + 24 * r * k;
+    const bx = m.l + 10 * k, by = m.t - 8 * k, lhq = 26 * r * k;
     g.fillStyle = 'rgba(255,255,255,0.95)';
     g.strokeStyle = AZUL;
     g.lineWidth = 2 * k;
@@ -173,8 +182,8 @@ window.App = window.App || {};
     g.textBaseline = 'middle';
     linhas.forEach(function (l, i) {
       const yy = by + 6 * k + lhq * i + lhq / 2;
-      g.fillText(l[0], bx + 10 * k, yy);
-      g.fillText(l[1], bx + 10 * k + c1, yy);
+      g.fillText(l[0], bx + 10 * r * k, yy);
+      g.fillText(l[1], bx + 10 * r * k + c1, yy);
     });
 
     if (d.rodape) {
@@ -201,11 +210,14 @@ window.App = window.App || {};
     };
   }
 
-  /** Gráfico de produção como PNG (1800×772 px, mesma proporção da imagem do modelo de contrato). */
+  /**
+   * Gráfico de produção como PNG (proporção 1800 × 772, a da imagem do modelo de contrato), com o dobro dos pixels
+   * (U.DENSIDADE_IMG): nítido ao ampliar a página.
+   */
   function producaoDataURL(d) {
     const cv = document.createElement('canvas');
-    cv.width = 1800;
-    cv.height = 772;
+    cv.width = 1800 * U.DENSIDADE_IMG;
+    cv.height = 772 * U.DENSIDADE_IMG;
     desenharProducao(cv, d);
     return cv.toDataURL('image/png');
   }
@@ -218,9 +230,7 @@ window.App = window.App || {};
    */
   function saldoDataURL(d) {
     const W = 1800, H = 690;
-    const cv = document.createElement('canvas');
-    cv.width = W;
-    cv.height = H;
+    const cv = U.canvasHD(W, H);   // o dobro dos pixels, desenho em 1800 × 690
     const g = cv.getContext('2d');
     g.fillStyle = '#FFFFFF';
     g.fillRect(0, 0, W, H);

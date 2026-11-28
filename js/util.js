@@ -98,6 +98,19 @@ window.App = window.App || {};
   };
 
   U.MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  /**
+   * Densidade das imagens desenhadas para os documentos (gráficos, capa, etapas): o dobro dos pixels da medida do desenho, para
+   * ficarem nítidas ao ampliar a página na tela e na impressão.
+   */
+  U.DENSIDADE_IMG = 2;
+  /** Canvas de w × h (medida do desenho) com U.DENSIDADE_IMG vezes os pixels; o contexto já vem na escala (desenhe em w × h). */
+  U.canvasHD = function (w, h, d) {
+    const k = d || U.DENSIDADE_IMG, cv = document.createElement('canvas');
+    cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    cv.getContext('2d').setTransform(k, 0, 0, k, 0, 0);
+    return cv;
+  };
   U.MESES_NOMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
   /** "20 de maio de 2026" */

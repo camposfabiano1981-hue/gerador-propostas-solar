@@ -54,11 +54,14 @@ window.App = window.App || {};
     // margens: o círculo ou o texto da primeira/última etapa (o que for maior)
     const topo = Math.max(R + 20, blocos[0].altura / 2 + 16);
     const base = Math.max(R + 20, blocos[blocos.length - 1].altura / 2 + 16);
-    cv.width = W;
-    cv.height = Math.round(topo + base + passo * (etapas.length - 1));
+    // o dobro dos pixels (nítido ao ampliar); o desenho continua em W × altura
+    const D = App.U.DENSIDADE_IMG, Ht = Math.round(topo + base + passo * (etapas.length - 1));
+    cv.width = W * D;
+    cv.height = Ht * D;
     const g = cv.getContext('2d');
+    g.setTransform(D, 0, 0, D, 0, 0);
     g.fillStyle = '#FFFFFF';
-    g.fillRect(0, 0, cv.width, cv.height);
+    g.fillRect(0, 0, W, Ht);
     const yDe = function (i) { return topo + i * passo; };
     const cor = function (i) { return CORES[i % CORES.length]; };
 

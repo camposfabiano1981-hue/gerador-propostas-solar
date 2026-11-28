@@ -10,12 +10,8 @@ window.App = window.App || {};
   const FONTE = '"DejaVu Sans", "Segoe UI", Arial, sans-serif';
   const AZUL = '#1E3A8A', AZUL2 = '#2563EB', OURO = '#F6A81C', VERDE = '#15803D';
 
-  function canvas(w, h) {
-    const cv = document.createElement('canvas');
-    cv.width = w;
-    cv.height = h;
-    return cv;
-  }
+  // o desenho em w × h, com o dobro dos pixels (U.canvasHD): nítido ao ampliar
+  function canvas(w, h) { return App.U.canvasHD(w, h); }
 
   /**
    * Faixa da capa: arco azul que sobe do rodapé, com o sol dourado em círculos concêntricos à direita.
